@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -10,12 +11,16 @@ import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
 import { CreateChapterDto } from './dto/create-chapter.dto';
 import { UpdateChapterDto } from './dto/update-chapter.dto';
+import { FilesService } from '../files/files.service';
 
 @Injectable()
 export class ChaptersService {
+  private readonly logger = new Logger(ChaptersService.name);
+
   constructor(
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
+    private filesService: FilesService,
   ) {}
 
   async findAll({
@@ -166,6 +171,9 @@ export class ChaptersService {
       throw new NotFoundException('Chapter not found');
     }
 
+    // Удаляем файлы главы
+    await this.filesService.deleteChapterPages(id);
+
     // Удаляем главу из тайтла
     await this.titleModel.findByIdAndUpdate(chapter.titleId, {
       $pull: { chapters: chapter._id },
@@ -234,5 +242,79 @@ export class ChaptersService {
       .sort({ chapterNumber: sortOrder === 'asc' ? 1 : -1 })
       .populate('titleId')
       .exec();
+  }
+
+  async createWithPages(
+    createChapterDto: CreateChapterDto,
+    files: Express.Multer.File[],
+  ): Promise<ChapterDocument> {
+    const { titleId, chapterNumber } = createChapterDto;
+
+    if (!Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid title ID');
+    }
+
+    // Проверка существования тайтла
+    const title = await this.titleModel.findById(titleId);
+    if (!title) {
+      throw new NotFoundException('Title not found');
+    }
+
+    // Проверка на существующую главу
+    const existingChapter = await this.findByTitleAndNumber(
+      titleId,
+      chapterNumber,
+    );
+    if (existingChapter) {
+      throw new ConflictException(
+        `Chapter ${chapterNumber} already exists for this title`,
+      );
+    }
+
+    // Создаем главу сначала без страниц
+    const chapter = new this.chapterModel(createChapterDto);
+    const savedChapter = await chapter.save();
+
+    try {
+      // Сохраняем файлы и получаем пути
+      // TODO: проверить ошибку savedChapter._id.toString()
+      const pagePaths = await this.filesService.saveChapterPages(
+        files,
+        savedChapter.id.toString(),
+      );
+
+      // Обновляем главу с путями к страницам
+      savedChapter.pages = pagePaths;
+      await savedChapter.save();
+
+      // Добавляем главу в тайтл
+      await this.titleModel.findByIdAndUpdate(titleId, {
+        $push: { chapters: savedChapter._id },
+        $inc: { totalChapters: 1 },
+      });
+
+      return savedChapter.populate('titleId');
+    } catch (error) {
+      // Если ошибка при загрузке файлов, удаляем созданную главу
+      await this.chapterModel.findByIdAndDelete(savedChapter._id);
+      this.logger.error(`Failed to upload chapter pages: ${error.message}`);
+      throw new BadRequestException('Failed to upload chapter pages');
+    }
+  }
+
+  async addPagesToChapter(
+    chapterId: string,
+    files: Express.Multer.File[],
+  ): Promise<ChapterDocument> {
+    const chapter = await this.findById(chapterId);
+
+    const pagePaths = await this.filesService.saveChapterPages(
+      files,
+      chapterId,
+    );
+
+    // Добавляем новые страницы к существующим
+    chapter.pages = [...chapter.pages, ...pagePaths];
+    return chapter.save();
   }
 }

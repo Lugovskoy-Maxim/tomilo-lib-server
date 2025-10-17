@@ -1,3 +1,4 @@
+import { Type } from 'class-transformer';
 import {
   IsString,
   IsArray,
@@ -5,7 +6,7 @@ import {
   IsNumber,
   IsMongoId,
   IsBoolean,
-  IsDate,
+  // IsDate,
 } from 'class-validator';
 
 export class CreateChapterDto {
@@ -13,6 +14,7 @@ export class CreateChapterDto {
   titleId: string;
 
   @IsNumber()
+  @Type(() => Number)
   chapterNumber: number;
 
   @IsString()
@@ -21,17 +23,19 @@ export class CreateChapterDto {
 
   @IsArray()
   @IsString({ each: true })
-  pages: string[];
+  @IsOptional()
+  pages?: string[];
 
   @IsBoolean()
   @IsOptional()
+  @Type(() => Boolean)
   isPublished?: boolean;
 
   @IsString()
   @IsOptional()
   translator?: string;
 
-  @IsDate()
+  // @IsDate()
   @IsOptional()
   releaseDate?: Date;
 }

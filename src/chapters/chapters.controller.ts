@@ -9,10 +9,16 @@ import {
   Query,
   HttpStatus,
   HttpCode,
+  UploadedFiles,
+  UseInterceptors,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { ChaptersService } from './chapters.service';
 import { CreateChapterDto } from './dto/create-chapter.dto';
 import { UpdateChapterDto } from './dto/update-chapter.dto';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { multerConfig } from '../config/multer.config';
 
 @Controller('chapters')
 export class ChaptersController {
@@ -21,6 +27,16 @@ export class ChaptersController {
   @Post()
   async create(@Body() createChapterDto: CreateChapterDto) {
     return this.chaptersService.create(createChapterDto);
+  }
+
+  @Post('upload')
+  @UseInterceptors(FilesInterceptor('pages', 50, multerConfig))
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async createWithPages(
+    @Body() createChapterDto: CreateChapterDto,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.chaptersService.createWithPages(createChapterDto, files);
   }
 
   @Get()
