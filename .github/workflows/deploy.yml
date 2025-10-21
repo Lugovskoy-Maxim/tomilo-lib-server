@@ -42,6 +42,7 @@ jobs:
           # Останавливаем текущее приложение (если запущено)
           pm2 stop my-nest-app || true
           pm2 delete my-nest-app || true
+          docker-compose down
           
           # Получаем свежий код
           git fetch --all
@@ -58,6 +59,17 @@ jobs:
             echo "Creating .env file..."
             cp .env.example .env
           fi
+
+
+
+          # Создаем docker-compose файл если его нет
+          if [ ! -f docker-compose.yml ]; then
+            echo "Creating docker-compose file..."
+            cp docker-compose.example.yml docker-compose.yml
+          fi
+
+          # Запускаем докер с БД
+          docker-compose up -d
           
           # Запускаем приложение через PM2
           pm2 start dist/main.js --name "my-nest-app" --log logs/app.log
