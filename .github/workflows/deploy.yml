@@ -1,50 +1,67 @@
-name: Deploy to VM
+name: Deploy NestJS to VM
 
 on:
   push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
-
+    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Deploy to VM
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.VM_HOST }}
-          username: ${{ secrets.VM_USERNAME }}
-          key: ${{ secrets.VM_SSH_KEY }}
-          port: ${{ secrets.VM_SSH_PORT }}
-          script: |
-            echo "🚀 Starting deployment..."
-            cd /tomilo-lib-server
-
-            # Pull latest changes
-            git fetch origin
-            git reset --hard origin/main
-
-            # Install dependencies if needed
-            npm install
-            # pip install -r requirements.txt
-
-            # Restart services
-            sudo systemctl restart your-app-service
-            sudo systemctl restart nginx
-
-            # Docker example (if using containers)
-            docker-compose down
-            docker-compose up -d --build
-
-            echo "✅ Deployment completed successfully!"
-
-  run: |
-    echo "Branch: ${{ github.ref }}"
-    echo "Actor: ${{ github.actor }}"
-    echo "SHA: ${{ github.sha }}"
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    # - name: Run tests
+    #   run: npm test
+      
+    - name: Build project
+      run: npm run build
+      
+    - name: Deploy to VM
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ secrets.VM_HOST }}
+        username: ${{ secrets.VM_USERNAME }}
+        key: ${{ secrets.VM_SSH_KEY }}
+        script: |
+          echo "🚀 Starting deployment..."
+          
+          # Переходим в папку проекта
+          cd /home/maxim/apps/my-nest-app
+          
+          # Останавливаем текущее приложение (если запущено)
+          pm2 stop my-nest-app || true
+          pm2 delete my-nest-app || true
+          
+          # Получаем свежий код
+          git fetch --all
+          git reset --hard origin/main
+          
+          # Устанавливаем зависимости
+          npm ci --production
+          
+          # Собираем проект
+          npm run build
+          
+          # Создаем .env файл если его нет
+          if [ ! -f .env ]; then
+            echo "Creating .env file..."
+            cp .env.example .env
+          fi
+          
+          # Запускаем приложение через PM2
+          pm2 start dist/main.js --name "my-nest-app" --log logs/app.log
+          pm2 save
+          pm2 startup
+          
+          echo "✅ NestJS application deployed successfully!"
