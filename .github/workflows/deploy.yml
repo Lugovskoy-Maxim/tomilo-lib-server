@@ -2,78 +2,77 @@ name: Deploy NestJS to VM
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '18'
-        cache: 'npm'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    # - name: Run tests
-    #   run: npm test
-      
-    - name: Build project
-      run: npm run build
-      
-    - name: Deploy to VM
-      uses: appleboy/ssh-action@v1.0.3
-      with:
-        host: ${{ secrets.VM_HOST }}
-        username: ${{ secrets.VM_USERNAME }}
-        password: ${{ secrets.VM_PASSWORD }}
-        script: |
-          echo "🚀 Starting deployment..."
-          
-          # Переходим в папку проекта
-          cd /home/maxim/apps/my-nest-app
-          
-          # Останавливаем текущее приложение (если запущено)
-          pm2 stop my-nest-app || true
-          pm2 delete my-nest-app || true
-          docker-compose down
-          
-          # Получаем свежий код
-          git fetch --all
-          git reset --hard origin/main
-          
-          # Устанавливаем зависимости
-          npm ci --production
-          
-          # Собираем проект
-          npm run build
-          
-          # Создаем .env файл если его нет
-          if [ ! -f .env ]; then
-            echo "Creating .env file..."
-            cp .env.example .env
-          fi
+      - name: Checkout code
+        uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
 
+      - name: Install dependencies
+        run: npm ci
 
-          # Создаем docker-compose файл если его нет
-          if [ ! -f docker-compose.yml ]; then
-            echo "Creating docker-compose file..."
-            cp docker-compose.example.yml docker-compose.yml
-          fi
+      - name: Build project
+        run: npm run build
 
-          # Запускаем докер с БД
-          docker-compose up -d
-          
-          # Запускаем приложение через PM2
-          pm2 start dist/main.js --name "my-nest-app" --log logs/app.log
-          pm2 save
-          pm2 startup
-          
-          echo "✅ NestJS application deployed successfully!"
+      - name: Deploy to VM
+        uses: garygrossgarten/github-action-ssh@release
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USERNAME }}
+          password: ${{ secrets.VM_PASSWORD }}
+          command: |
+            echo "🚀 Starting deployment..."
+            
+            # Создаем папку если не существует
+            mkdir -p /home/maxim/apps/my-nest-app
+            cd /home/maxim/apps/my-nest-app
+            
+            # Останавливаем текущее приложение (если запущено)
+            pm2 stop my-nest-app || true
+            pm2 delete my-nest-app || true
+            docker-compose down || true
+            
+            # Клонируем/обновляем репозиторий
+            if [ ! -d .git ]; then
+              echo "Cloning repository..."
+              git clone https://github.com/your-username/your-repo.git .
+            else
+              echo "Updating repository..."
+              git fetch --all
+              git reset --hard origin/main
+            fi
+            
+            # Устанавливаем зависимости
+            npm ci --production
+            
+            # Собираем проект
+            npm run build
+            
+            # Создаем .env файл если его нет
+            if [ ! -f .env ]; then
+              echo "Creating .env file..."
+              cp .env.example .env || echo "No .env.example found"
+            fi
+            
+            # Запускаем докер с БД (если есть docker-compose.yml)
+            if [ -f docker-compose.yml ]; then
+              echo "Starting Docker containers..."
+              docker-compose up -d
+            fi
+            
+            # Запускаем приложение через PM2
+            pm2 start dist/main.js --name "my-nest-app" --log logs/app.log
+            pm2 save
+            pm2 startup
+            
+            echo "✅ NestJS application deployed successfully!"
