@@ -1,0 +1,50 @@
+name: Deploy to VM
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy to VM
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USERNAME }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          port: ${{ secrets.VM_SSH_PORT }}
+          script: |
+            echo "🚀 Starting deployment..."
+            cd /tomilo-lib-server
+
+            # Pull latest changes
+            git fetch origin
+            git reset --hard origin/main
+
+            # Install dependencies if needed
+            npm install
+            # pip install -r requirements.txt
+
+            # Restart services
+            sudo systemctl restart your-app-service
+            sudo systemctl restart nginx
+
+            # Docker example (if using containers)
+            docker-compose down
+            docker-compose up -d --build
+
+            echo "✅ Deployment completed successfully!"
+
+  run: |
+    echo "Branch: ${{ github.ref }}"
+    echo "Actor: ${{ github.actor }}"
+    echo "SHA: ${{ github.sha }}"
