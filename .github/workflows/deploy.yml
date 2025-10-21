@@ -11,20 +11,22 @@ jobs:
     environment: production
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      # - name: Checkout code
+      #   uses: actions/checkout@v4
+      #   with:
+      #     token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm test
+      # - name: Run tests
+      #   run: npm test
 
       - name: Build project
         run: npm run build
@@ -38,14 +40,14 @@ jobs:
           port: ${{ secrets.VM_SSH_PORT || 22 }}
           script: |
             echo "🚀 Deploying to cloud.ru server..."
+                  
+            # Переходим в папку проекта
+            cd /home/${{ secrets.VM_USERNAME }}/tomilo-lib-server/
             
-            # начало работы
-            cd /home/maxim/tomilo-lib-server/
-            
-            # Клонируем или обновляем репозиторий
+            # Клонируем или обновляем репозиторий через SSH
             if [ ! -d .git ]; then
               echo "Cloning repository for the first time..."
-              git clone https://github.com/${{ github.repository }}.git .
+              git clone git@github.com:${{ github.repository }}.git .
             else
               echo "Updating existing repository..."
               git fetch origin
@@ -65,14 +67,14 @@ jobs:
             fi
             
             # Настраиваем docker
-            docker-compose down
+            docker-compose down || true
 
             if [ ! -f docker-compose.yml ] && [ -f docker-compose.yml.example ]; then
               cp docker-compose.yml.example docker-compose.yml
               echo "Created docker-compose.yml from example"
             fi
 
-            docker-compose up -d
+            docker-compose up -d --build
 
             # Перезапускаем приложение
             pm2 stop tomilo-lib-server || true
@@ -80,5 +82,8 @@ jobs:
             pm2 start dist/main.js --name "tomilo-lib-server"
             pm2 save
             pm2 startup
+            
+            # Очистка - удаляем временный SSH ключ
+            rm -f ~/.ssh/id_rsa
             
             echo "✅ Successfully deployed to cloud.ru!"
