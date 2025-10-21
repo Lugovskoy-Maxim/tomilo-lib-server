@@ -1,12 +1,14 @@
-name: Deploy NestJS to VM
+name: Deploy to Cloud.ru
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:  # Разрешает ручной запуск
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - name: Checkout code
@@ -21,34 +23,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run tests
+        run: npm test
+
       - name: Build project
         run: npm run build
 
-      - name: Deploy to VM
-        uses: garygrossgarten/github-action-ssh@release
+      - name: Deploy to cloud.ru server
+        uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USERNAME }}
-          password: ${{ secrets.VM_PASSWORD }}
-          command: |
-            echo "🚀 Starting deployment..."
+          key: ${{ secrets.VM_SSH_KEY }}
+          port: ${{ secrets.VM_SSH_PORT || 22 }}
+          script: |
+            echo "🚀 Deploying to cloud.ru server..."
             
-            # Создаем папку если не существует
-            mkdir -p /home/maxim/apps/my-nest-app
-            cd /home/maxim/apps/my-nest-app
+            # начало работы
+            cd /home/maxim/tomilo-lib-server/
             
-            # Останавливаем текущее приложение (если запущено)
-            pm2 stop my-nest-app || true
-            pm2 delete my-nest-app || true
-            docker-compose down || true
-            
-            # Клонируем/обновляем репозиторий
+            # Клонируем или обновляем репозиторий
             if [ ! -d .git ]; then
-              echo "Cloning repository..."
-              git clone https://github.com/your-username/your-repo.git .
+              echo "Cloning repository for the first time..."
+              git clone https://github.com/${{ github.repository }}.git .
             else
-              echo "Updating repository..."
-              git fetch --all
+              echo "Updating existing repository..."
+              git fetch origin
               git reset --hard origin/main
             fi
             
@@ -58,21 +58,27 @@ jobs:
             # Собираем проект
             npm run build
             
-            # Создаем .env файл если его нет
-            if [ ! -f .env ]; then
-              echo "Creating .env file..."
-              cp .env.example .env || echo "No .env.example found"
+            # Настраиваем .env
+            if [ ! -f .env ] && [ -f .env.example ]; then
+              cp .env.example .env
+              echo "Created .env from example"
             fi
             
-            # Запускаем докер с БД (если есть docker-compose.yml)
-            if [ -f docker-compose.yml ]; then
-              echo "Starting Docker containers..."
-              docker-compose up -d
+            # Настраиваем docker
+            docker-compose down
+
+            if [ ! -f docker-compose.yml ] && [ -f docker-compose.yml.example ]; then
+              cp docker-compose.yml.example docker-compose.yml
+              echo "Created docker-compose.yml from example"
             fi
-            
-            # Запускаем приложение через PM2
-            pm2 start dist/main.js --name "my-nest-app" --log logs/app.log
+
+            docker-compose up -d
+
+            # Перезапускаем приложение
+            pm2 stop tomilo-lib-server || true
+            pm2 delete tomilo-lib-server || true
+            pm2 start dist/main.js --name "tomilo-lib-server"
             pm2 save
             pm2 startup
             
-            echo "✅ NestJS application deployed successfully!"
+            echo "✅ Successfully deployed to cloud.ru!"
