@@ -11,12 +11,15 @@ import {
   ValidationPipe,
   UseGuards,
   Request,
+  UseInterceptors,
+  UploadedFile,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @Controller('users')
 @UsePipes(new ValidationPipe())
@@ -57,7 +60,7 @@ export class UsersController {
   }
 
   // 🔧 Админ: обновить пользователя
-  @Put(':id')
+  @Put('admin/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   async updateUser(
@@ -68,7 +71,7 @@ export class UsersController {
   }
 
   // 🗑️ Удалить пользователя
-  @Delete(':id')
+  @Delete('admin/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   async deleteUser(@Param('id') id: string) {
@@ -130,5 +133,44 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   async getUserStats(@Request() req) {
     return this.usersService.getUserStats(req.user.userId);
+  }
+
+  // 🖼 Админ: удалить аватар любого пользователя
+  @Post('avatar/admin/:id')
+  @UseInterceptors(FileInterceptor('avatar'))
+  @Roles('admin')
+  async uploadAvatarForAdmin(
+    @Param('id') userId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    const user = await this.usersService.updateAvatar(userId, file);
+    return {
+      message: `Аватар пользователя ${user.username} обновлен`,
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar,
+      },
+    };
+  }
+
+  // 🖼 Удалить аватар (свой)
+  @Post('avatar')
+  @UseInterceptors(FileInterceptor('avatar'))
+  async uploadAvatar(
+    @Request() req,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    const user = await this.usersService.updateAvatar(req.user.userId, file);
+    return {
+      message: 'Аватар обновлен',
+      user: {
+        id: user._id,
+        username: user.username,
+        email: user.email,
+        avatar: user.avatar,
+      },
+    };
   }
 }

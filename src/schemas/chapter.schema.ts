@@ -5,6 +5,8 @@ export type ChapterDocument = Chapter & Document;
 
 @Schema({ timestamps: true })
 export class Chapter {
+  _id: Types.ObjectId;
+
   @Prop({ required: true, type: Types.ObjectId, ref: 'Title' })
   titleId: Types.ObjectId;
 

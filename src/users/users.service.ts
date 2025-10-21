@@ -1,17 +1,22 @@
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import {
   Injectable,
   NotFoundException,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { FilesService } from '../files/files.service';
 
 @Injectable()
 export class UsersService {
-  constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
+  constructor(
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    private filesService: FilesService,
+  ) {}
 
   async findAll({
     page,
@@ -54,6 +59,10 @@ export class UsersService {
   }
 
   async findById(id: string): Promise<User> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
     const user = await this.userModel.findById(id).select('-password');
     if (!user) {
       throw new NotFoundException('User not found');
@@ -84,6 +93,10 @@ export class UsersService {
   }
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
     const user = await this.userModel
       .findByIdAndUpdate(id, updateUserDto, { new: true })
       .select('-password');
@@ -96,6 +109,18 @@ export class UsersService {
   }
 
   async delete(id: string): Promise<void> {
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel.findById(id);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Удаляем файлы пользователя (аватар)
+    await this.filesService.deleteUserFolder(id);
+
     const result = await this.userModel.findByIdAndDelete(id);
     if (!result) {
       throw new NotFoundException('User not found');
@@ -104,6 +129,10 @@ export class UsersService {
 
   // 🔖 Методы для работы с закладками
   async addBookmark(userId: string, titleId: string): Promise<User> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid user ID or title ID');
+    }
+
     const user = await this.userModel
       .findByIdAndUpdate(
         userId,
@@ -119,7 +148,63 @@ export class UsersService {
     return user;
   }
 
+  // 🖼 Методы для работы с аватаром
+  async updateAvatar(userId: string, file: Express.Multer.File): Promise<User> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    // Сохраняем файл и получаем путь
+    const avatarPath = await this.filesService.saveUserAvatar(file, userId);
+
+    // Обновляем пользователя с новым путем к аватару
+    const user = await this.userModel
+      .findByIdAndUpdate(userId, { avatar: avatarPath }, { new: true })
+      .select('-password');
+
+    if (!user) {
+      // Если пользователь не найден, удаляем загруженный файл
+      await this.filesService.deleteUserAvatar(userId);
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
+  async getAvatar(userId: string): Promise<string | null> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel.findById(userId).select('avatar');
+    return user?.avatar || null;
+  }
+
+  async removeAvatar(userId: string): Promise<User> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    // Удаляем файл аватара
+    await this.filesService.deleteUserAvatar(userId);
+
+    // Обновляем пользователя, убирая аватар
+    const user = await this.userModel
+      .findByIdAndUpdate(userId, { $unset: { avatar: 1 } }, { new: true })
+      .select('-password');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
   async removeBookmark(userId: string, titleId: string): Promise<User> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid user ID or title ID');
+    }
+
     const user = await this.userModel
       .findByIdAndUpdate(
         userId,
@@ -136,6 +221,10 @@ export class UsersService {
   }
 
   async getUserBookmarks(userId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
     const user = await this.userModel
       .findById(userId)
       .populate('bookmarks')
@@ -154,9 +243,17 @@ export class UsersService {
     titleId: string,
     chapterId: string,
   ): Promise<User> {
+    if (
+      !Types.ObjectId.isValid(userId) ||
+      !Types.ObjectId.isValid(titleId) ||
+      !Types.ObjectId.isValid(chapterId)
+    ) {
+      throw new BadRequestException('Invalid user ID, title ID or chapter ID');
+    }
+
     const historyEntry = {
-      titleId,
-      chapterId,
+      titleId: new Types.ObjectId(titleId),
+      chapterId: new Types.ObjectId(chapterId),
       readAt: new Date(),
     };
 
@@ -183,6 +280,10 @@ export class UsersService {
   }
 
   async getReadingHistory(userId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
     const user = await this.userModel
       .findById(userId)
       .populate('readingHistory.titleId')
@@ -197,6 +298,10 @@ export class UsersService {
   }
 
   async clearReadingHistory(userId: string): Promise<User> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
     const user = await this.userModel
       .findByIdAndUpdate(
         userId,
@@ -214,6 +319,10 @@ export class UsersService {
 
   // 📊 Статистика пользователя
   async getUserStats(userId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
     const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');

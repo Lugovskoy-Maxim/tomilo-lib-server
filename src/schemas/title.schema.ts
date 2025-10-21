@@ -12,6 +12,8 @@ export enum TitleStatus {
 
 @Schema({ timestamps: true })
 export class Title {
+  _id: Types.ObjectId;
+
   @Prop({ required: true, unique: true })
   name: string;
 
