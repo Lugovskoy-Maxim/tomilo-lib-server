@@ -1,89 +1,46 @@
-name: Deploy to Cloud.ru
+name: Deploy to Cloud.ru - Server Build
 
 on:
   push:
     branches: [main]
-  workflow_dispatch:  # Разрешает ручной запуск
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
-
     steps:
-      # - name: Checkout code
-      #   uses: actions/checkout@v4
-      #   with:
-      #     token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      # - name: Run tests
-      #   run: npm test
-
-      - name: Build project
-        run: npm run build
-
-      - name: Deploy to cloud.ru server
+      - name: Deploy and build on server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USERNAME }}
           key: ${{ secrets.VM_SSH_KEY }}
-          port: ${{ secrets.VM_SSH_PORT || 22 }}
           script: |
             echo "🚀 Deploying to cloud.ru server..."
-                  
-            # Переходим в папку проекта
+            
+            # Настраиваем SSH для GitHub
+            mkdir -p ~/.ssh
+            echo "${{ secrets.GITHUB_SSH_KEY }}" > ~/.ssh/github_key
+            chmod 600 ~/.ssh/github_key
+            ssh-keyscan github.com >> ~/.ssh/known_hosts
+            
             cd /home/${{ secrets.VM_USERNAME }}/tomilo-lib-server/
             
-            # Клонируем или обновляем репозиторий через SSH
-            if [ ! -d .git ]; then
-              echo "Cloning repository for the first time..."
-              git clone git@github.com:${{ github.repository }}.git .
-            else
-              echo "Updating existing repository..."
-              git fetch origin
-              git reset --hard origin/main
-            fi
+            # Обновляем код
+            git fetch origin
+            git reset --hard origin/main
             
-            # Устанавливаем зависимости
-            npm ci --production
-            
-            # Собираем проект
+            # Всё делаем на сервере
+            npm install
             npm run build
             
-            # Настраиваем .env
-            if [ ! -f .env ] && [ -f .env.example ]; then
-              cp .env.example .env
-              echo "Created .env from example"
-            fi
-            
-            # Настраиваем docker
+            # Запускаем контейнеры
             docker-compose down || true
-
-            if [ ! -f docker-compose.yml ] && [ -f docker-compose.yml.example ]; then
-              cp docker-compose.yml.example docker-compose.yml
-              echo "Created docker-compose.yml from example"
-            fi
-
             docker-compose up -d --build
-
+            
             # Перезапускаем приложение
-            pm2 stop tomilo-lib-server || true
-            pm2 delete tomilo-lib-server || true
-            pm2 start dist/main.js --name "tomilo-lib-server"
-            pm2 save
-            pm2 startup
+            pm2 restart tomilo-lib-server
             
-            # Очистка - удаляем временный SSH ключ
-            rm -f ~/.ssh/id_rsa
+            # Очистка
+            rm -f ~/.ssh/github_key
             
-            echo "✅ Successfully deployed to cloud.ru!"
+            echo "✅ Successfully deployed!"
