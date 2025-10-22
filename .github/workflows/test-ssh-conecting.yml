@@ -7,13 +7,34 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - name: Test SSH
+    - name: Debug SSH key
+      run: |
+        echo "Checking SSH key format..."
+        KEY="${{ secrets.VM_SSH_KEY }}"
+        if [[ "$KEY" == -----BEGIN* ]]; then
+          echo "✅ Key format looks correct"
+          echo "First line: $(echo "$KEY" | head -1)"
+          echo "Last line: $(echo "$KEY" | tail -1)"
+        else
+          echo "❌ Key format is wrong!"
+          echo "First 50 chars: ${KEY:0:50}"
+        fi
+        
+    - name: Create SSH key file
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        ssh-keyscan ${{ secrets.VM_HOST }} >> ~/.ssh/known_hosts
+        
+    - name: Test SSH connection
       uses: appleboy/ssh-action@v1.0.3
       with:
         host: ${{ secrets.VM_HOST }}
         username: ${{ secrets.VM_USERNAME }}
         key: ${{ secrets.VM_SSH_KEY }}
         script: |
-          echo "SSH connection successful!"
-          whoami
-          pwd
+          echo "✅ SSH connection successful!"
+          echo "User: $(whoami)"
+          echo "Directory: $(pwd)"
+          echo "Home: $HOME"
