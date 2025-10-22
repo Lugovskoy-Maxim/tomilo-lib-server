@@ -55,6 +55,10 @@ jobs:
             ls -la
             echo "Package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
 
+            # Копируем файлы настройки приложений из шаблонов 
+            cp .env.example .env
+            cp docker-compose.yml.example docker-compose.yml
+
             # Всё делаем на сервере
             npm install
             npm run build
