@@ -8,39 +8,71 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy and build on server
+      - name: Deploy to cloud.ru server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USERNAME }}
           key: ${{ secrets.VM_SSH_KEY }}
+          port: ${{ secrets.VM_SSH_PORT || 22 }}
           script: |
             echo "🚀 Deploying to cloud.ru server..."
-            
-            # Настраиваем SSH для GitHub
-            mkdir -p ~/.ssh
-            echo "${{ secrets.GITHUB_SSH_KEY }}" > ~/.ssh/github_key
-            chmod 600 ~/.ssh/github_key
-            ssh-keyscan github.com >> ~/.ssh/known_hosts
-            
-            cd /home/${{ secrets.VM_USERNAME }}/tomilo-lib-server/
-            
-            # Обновляем код
-            git fetch origin
-            git reset --hard origin/main
-            
+
+            # Создаем папку проекта если не существует
+            PROJECT_DIR="/home/${{ secrets.VM_USERNAME }}/tomilo-lib-server"
+            mkdir -p "$PROJECT_DIR"
+            cd "$PROJECT_DIR"
+            echo "Current directory: $(pwd)"
+
+            # Настраиваем SSH для GitHub (только если есть ключ)
+            if [ -n "${{ secrets.GITHUB_SSH_KEY }}" ]; then
+              mkdir -p ~/.ssh
+              echo "${{ secrets.GITHUB_SSH_KEY }}" > ~/.ssh/github_key
+              chmod 600 ~/.ssh/github_key
+              ssh-keyscan github.com >> ~/.ssh/known_hosts
+              
+              # Настраиваем git для использования SSH ключа
+              git config --global core.sshCommand "ssh -i ~/.ssh/github_key -o StrictHostKeyChecking=no"
+            fi
+
+            # Клонируем или обновляем репозиторий
+            if [ ! -d .git ]; then
+              echo "Cloning repository for the first time..."
+              if [ -n "${{ secrets.GITHUB_SSH_KEY }}" ]; then
+                git clone git@github.com:${{ github.repository }}.git .
+              else
+                # Используем HTTPS если нет SSH ключа
+                git clone https://github.com/${{ github.repository }}.git .
+              fi
+            else
+              echo "Updating existing repository..."
+              git fetch origin
+              git reset --hard origin/main
+            fi
+
+            # Проверяем что мы в правильной папке
+            echo "Project contents:"
+            ls -la
+            echo "Package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
+
             # Всё делаем на сервере
             npm install
             npm run build
-            
+
             # Запускаем контейнеры
             docker-compose down || true
             docker-compose up -d --build
-            
+
             # Перезапускаем приложение
-            pm2 restart tomilo-lib-server
-            
+            pm2 stop tomilo-lib-server || true
+            pm2 delete tomilo-lib-server || true
+            pm2 start dist/main.js --name "tomilo-lib-server"
+            pm2 save
+            pm2 startup
+
             # Очистка
-            rm -f ~/.ssh/github_key
-            
+            if [ -f ~/.ssh/github_key ]; then
+              rm -f ~/.ssh/github_key
+            fi
+
             echo "✅ Successfully deployed!"
