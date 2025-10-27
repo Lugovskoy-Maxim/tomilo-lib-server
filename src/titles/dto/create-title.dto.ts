@@ -7,20 +7,25 @@ import {
   Min,
   Max,
   IsBoolean,
+  IsNotEmpty,
 } from 'class-validator';
 import { TitleStatus } from '../../schemas/title.schema';
 
 export class CreateTitleDto {
   @IsString()
+  @IsNotEmpty()
   name: string;
 
   @IsArray()
   @IsOptional()
+  @IsString({ each: true })
   altNames?: string[];
 
   @IsString()
+  @IsNotEmpty()
   description: string;
 
+  // 👇 это правильно — string, а не File!
   @IsString()
   @IsOptional()
   coverImage?: string;
@@ -39,6 +44,7 @@ export class CreateTitleDto {
 
   @IsArray()
   @IsString({ each: true })
+  @IsNotEmpty()
   genres: string[];
 
   @IsArray()
