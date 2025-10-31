@@ -1,30 +1,32 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
-import { AuthService } from '../auth.service';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private authService: AuthService) {
+  constructor() {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'your-secret-key',
+      secretOrKey: process.env.JWT_SECRET || '',
     });
   }
 
-  async validate(payload: any) {
-    const user = await this.authService.validateToken(payload);
-
-    if (!user) {
-      throw new Error('User not found');
+  validate(payload: any) {
+    // Проверяем наличие обязательных полей
+    if (!payload.userId || !payload.email) {
+      throw new Error('Invalid token payload');
     }
 
-    return {
-      userId: user._id,
-      email: user.email,
-      username: user.username,
-      roles: user.role,
+    const user = {
+      userId: payload.userId,
+      email: payload.email,
+      username: payload.username,
+      roles: payload.role,
     };
+
+    return user;
   }
 }
+
+export default JwtStrategy;

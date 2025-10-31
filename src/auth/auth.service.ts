@@ -25,6 +25,7 @@ export class AuthService {
   }
 
   login(user: any) {
+    console.log(user);
     const payload = {
       email: user.email,
       userId: user._id,
@@ -32,7 +33,9 @@ export class AuthService {
     };
 
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: this.jwtService.sign(payload, {
+        expiresIn: '30d',
+      }),
       user: {
         id: user._id,
         email: user.email,

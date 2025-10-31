@@ -7,15 +7,23 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  app.enableCors({
+    origin: [
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+      'https://tomilo-lib.ru',
+    ],
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    credentials: true,
+    allowedHeaders: 'Authorization, Content-Type',
+  });
+
   app.setGlobalPrefix('api');
 
   // Префикс для раздачи статических файлов
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {
     prefix: '/uploads/',
   });
-
-  // Включаем CORS
-  app.enableCors();
 
   // Настройка глобальной валидации
   app.useGlobalPipes(new ValidationPipe());
