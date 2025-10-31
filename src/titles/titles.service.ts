@@ -7,6 +7,7 @@ import {
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Title, TitleDocument, TitleStatus } from '../schemas/title.schema';
+import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
 import { CreateTitleDto } from './dto/create-title.dto';
 import { UpdateTitleDto } from './dto/update-title.dto';
 
@@ -14,6 +15,7 @@ import { UpdateTitleDto } from './dto/update-title.dto';
 export class TitlesService {
   constructor(
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
+    @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
   ) {}
 
   async findAll({
@@ -201,6 +203,11 @@ export class TitlesService {
     if (!title) {
       throw new NotFoundException('Title not found');
     }
+  }
+
+  async getChaptersCount(titleId: string): Promise<{ count: number }> {
+    const count = await this.chapterModel.countDocuments({ titleId });
+    return { count };
   }
 
   async removeChapter(

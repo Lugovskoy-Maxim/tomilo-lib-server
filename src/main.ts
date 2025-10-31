@@ -9,6 +9,11 @@ async function bootstrap() {
 
   app.setGlobalPrefix('api');
 
+  // Префикс для раздачи статических файлов
+  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
+    prefix: '/uploads/',
+  });
+
   // Включаем CORS
   app.enableCors();
 

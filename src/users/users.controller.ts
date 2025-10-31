@@ -13,6 +13,8 @@ import {
   Request,
   UseInterceptors,
   UploadedFile,
+  BadRequestException,
+  Req,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -20,6 +22,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 
 @Controller('users')
 @UsePipes(new ValidationPipe())
@@ -133,6 +137,45 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   async getUserStats(@Request() req) {
     return this.usersService.getUserStats(req.user.userId);
+  }
+
+  @Put('profile/avatar')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('avatar', {
+      storage: diskStorage({
+        destination: './uploads/avatars',
+        filename: (req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, uniqueSuffix + extname(file.originalname));
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
+          return cb(
+            new BadRequestException('Only image files are allowed'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: {
+        fileSize: 2 * 1024 * 1024, // 2MB limit for avatars
+      },
+    }),
+  )
+  async updateAvatar(
+    @Req() req: any,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    if (!file) {
+      throw new BadRequestException('Avatar file is required');
+    }
+    console.log(req.user);
+    const userId = req.user.userId;
+    const avatarUrl = `/uploads/avatars/${file.filename}`;
+    return this.usersService.update(userId, { avatar: avatarUrl });
   }
 
   // 🖼 Админ: удалить аватар любого пользователя

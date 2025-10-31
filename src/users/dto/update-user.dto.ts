@@ -8,6 +8,9 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   bookmarks?: string[];
 
   @IsOptional()
+  avatar: string;
+
+  @IsOptional()
   @IsArray()
   readingHistory?: any[];
 }

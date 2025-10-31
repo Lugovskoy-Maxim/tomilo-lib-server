@@ -16,6 +16,6 @@ import { FilesModule } from '../files/files.module';
   ],
   controllers: [ChaptersController],
   providers: [ChaptersService],
-  exports: [ChaptersService],
+  exports: [ChaptersService, MongooseModule],
 })
 export class ChaptersModule {}
