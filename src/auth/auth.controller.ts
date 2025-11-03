@@ -10,6 +10,7 @@ import {
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { CreateUserDto } from '../users/dto/create-user.dto';
+import { ApiResponseDto } from '../common/dto/api-response.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -18,14 +19,56 @@ export class AuthController {
   @UseGuards(LocalAuthGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Request() req) {
-    return this.authService.login(req.user);
+  login(@Request() req): ApiResponseDto<any> {
+    try {
+      const data = this.authService.login(req.user);
+
+      return {
+        success: true,
+        data,
+        message: 'Login successful',
+        timestamp: new Date().toISOString(),
+        path: 'auth/login',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Login failed',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/login',
+        method: 'POST',
+      };
+    }
   }
 
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
-  async register(@Body() createUserDto: CreateUserDto) {
-    const user = await this.authService.register(createUserDto);
-    return this.authService.login(user);
+  async register(
+    @Body() createUserDto: CreateUserDto,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const user = await this.authService.register(createUserDto);
+      const data = this.authService.login(user);
+
+      return {
+        success: true,
+        data,
+        message: 'Registration successful',
+        timestamp: new Date().toISOString(),
+        path: 'auth/register',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Registration failed',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/register',
+        method: 'POST',
+      };
+    }
   }
 }

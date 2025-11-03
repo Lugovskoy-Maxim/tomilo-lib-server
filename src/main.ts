@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
+import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -27,6 +28,9 @@ async function bootstrap() {
 
   // Настройка глобальной валидации
   app.useGlobalPipes(new ValidationPipe());
+
+  // Добавляем глобальный фильтр исключений
+  app.useGlobalFilters(new HttpExceptionFilter());
 
   // Настройка для обслуживания статических файлов
   app.useStaticAssets(join(__dirname, '..', 'uploads'), {

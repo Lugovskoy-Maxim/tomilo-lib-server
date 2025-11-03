@@ -72,4 +72,4 @@ TitleSchema.index({ name: 'text', altNames: 'text', description: 'text' });
 TitleSchema.index({ genres: 1 });
 TitleSchema.index({ status: 1 });
 TitleSchema.index({ rating: -1 });
-TitleSchema.index({ totalViews: -1 });
+TitleSchema.index({ views: -1 });

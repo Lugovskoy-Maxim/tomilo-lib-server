@@ -184,7 +184,7 @@ export class TitlesService {
 
   async incrementViews(id: string): Promise<TitleDocument> {
     const title = await this.titleModel
-      .findByIdAndUpdate(id, { $inc: { totalViews: 1 } }, { new: true })
+      .findByIdAndUpdate(id, { $inc: { views: 1 } }, { new: true })
       .exec();
 
     if (!title) {
@@ -209,7 +209,7 @@ export class TitlesService {
   async getPopularTitles(limit = 10): Promise<TitleDocument[]> {
     return this.titleModel
       .find()
-      .sort({ totalViews: -1, rating: -1 })
+      .sort({ views: -1, rating: -1 })
       .limit(limit)
       .populate('chapters')
       .exec();

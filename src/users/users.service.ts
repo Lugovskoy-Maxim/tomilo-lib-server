@@ -10,12 +10,14 @@ import { User, UserDocument } from '../schemas/user.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { FilesService } from '../files/files.service';
+import { ChaptersService } from '../chapters/chapters.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private filesService: FilesService,
+    private chaptersService: ChaptersService,
   ) {}
 
   async findAll({
@@ -241,35 +243,72 @@ export class UsersService {
   async addToReadingHistory(
     userId: string,
     titleId: string,
-    chapterId: string,
+    chapterId: string, // Может быть ObjectId или номером главы
   ): Promise<User> {
-    if (
-      !Types.ObjectId.isValid(userId) ||
-      !Types.ObjectId.isValid(titleId) ||
-      !Types.ObjectId.isValid(chapterId)
-    ) {
-      throw new BadRequestException('Invalid user ID, title ID or chapter ID');
+    // Проверка валидности ID пользователя и titleId
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid user ID or title ID');
+    }
+
+    // Проверяем, является ли chapterId ObjectId или номером главы
+    let chapterObjectId: Types.ObjectId;
+    if (Types.ObjectId.isValid(chapterId)) {
+      // Это ObjectId главы
+      chapterObjectId = new Types.ObjectId(chapterId);
+    } else {
+      // Это номер главы, нужно найти ObjectId
+      const chapterNumber = parseInt(chapterId, 10);
+      if (isNaN(chapterNumber)) {
+        throw new BadRequestException('Invalid chapter ID or number');
+      }
+
+      const chapter = await this.chaptersService.findByTitleAndNumber(
+        titleId,
+        chapterNumber,
+      );
+      if (!chapter) {
+        throw new NotFoundException('Chapter not found');
+      }
+      chapterObjectId = chapter._id;
+    }
+
+    // Проверяем, существует ли уже запись для этого тайтла в истории
+    const existingUser = await this.userModel.findById(userId);
+    if (!existingUser) {
+      throw new NotFoundException('User not found');
     }
 
     const historyEntry = {
       titleId: new Types.ObjectId(titleId),
-      chapterId: new Types.ObjectId(chapterId),
+      chapterId: chapterObjectId,
       readAt: new Date(),
     };
 
-    const user = await this.userModel
-      .findByIdAndUpdate(
-        userId,
-        {
-          $push: {
-            readingHistory: {
-              $each: [historyEntry],
-              $slice: -100, // Храним только последние 100 записей
-            },
+    // Ищем индекс существующей записи для этого тайтла
+    const existingIndex = existingUser.readingHistory.findIndex(
+      (entry) => entry.titleId.toString() === titleId,
+    );
+
+    let updateQuery;
+    if (existingIndex !== -1) {
+      // Если запись существует, обновляем её
+      const setUpdate = {};
+      setUpdate[`readingHistory.${existingIndex}`] = historyEntry;
+      updateQuery = { $set: setUpdate };
+    } else {
+      // Если записи нет, добавляем новую
+      updateQuery = {
+        $push: {
+          readingHistory: {
+            $each: [historyEntry],
+            $slice: -100, // Храним только последние 100 записей
           },
         },
-        { new: true },
-      )
+      };
+    }
+
+    const user = await this.userModel
+      .findByIdAndUpdate(userId, updateQuery, { new: true })
       .select('-password');
 
     if (!user) {
@@ -278,6 +317,46 @@ export class UsersService {
 
     return user;
   }
+  // async addToReadingHistory(
+  //   userId: string,
+  //   titleId: string,
+  //   chapterId: string,
+  // ): Promise<User> {
+  //   if (
+  //     !Types.ObjectId.isValid(userId) ||
+  //     !Types.ObjectId.isValid(titleId) ||
+  //     !Types.ObjectId.isValid(chapterId)
+  //   ) {
+  //     throw new BadRequestException('Invalid user ID, title ID or chapter ID');
+  //   }
+
+  //   const historyEntry = {
+  //     titleId: new Types.ObjectId(titleId),
+  //     chapterId: new Types.ObjectId(chapterId),
+  //     readAt: new Date(),
+  //   };
+
+  //   const user = await this.userModel
+  //     .findByIdAndUpdate(
+  //       userId,
+  //       {
+  //         $push: {
+  //           readingHistory: {
+  //             $each: [historyEntry],
+  //             $slice: -100, // Храним только последние 100 записей
+  //           },
+  //         },
+  //       },
+  //       { new: true },
+  //     )
+  //     .select('-password');
+
+  //   if (!user) {
+  //     throw new NotFoundException('User not found');
+  //   }
+
+  //   return user;
+  // }
 
   async getReadingHistory(userId: string) {
     if (!Types.ObjectId.isValid(userId)) {

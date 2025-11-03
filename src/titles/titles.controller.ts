@@ -14,6 +14,7 @@ import {
   Put,
   UsePipes,
   ValidationPipe,
+  ParseFloatPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
@@ -287,9 +288,17 @@ export class TitlesController {
     return this.titlesService.delete(id);
   }
 
-  @Post('titles/:id/view')
+  @Post('titles/:id/views')
   async incrementViews(@Param('id') id: string) {
     return this.titlesService.incrementViews(id);
+  }
+
+  @Post('titles/:id/rating')
+  async updateRating(
+    @Param('id') id: string,
+    @Body('rating', ParseFloatPipe) rating: number,
+  ) {
+    return this.titlesService.updateRating(id, rating);
   }
 
   @Get('titles/:id/chapters/count')
