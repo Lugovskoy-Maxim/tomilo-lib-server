@@ -40,10 +40,16 @@ export class ChaptersService {
     const query: any = {};
 
     if (titleId) {
-      if (!Types.ObjectId.isValid(titleId)) {
-        throw new BadRequestException('Invalid title ID');
+      if (Types.ObjectId.isValid(titleId)) {
+        // Be tolerant to legacy data that might store string ids
+        query.$or = [
+          { titleId: new Types.ObjectId(titleId) },
+          { titleId: titleId as unknown as Types.ObjectId },
+        ];
+      } else {
+        // if not a valid ObjectId, try matching raw string just in case
+        query.titleId = titleId as unknown as Types.ObjectId;
       }
-      query.titleId = new Types.ObjectId(titleId);
     }
 
     const sortOptions: any = {};
@@ -101,6 +107,32 @@ export class ChaptersService {
         titleId: new Types.ObjectId(titleId),
         chapterNumber,
       })
+      .populate('titleId')
+      .exec();
+  }
+
+  async count({ titleId }: { titleId?: string }): Promise<number> {
+    const query: any = {};
+    if (titleId) {
+      if (Types.ObjectId.isValid(titleId)) {
+        query.$or = [
+          { titleId: new Types.ObjectId(titleId) },
+          { titleId: titleId as unknown as Types.ObjectId },
+        ];
+      } else {
+        query.titleId = titleId as unknown as Types.ObjectId;
+      }
+    }
+    return this.chapterModel.countDocuments(query);
+  }
+
+  async getLatestChapter(titleId: string): Promise<ChapterDocument | null> {
+    if (!Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid title ID');
+    }
+    return this.chapterModel
+      .findOne({ titleId: new Types.ObjectId(titleId) })
+      .sort({ chapterNumber: -1 })
       .populate('titleId')
       .exec();
   }
@@ -181,6 +213,24 @@ export class ChaptersService {
     });
 
     await this.chapterModel.findByIdAndDelete(id).exec();
+  }
+
+  async bulkDelete(ids: string[]): Promise<{ deletedCount: number }> {
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return { deletedCount: 0 };
+    }
+
+    let deletedCount = 0;
+    for (const id of ids) {
+      try {
+        await this.delete(id);
+        deletedCount += 1;
+      } catch (e) {
+        // skip invalid/non-existing, continue
+        this.logger.warn(`Skip deleting chapter ${id}: ${(e as Error).message}`);
+      }
+    }
+    return { deletedCount };
   }
 
   async incrementViews(id: string): Promise<ChapterDocument> {

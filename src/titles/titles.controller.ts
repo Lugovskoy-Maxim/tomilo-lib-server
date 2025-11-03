@@ -21,6 +21,7 @@ import { TitlesService } from './titles.service';
 import { CreateTitleDto } from './dto/create-title.dto';
 import { UpdateTitleDto } from './dto/update-title.dto';
 import { extname } from 'path';
+import { FilterOptionsResponseDto } from './dto/title-controller.dto';
 
 // DTO для ответов API
 class TitleResponseDto {
@@ -97,7 +98,30 @@ export class TitlesController {
         image: '/uploads/collections/3.webp',
         link: '/collections/fantasy',
       },
+      {
+        id: '4',
+        name: 'Фэнтези',
+        image: '/uploads/collections/3.webp',
+        link: '/collections/fantasy',
+      },
+      {
+        id: '5',
+        name: 'Фэнтези',
+        image: '/uploads/collections/3.webp',
+        link: '/collections/fantasy',
+      },
     ].slice(0, limit);
+  }
+
+  @Get('titles/filters/options')
+  async getFilterOptions(): Promise<FilterOptionsResponseDto> {
+    const filterOptions = await this.titlesService.getFilterOptions();
+
+    return {
+      genres: filterOptions.genres,
+      // types: filterOptions.types,
+      status: filterOptions.status,
+    };
   }
 
   @Get('user/reading-progress')

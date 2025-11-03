@@ -79,6 +79,40 @@ export class TitlesService {
     };
   }
 
+  async getFilterOptions() {
+    // Получаем все тайтлы для извлечения уникальных значений
+    const titles = await this.titleModel.find().exec();
+
+    const genres = new Set<string>();
+    // const types = new Set<string>();
+    const status = new Set<string>();
+
+    titles.forEach((title) => {
+      // Добавляем жанры
+      if (title.genres && Array.isArray(title.genres)) {
+        title.genres.forEach((genre) => genres.add(genre));
+      }
+
+      // // Добавляем тип
+      // if (title.type) {
+      //   types.add(title.type);
+      // }
+
+      // Добавляем статус
+      if (title.status) {
+        status.add(title.status);
+      }
+    });
+    // console.log('📊 genres response:', Array.from(genres).sort());
+    // // console.log('📊 types response:',  Array.from(types).sort());
+    // console.log('📊 status response:', Array.from(status).sort());
+    return {
+      genres: Array.from(genres).sort(),
+      // types: Array.from(types).sort(),
+      status: Array.from(status).sort(),
+    };
+  }
+
   async findById(id: string): Promise<TitleDocument> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid title ID');

@@ -25,7 +25,6 @@ export class AuthService {
   }
 
   login(user: any) {
-    console.log(user, 'login');
     const payload = {
       email: user.email,
       userId: user._id,

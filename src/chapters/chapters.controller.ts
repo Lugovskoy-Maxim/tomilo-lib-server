@@ -9,6 +9,7 @@ import {
   Query,
   HttpStatus,
   HttpCode,
+  Header,
   UploadedFiles,
   UseInterceptors,
   UsePipes,
@@ -40,6 +41,9 @@ export class ChaptersController {
   }
 
   @Get()
+  @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   async findAll(
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
@@ -54,6 +58,15 @@ export class ChaptersController {
       sortBy,
       sortOrder,
     });
+  }
+
+  @Get('count')
+  @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
+  async count(@Query('titleId') titleId?: string) {
+    const total = await this.chaptersService.count({ titleId });
+    return { total };
   }
 
   @Get(':id')
@@ -86,11 +99,36 @@ export class ChaptersController {
   }
 
   @Get('title/:titleId')
+  @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   async getChaptersByTitle(
     @Param('titleId') titleId: string,
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'asc',
   ) {
     return this.chaptersService.getChaptersByTitle(titleId, sortOrder);
+  }
+
+  @Get('by-number/:titleId')
+  @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
+  async getByNumber(
+    @Param('titleId') titleId: string,
+    @Query('chapterNumber') chapterNumber: number,
+  ) {
+    return this.chaptersService.findByTitleAndNumber(
+      titleId,
+      Number(chapterNumber),
+    );
+  }
+
+  @Get('latest/:titleId')
+  @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
+  async getLatest(@Param('titleId') titleId: string) {
+    return this.chaptersService.getLatestChapter(titleId);
   }
 
   @Patch(':id')
@@ -110,5 +148,22 @@ export class ChaptersController {
   @Post(':id/view')
   async incrementViews(@Param('id') id: string) {
     return this.chaptersService.incrementViews(id);
+  }
+
+  @Post(':id/pages')
+  @UseInterceptors(FilesInterceptor('pages', 100, multerConfig))
+  @UsePipes(new ValidationPipe({ transform: true }))
+  async addPages(
+    @Param('id') id: string,
+    @UploadedFiles() files: Express.Multer.File[],
+  ) {
+    return this.chaptersService.addPagesToChapter(id, files);
+  }
+
+  @Post('bulk-delete')
+  @HttpCode(HttpStatus.OK)
+  async bulkDelete(@Body('ids') ids: string[]) {
+    const result = await this.chaptersService.bulkDelete(ids || []);
+    return { deleted: result.deletedCount };
   }
 }
