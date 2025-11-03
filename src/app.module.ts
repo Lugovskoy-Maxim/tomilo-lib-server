@@ -8,6 +8,7 @@ import { ChaptersModule } from './chapters/chapters.module';
 import { AuthModule } from './auth/auth.module';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { getMongoConfig } from './config/mongo-config';
+import { SearchModule } from './search/search.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { getMongoConfig } from './config/mongo-config';
     AuthModule,
     TitlesModule,
     ChaptersModule,
+    SearchModule,
   ],
   controllers: [AppController],
   providers: [AppService],

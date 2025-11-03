@@ -61,6 +61,9 @@ export class Title {
 
   @Prop()
   isPublished: boolean;
+
+  @Prop()
+  type: string;
 }
 
 export const TitleSchema = SchemaFactory.createForClass(Title);

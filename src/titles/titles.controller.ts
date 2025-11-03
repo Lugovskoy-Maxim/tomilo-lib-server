@@ -162,7 +162,21 @@ export class TitlesController {
     }));
   }
 
-  // Существующие эндпоинты (оставляем как есть)
+  @Get('search')
+  async searchTitles(@Query('q') query: string, @Query('limit') limit = 10) {
+    const result = await this.titlesService.findAll({
+      search: query,
+      page: 1,
+      limit: Number(limit),
+    });
+
+    return result.titles.map((title) => ({
+      id: title._id?.toString(),
+      title: title.name,
+      cover: title.coverImage,
+      description: title.description,
+    }));
+  }
 
   @Post('titles')
   @UseInterceptors(
