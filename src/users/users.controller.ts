@@ -82,30 +82,6 @@ export class UsersController {
     }
   }
 
-  // 👥 Получить пользователя по ID
-  @Get(':id')
-  @UseGuards(JwtAuthGuard)
-  async getUserById(@Param('id') id: string): Promise<ApiResponseDto<any>> {
-    try {
-      const data = await this.usersService.findById(id);
-
-      return {
-        success: true,
-        data,
-        timestamp: new Date().toISOString(),
-        path: `users/${id}`,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to fetch user',
-        errors: [error.message],
-        timestamp: new Date().toISOString(),
-        path: `users/${id}`,
-      };
-    }
-  }
-
   // ✏️ Обновить профиль пользователя
   @Put('profile')
   @UseGuards(JwtAuthGuard)
@@ -293,7 +269,7 @@ export class UsersController {
   async getReadingHistory(@Request() req): Promise<ApiResponseDto<any>> {
     try {
       const data = await this.usersService.getReadingHistory(req.user.userId);
-
+      console.log(data);
       return {
         success: true,
         data,
@@ -307,6 +283,30 @@ export class UsersController {
         errors: [error.message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/history',
+      };
+    }
+  }
+
+  // 📖 История чтения (альтернативный эндпоинт)
+  @Get('history')
+  @UseGuards(JwtAuthGuard)
+  async getReadingHistoryAlt(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getReadingHistory(req.user.userId);
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/history',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch reading history',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/history',
       };
     }
   }
@@ -564,6 +564,30 @@ export class UsersController {
         timestamp: new Date().toISOString(),
         path: 'users/avatar',
         method: 'POST',
+      };
+    }
+  }
+
+  // 👥 Получить пользователя по ID
+  @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  async getUserById(@Param('id') id: string): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.findById(id);
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `users/${id}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch user',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `users/${id}`,
       };
     }
   }

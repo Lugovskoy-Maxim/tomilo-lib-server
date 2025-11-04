@@ -272,52 +272,95 @@ export class UsersService {
       chapterObjectId = chapter._id;
     }
 
-    // Создаем запись истории чтения
-    const historyEntry = {
-      titleId: new Types.ObjectId(titleId),
-      chapterId: chapterObjectId,
-      readAt: new Date(),
-    };
-
-    // Используем атомарную операцию MongoDB для обновления/добавления записи
-    // Если запись с таким titleId уже существует, обновляем её
-    // Если нет - добавляем новую
-    const user = await this.userModel
-      .findByIdAndUpdate(
-        userId,
-        {
-          $pull: { readingHistory: { titleId: new Types.ObjectId(titleId) } }, // Удаляем существующую запись
-        },
-        { new: false }, // Не возвращаем обновленный документ
-      )
-      .select('-password');
-
+    // Ищем существующую запись в истории чтения по titleId
+    const user = await this.userModel.findById(userId).select('readingHistory');
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    // Добавляем новую запись в начало массива
-    const updatedUser = await this.userModel
-      .findByIdAndUpdate(
-        userId,
-        {
-          $push: {
-            readingHistory: {
-              $each: [historyEntry],
-              $position: 0, // Добавляем в начало
-              $slice: 100, // Храним только последние 100 записей
+    const existingEntryIndex = user.readingHistory.findIndex(
+      (entry) => entry.titleId.toString() === titleId,
+    );
+
+    if (existingEntryIndex !== -1) {
+      // Если тайтл уже есть в истории, проверяем, есть ли такая глава
+      const existingEntry = user.readingHistory[existingEntryIndex];
+      const chapterExists = existingEntry.chapterId.some(
+        (id) => id.toString() === chapterObjectId.toString(),
+      );
+
+      if (!chapterExists) {
+        // Если главы нет, добавляем её к существующей записи
+        const updatedUser = await this.userModel
+          .findByIdAndUpdate(
+            userId,
+            {
+              $push: {
+                'readingHistory.$.chapterId': chapterObjectId,
+              },
+              $set: {
+                'readingHistory.$.readAt': new Date(),
+              },
+            },
+            { new: true },
+          )
+          .select('-password');
+
+        if (!updatedUser) {
+          throw new NotFoundException('User not found');
+        }
+
+        return updatedUser;
+      } else {
+        // Если глава уже есть, просто обновляем дату
+        const updatedUser = await this.userModel
+          .findByIdAndUpdate(
+            userId,
+            {
+              $set: {
+                'readingHistory.$.readAt': new Date(),
+              },
+            },
+            { new: true },
+          )
+          .select('-password');
+
+        if (!updatedUser) {
+          throw new NotFoundException('User not found');
+        }
+
+        return updatedUser;
+      }
+    } else {
+      // Если тайтла нет в истории, создаем новую запись
+      const historyEntry = {
+        titleId: new Types.ObjectId(titleId),
+        chapterId: [chapterObjectId], // Теперь это массив
+        readAt: new Date(),
+      };
+
+      const updatedUser = await this.userModel
+        .findByIdAndUpdate(
+          userId,
+          {
+            $push: {
+              readingHistory: {
+                $each: [historyEntry],
+                $position: 0, // Добавляем в начало
+                $slice: 100, // Храним только последние 100 записей
+              },
             },
           },
-        },
-        { new: true }, // Возвращаем обновленный документ
-      )
-      .select('-password');
+          { new: true },
+        )
+        .select('-password');
 
-    if (!updatedUser) {
-      throw new NotFoundException('User not found');
+      if (!updatedUser) {
+        throw new NotFoundException('User not found');
+      }
+
+      return updatedUser;
     }
-
-    return updatedUser;
   }
 
   async getReadingHistory(userId: string) {
