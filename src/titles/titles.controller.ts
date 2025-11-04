@@ -73,6 +73,8 @@ export class TitlesController {
       title: title.name,
       cover: title.coverImage,
       description: title.description,
+      type: title.type,
+      rating: title.rating,
     }));
   }
 
