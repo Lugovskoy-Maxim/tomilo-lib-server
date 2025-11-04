@@ -61,6 +61,19 @@ class LatestUpdateResponseDto {
 export class TitlesController {
   constructor(private readonly titlesService: TitlesService) {}
 
+  private getHoursWord(hours: number): string {
+    if (hours % 10 === 1 && hours % 100 !== 11) {
+      return 'час';
+    } else if (
+      [2, 3, 4].includes(hours % 10) &&
+      ![12, 13, 14].includes(hours % 100)
+    ) {
+      return 'часа';
+    } else {
+      return 'часов';
+    }
+  }
+
   // Эндпоинты для главной страницы
   @Get('titles/popular')
   async getPopularTitles(
@@ -151,18 +164,30 @@ export class TitlesController {
   async getLatestUpdates(
     @Query('limit') limit = 10,
   ): Promise<LatestUpdateResponseDto[]> {
-    const recentTitles = await this.titlesService.getRecentTitles(
-      Number(limit),
-    );
+    const titlesWithChapters =
+      await this.titlesService.getTitlesWithRecentChapters(Number(limit));
 
-    return recentTitles.map((title, index) => ({
-      id: title._id?.toString(),
-      title: title.name,
-      cover: title.coverImage,
-      chapter: `Глава ${index + 150}`,
-      chapterNumber: index + 150,
-      timeAgo: `${index + 1} часа назад`,
-    }));
+    return titlesWithChapters.map((item) => {
+      // Вычисляем время назад в часах
+      const now = new Date();
+      const releaseDate = new Date(item.latestChapter.releaseDate);
+      const diffInHours = Math.floor(
+        (now.getTime() - releaseDate.getTime()) / (1000 * 60 * 60),
+      );
+      const timeAgo =
+        diffInHours <= 0
+          ? 'Меньше часа назад'
+          : `${diffInHours} ${this.getHoursWord(diffInHours)} назад`;
+
+      return {
+        id: item._id?.toString(),
+        title: item.name,
+        cover: item.coverImage,
+        chapter: `Глава ${item.latestChapter.chapterNumber}`,
+        chapterNumber: item.latestChapter.chapterNumber,
+        timeAgo: timeAgo,
+      };
+    });
   }
 
   @Get('search')

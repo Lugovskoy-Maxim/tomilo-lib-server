@@ -224,6 +224,56 @@ export class TitlesService {
       .exec();
   }
 
+  async getTitlesWithRecentChapters(limit = 10): Promise<any[]> {
+    // Получаем недавние главы, отсортированные по дате добавления
+    const recentChapters = await this.chapterModel
+      .find({ isPublished: true })
+      .sort({ releaseDate: -1 })
+      .limit(limit * 2) // Получаем больше глав, чтобы потом отфильтровать по уникальным тайтлам
+      .populate('titleId')
+      .exec();
+
+    // Извлекаем уникальные тайтлы из недавних глав
+    const titleMap = new Map();
+    for (const chapter of recentChapters) {
+      if (chapter.titleId && !titleMap.has(chapter.titleId._id.toString())) {
+        titleMap.set(chapter.titleId._id.toString(), {
+          title: chapter.titleId,
+          latestChapter: chapter,
+        });
+      }
+    }
+
+    // Преобразуем Map в массив и ограничиваем количество элементов
+    const result = Array.from(titleMap.values()).slice(0, limit);
+
+    // Возвращаем массив с информацией о тайтлах и их последних главах
+    return result.map((item) => ({
+      // Явно перечисляем свойства вместо использования toObject()
+      _id: item.title._id,
+      name: item.title.name,
+      altNames: item.title.altNames,
+      description: item.title.description,
+      genres: item.title.genres,
+      tags: item.title.tags,
+      artist: item.title.artist,
+      coverImage: item.title.coverImage,
+      status: item.title.status,
+      author: item.title.author,
+      views: item.title.views,
+      totalChapters: item.title.totalChapters,
+      rating: item.title.rating,
+      releaseYear: item.title.releaseYear,
+      ageLimit: item.title.ageLimit,
+      chapters: item.title.chapters,
+      isPublished: item.title.isPublished,
+      type: item.title.type,
+      createdAt: item.title.createdAt,
+      updatedAt: item.title.updatedAt,
+      latestChapter: item.latestChapter,
+    }));
+  }
+
   async addChapter(titleId: string, chapterId: Types.ObjectId): Promise<void> {
     const title = await this.titleModel.findByIdAndUpdate(
       titleId,
