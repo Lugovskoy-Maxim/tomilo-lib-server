@@ -272,91 +272,73 @@ export class UsersService {
       chapterObjectId = chapter._id;
     }
 
-    // Проверяем, существует ли уже запись для этого тайтла в истории
-    const existingUser = await this.userModel.findById(userId);
-    if (!existingUser) {
-      throw new NotFoundException('User not found');
-    }
-
-    const historyEntry = {
-      titleId: new Types.ObjectId(titleId),
+    // Создаем запись о прочитанной главе
+    const chapterEntry = {
       chapterId: chapterObjectId,
       readAt: new Date(),
     };
 
-    // Ищем индекс существующей записи для этого тайтла
-    const existingIndex = existingUser.readingHistory.findIndex(
-      (entry) => entry.titleId.toString() === titleId,
-    );
-
-    let updateQuery;
-    if (existingIndex !== -1) {
-      // Если запись существует, обновляем её
-      const setUpdate = {};
-      setUpdate[`readingHistory.${existingIndex}`] = historyEntry;
-      updateQuery = { $set: setUpdate };
-    } else {
-      // Если записи нет, добавляем новую
-      updateQuery = {
-        $push: {
-          readingHistory: {
-            $each: [historyEntry],
-            $slice: -100, // Храним только последние 100 записей
-          },
-        },
-      };
-    }
-
+    // Используем атомарную операцию MongoDB для обновления/добавления записи
+    // Если запись с таким titleId уже существует, добавляем главу к существующей записи
+    // Если нет - добавляем новую запись тайтла с этой главой
     const user = await this.userModel
-      .findByIdAndUpdate(userId, updateQuery, { new: true })
+      .findByIdAndUpdate(
+        userId,
+        {
+          $pull: { readingHistory: { titleId: new Types.ObjectId(titleId) } }, // Удаляем существующую запись тайтла
+        },
+        { new: false }, // Не возвращаем обновленный документ
+      )
       .select('-password');
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    return user;
+    // Проверяем, есть ли уже записи в истории чтения для получения существующих глав
+    const existingHistoryEntry = user.readingHistory?.find(
+      (entry) => entry.titleId.toString() === titleId,
+    );
+
+    // Формируем массив глав, добавляя новую главу к существующим (если есть)
+    let chaptersArray = [chapterEntry];
+    if (existingHistoryEntry && existingHistoryEntry.chapters) {
+      // Добавляем существующие главы, но проверяем, чтобы не было дубликатов
+      const existingChapters = existingHistoryEntry.chapters.filter(
+        (chapter) => chapter.chapterId.toString() !== chapterId,
+      );
+      chaptersArray = [...existingChapters, chapterEntry];
+    }
+
+    // Создаем новую запись тайтла с массивом глав
+    const titleHistoryEntry = {
+      titleId: new Types.ObjectId(titleId),
+      chapters: chaptersArray,
+    };
+
+    // Добавляем обновленную запись тайтла в начало массива истории чтения
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(
+        userId,
+        {
+          $push: {
+            readingHistory: {
+              $each: [titleHistoryEntry],
+              $position: 0, // Добавляем в начало
+              $slice: 100, // Храним только последние 100 записей тайтлов
+            },
+          },
+        },
+        { new: true }, // Возвращаем обновленный документ
+      )
+      .select('-password');
+
+    if (!updatedUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    return updatedUser;
   }
-  // async addToReadingHistory(
-  //   userId: string,
-  //   titleId: string,
-  //   chapterId: string,
-  // ): Promise<User> {
-  //   if (
-  //     !Types.ObjectId.isValid(userId) ||
-  //     !Types.ObjectId.isValid(titleId) ||
-  //     !Types.ObjectId.isValid(chapterId)
-  //   ) {
-  //     throw new BadRequestException('Invalid user ID, title ID or chapter ID');
-  //   }
-
-  //   const historyEntry = {
-  //     titleId: new Types.ObjectId(titleId),
-  //     chapterId: new Types.ObjectId(chapterId),
-  //     readAt: new Date(),
-  //   };
-
-  //   const user = await this.userModel
-  //     .findByIdAndUpdate(
-  //       userId,
-  //       {
-  //         $push: {
-  //           readingHistory: {
-  //             $each: [historyEntry],
-  //             $slice: -100, // Храним только последние 100 записей
-  //           },
-  //         },
-  //       },
-  //       { new: true },
-  //     )
-  //     .select('-password');
-
-  //   if (!user) {
-  //     throw new NotFoundException('User not found');
-  //   }
-
-  //   return user;
-  // }
 
   async getReadingHistory(userId: string) {
     if (!Types.ObjectId.isValid(userId)) {
@@ -366,7 +348,7 @@ export class UsersService {
     const user = await this.userModel
       .findById(userId)
       .populate('readingHistory.titleId')
-      .populate('readingHistory.chapterId')
+      // Для новой структуры populate для chapterId не нужен, так как он теперь вложенный
       .select('readingHistory');
 
     if (!user) {
@@ -396,6 +378,95 @@ export class UsersService {
     return user;
   }
 
+  async removeFromReadingHistory(
+    userId: string,
+    titleId: string,
+  ): Promise<User> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid user ID or title ID');
+    }
+
+    const user = await this.userModel
+      .findByIdAndUpdate(
+        userId,
+        { $pull: { readingHistory: { titleId: new Types.ObjectId(titleId) } } },
+        { new: true },
+      )
+      .select('-password');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
+  async removeChapterFromReadingHistory(
+    userId: string,
+    titleId: string,
+    chapterId: string,
+  ): Promise<User> {
+    if (
+      !Types.ObjectId.isValid(userId) ||
+      !Types.ObjectId.isValid(titleId) ||
+      !Types.ObjectId.isValid(chapterId)
+    ) {
+      throw new BadRequestException('Invalid user ID, title ID or chapter ID');
+    }
+
+    // Удаляем конкретную главу из записи тайтла в истории чтения
+    const user = await this.userModel
+      .findOneAndUpdate(
+        {
+          _id: userId,
+          'readingHistory.titleId': new Types.ObjectId(titleId),
+        },
+        {
+          $pull: {
+            'readingHistory.$.chapters': {
+              chapterId: new Types.ObjectId(chapterId),
+            },
+          },
+        },
+        { new: true },
+      )
+      .select('-password');
+
+    if (!user) {
+      throw new NotFoundException('User or title not found');
+    }
+
+    // Если после удаления главы массив chapters стал пустым, удаляем всю запись тайтла
+    const titleEntry = user.readingHistory.find(
+      (entry) => entry.titleId.toString() === titleId,
+    );
+    if (
+      titleEntry &&
+      (!titleEntry.chapters || titleEntry.chapters.length === 0)
+    ) {
+      // Удаляем всю запись тайтла, если в ней нет глав
+      const updatedUser = await this.userModel
+        .findByIdAndUpdate(
+          userId,
+          {
+            $pull: {
+              readingHistory: { titleId: new Types.ObjectId(titleId) },
+            },
+          },
+          { new: true },
+        )
+        .select('-password');
+
+      if (!updatedUser) {
+        throw new NotFoundException('User not found');
+      }
+
+      return updatedUser;
+    }
+
+    return user;
+  }
+
   // 📊 Статистика пользователя
   async getUserStats(userId: string) {
     if (!Types.ObjectId.isValid(userId)) {
@@ -407,9 +478,18 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    // Для новой структуры подсчитываем общее количество прочитанных глав
+    let totalReadChapters = 0;
+    if (user.readingHistory) {
+      totalReadChapters = user.readingHistory.reduce(
+        (total, entry) => total + (entry.chapters ? entry.chapters.length : 0),
+        0,
+      );
+    }
+
     return {
       totalBookmarks: user.bookmarks.length,
-      totalRead: user.readingHistory.length,
+      totalRead: totalReadChapters,
       lastRead: user.readingHistory[user.readingHistory.length - 1] || null,
     };
   }
