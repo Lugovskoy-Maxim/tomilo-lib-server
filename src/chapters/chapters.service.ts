@@ -227,7 +227,9 @@ export class ChaptersService {
         deletedCount += 1;
       } catch (e) {
         // skip invalid/non-existing, continue
-        this.logger.warn(`Skip deleting chapter ${id}: ${(e as Error).message}`);
+        this.logger.warn(
+          `Skip deleting chapter ${id}: ${(e as Error).message}`,
+        );
       }
     }
     return { deletedCount };

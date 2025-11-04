@@ -28,10 +28,8 @@ export class User {
   @Prop()
   readingHistory: {
     titleId: Types.ObjectId;
-    chapters: {
-      chapterId: Types.ObjectId;
-      readAt: Date;
-    }[];
+    chapterId: Types.ObjectId;
+    readAt: Date;
   }[];
 }
 
