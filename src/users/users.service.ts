@@ -325,7 +325,7 @@ export class UsersService {
             'readingHistory.titleId': new Types.ObjectId(titleId),
           },
           {
-            $push: {
+            $addToSet: {
               'readingHistory.$.chapters': chapterData,
             },
             $set: {
