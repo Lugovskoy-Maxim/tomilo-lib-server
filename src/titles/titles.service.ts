@@ -103,9 +103,6 @@ export class TitlesService {
         status.add(title.status);
       }
     });
-    // console.log('📊 genres response:', Array.from(genres).sort());
-    // // console.log('📊 types response:',  Array.from(types).sort());
-    // console.log('📊 status response:', Array.from(status).sort());
     return {
       genres: Array.from(genres).sort(),
       // types: Array.from(types).sort(),

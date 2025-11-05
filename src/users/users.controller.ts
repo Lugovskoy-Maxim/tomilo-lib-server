@@ -269,7 +269,6 @@ export class UsersController {
   async getReadingHistory(@Request() req): Promise<ApiResponseDto<any>> {
     try {
       const data = await this.usersService.getReadingHistory(req.user.userId);
-      console.log(data);
       return {
         success: true,
         data,
@@ -448,7 +447,6 @@ export class UsersController {
       if (!file) {
         throw new BadRequestException('Avatar file is required');
       }
-      console.log(req.user);
       const userId = req.user.userId;
       const avatarUrl = `/uploads/avatars/${file.filename}`;
       const data = await this.usersService.update(userId, {
