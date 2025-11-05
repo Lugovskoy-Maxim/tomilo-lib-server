@@ -102,13 +102,14 @@ export class ChaptersService {
       throw new BadRequestException('Invalid title ID');
     }
 
-    return this.chapterModel
-      .findOne({
-        titleId: new Types.ObjectId(titleId),
-        chapterNumber,
-      })
-      .populate('titleId')
-      .exec();
+    const query: any = {};
+    query.$or = [
+      { titleId: new Types.ObjectId(titleId) },
+      { titleId: titleId as unknown as Types.ObjectId },
+    ];
+    query.chapterNumber = chapterNumber;
+
+    return this.chapterModel.findOne(query).populate('titleId').exec();
   }
 
   async count({ titleId }: { titleId?: string }): Promise<number> {
@@ -130,8 +131,15 @@ export class ChaptersService {
     if (!Types.ObjectId.isValid(titleId)) {
       throw new BadRequestException('Invalid title ID');
     }
+
+    const query: any = {};
+    query.$or = [
+      { titleId: new Types.ObjectId(titleId) },
+      { titleId: titleId as unknown as Types.ObjectId },
+    ];
+
     return this.chapterModel
-      .findOne({ titleId: new Types.ObjectId(titleId) })
+      .findOne(query)
       .sort({ chapterNumber: -1 })
       .populate('titleId')
       .exec();
@@ -257,11 +265,15 @@ export class ChaptersService {
     titleId: string,
     currentChapterNumber: number,
   ): Promise<ChapterDocument | null> {
+    const query: any = {};
+    query.$or = [
+      { titleId: new Types.ObjectId(titleId) },
+      { titleId: titleId as unknown as Types.ObjectId },
+    ];
+    query.chapterNumber = { $gt: currentChapterNumber };
+
     return this.chapterModel
-      .findOne({
-        titleId: new Types.ObjectId(titleId),
-        chapterNumber: { $gt: currentChapterNumber },
-      })
+      .findOne(query)
       .sort({ chapterNumber: 1 })
       .populate('titleId')
       .exec();
@@ -271,11 +283,15 @@ export class ChaptersService {
     titleId: string,
     currentChapterNumber: number,
   ): Promise<ChapterDocument | null> {
+    const query: any = {};
+    query.$or = [
+      { titleId: new Types.ObjectId(titleId) },
+      { titleId: titleId as unknown as Types.ObjectId },
+    ];
+    query.chapterNumber = { $lt: currentChapterNumber };
+
     return this.chapterModel
-      .findOne({
-        titleId: new Types.ObjectId(titleId),
-        chapterNumber: { $lt: currentChapterNumber },
-      })
+      .findOne(query)
       .sort({ chapterNumber: -1 })
       .populate('titleId')
       .exec();
@@ -289,8 +305,14 @@ export class ChaptersService {
       throw new BadRequestException('Invalid title ID');
     }
 
+    const query: any = {};
+    query.$or = [
+      { titleId: new Types.ObjectId(titleId) },
+      { titleId: titleId as unknown as Types.ObjectId },
+    ];
+
     return this.chapterModel
-      .find({ titleId: new Types.ObjectId(titleId) })
+      .find(query)
       .sort({ chapterNumber: sortOrder === 'asc' ? 1 : -1 })
       .populate('titleId')
       .exec();
