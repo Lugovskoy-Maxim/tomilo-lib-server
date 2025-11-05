@@ -405,6 +405,41 @@ export class UsersController {
     }
   }
 
+  // ➖ Удалить одну главу из истории чтения
+  @Delete('profile/history/:titleId/:chapterId')
+  @UseGuards(JwtAuthGuard)
+  async removeChapterFromHistory(
+    @Request() req,
+    @Param('titleId') titleId: string,
+    @Param('chapterId') chapterId: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.removeChapterFromReadingHistory(
+        req.user.userId,
+        titleId,
+        chapterId,
+      );
+
+      return {
+        success: true,
+        data,
+        message: 'Chapter removed from reading history successfully',
+        timestamp: new Date().toISOString(),
+        path: `users/profile/history/${titleId}/${chapterId}`,
+        method: 'DELETE',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to remove chapter from reading history',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `users/profile/history/${titleId}/${chapterId}`,
+        method: 'DELETE',
+      };
+    }
+  }
+
   // 📊 Статистика пользователя
   @Get('profile/stats')
   @UseGuards(JwtAuthGuard)
