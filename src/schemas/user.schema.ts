@@ -28,7 +28,12 @@ export class User {
   @Prop()
   readingHistory: {
     titleId: Types.ObjectId;
-    chapterId: Types.ObjectId[];
+    chapterId?: Types.ObjectId[]; // Для совместимости со старыми данными
+    chapters: {
+      chapterId: Types.ObjectId;
+      chapterNumber: number;
+      chapterTitle?: string;
+    }[];
     readAt: Date;
   }[];
 }
