@@ -86,6 +86,9 @@ export class TitlesController {
         id: title._id?.toString(),
         title: title.name,
         cover: title.coverImage,
+        rating: title.rating,
+        type: title.type,
+        releaseYear: title.releaseYear,
         description: title.description,
       }));
 

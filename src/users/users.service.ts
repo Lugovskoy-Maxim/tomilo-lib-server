@@ -150,6 +150,43 @@ export class UsersService {
     return user;
   }
 
+  async removeBookmark(userId: string, titleId: string): Promise<User> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid user ID or title ID');
+    }
+
+    const user = await this.userModel
+      .findByIdAndUpdate(
+        userId,
+        { $pull: { bookmarks: titleId } },
+        { new: true },
+      )
+      .select('-password');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user;
+  }
+
+  async getUserBookmarks(userId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel
+      .findById(userId)
+      .populate('bookmarks')
+      .select('bookmarks');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user.bookmarks;
+  }
+
   // 🖼 Методы для работы с аватаром
   async updateAvatar(userId: string, file: Express.Multer.File): Promise<User> {
     if (!Types.ObjectId.isValid(userId)) {
@@ -202,60 +239,25 @@ export class UsersService {
     return user;
   }
 
-  async removeBookmark(userId: string, titleId: string): Promise<User> {
-    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
-      throw new BadRequestException('Invalid user ID or title ID');
-    }
-
-    const user = await this.userModel
-      .findByIdAndUpdate(
-        userId,
-        { $pull: { bookmarks: titleId } },
-        { new: true },
-      )
-      .select('-password');
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    return user;
-  }
-
-  async getUserBookmarks(userId: string) {
-    if (!Types.ObjectId.isValid(userId)) {
-      throw new BadRequestException('Invalid user ID');
-    }
-
-    const user = await this.userModel
-      .findById(userId)
-      .populate('bookmarks')
-      .select('bookmarks');
-
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    return user.bookmarks;
-  }
-
   // 📖 Методы для работы с историей чтения
   async addToReadingHistory(
     userId: string,
     titleId: string,
-    chapterId: string, // Может быть ObjectId или номером главы
+    chapterId: string,
   ): Promise<User> {
-    // Проверка валидности ID пользователя и titleId
     if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
       throw new BadRequestException('Invalid user ID or title ID');
     }
 
-    // Проверяем, является ли chapterId ObjectId или номером главы
+    const titleObjectId = new Types.ObjectId(titleId);
+    const titleIdStr = titleObjectId.toString();
+
+    // Получаем информацию о главе
     let chapterObjectId: Types.ObjectId;
     let chapterNumber: number;
     let chapterTitle: string | undefined;
+
     if (Types.ObjectId.isValid(chapterId)) {
-      // Это ObjectId главы
       chapterObjectId = new Types.ObjectId(chapterId);
       const chapter = await this.chaptersService.findById(chapterId);
       if (!chapter) {
@@ -264,7 +266,6 @@ export class UsersService {
       chapterNumber = chapter.chapterNumber;
       chapterTitle = chapter.name || undefined;
     } else {
-      // Это номер главы, нужно найти ObjectId
       chapterNumber = parseInt(chapterId, 10);
       if (isNaN(chapterNumber)) {
         throw new BadRequestException('Invalid chapter ID or number');
@@ -281,123 +282,69 @@ export class UsersService {
       chapterTitle = chapter.name || undefined;
     }
 
-    // Ищем существующую запись в истории чтения по titleId
-    const user = await this.userModel.findById(userId).select('readingHistory');
+    // Находим пользователя
+    const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
+    // Ищем существующую запись для этого тайтла
     const existingEntryIndex = user.readingHistory.findIndex(
-      (entry) => entry.titleId.toString() === titleId,
+      (entry) => entry.titleId.toString() === titleIdStr,
     );
 
+    const currentTime = new Date();
+
     if (existingEntryIndex !== -1) {
-      // Если тайтл уже есть в истории, проверяем, есть ли такая глава
+      // Тайтл уже есть в истории - обновляем его
       const existingEntry = user.readingHistory[existingEntryIndex];
-      // Нормализуем chapters в массив объектов (для совместимости со старыми данными)
-      let chapters = existingEntry.chapters || [];
-      if (existingEntry.chapterId) {
-        // Старые данные: chapterId - массив или одиночный
-        const chapterIds = Array.isArray(existingEntry.chapterId)
-          ? existingEntry.chapterId
-          : [existingEntry.chapterId];
-        chapters = chapterIds.map((id) => ({
-          chapterId: id instanceof Types.ObjectId ? id : new Types.ObjectId(id),
-          chapterNumber: 0, // Заглушка, можно обновить позже
-          chapterTitle: undefined,
-        }));
-      }
-      const chapterExists = chapters.some((c) =>
-        c.chapterId.equals(chapterObjectId),
+
+      // Ищем, есть ли уже такая глава
+      const existingChapterIndex = existingEntry.chapters.findIndex(
+        (chapter) =>
+          chapter.chapterId.toString() === chapterObjectId.toString(),
       );
 
-      if (!chapterExists) {
-        // Если главы нет, добавляем её к существующей записи
-        const chapterData = {
+      if (existingChapterIndex !== -1) {
+        // Глава уже есть - обновляем время чтения
+        existingEntry.chapters[existingChapterIndex].readAt = currentTime;
+      } else {
+        // Главы нет - добавляем новую
+        existingEntry.chapters.push({
           chapterId: chapterObjectId,
           chapterNumber,
           chapterTitle,
-        };
-
-        await this.userModel.findOneAndUpdate(
-          {
-            _id: userId,
-            'readingHistory.titleId': new Types.ObjectId(titleId),
-          },
-          {
-            $addToSet: {
-              'readingHistory.$.chapters': chapterData,
-            },
-            $set: {
-              'readingHistory.$.readAt': new Date(),
-            },
-          },
-          { new: true },
-        );
-
-        // Также обновляем старые данные, если они есть
-        if (existingEntry.chapterId) {
-          await this.userModel.findOneAndUpdate(
-            {
-              _id: userId,
-              'readingHistory.titleId': new Types.ObjectId(titleId),
-            },
-            {
-              $unset: { 'readingHistory.$.chapterId': 1 },
-            },
-            { new: true },
-          );
-        }
-
-        const user = await this.userModel.findById(userId).select('-password');
-        if (!user) {
-          throw new NotFoundException('User not found');
-        }
-        return user;
-      } else {
-        // Если глава уже есть, ничего не делаем
-        const user = await this.userModel.findById(userId).select('-password');
-        if (!user) {
-          throw new NotFoundException('User not found');
-        }
-        return user;
+          readAt: currentTime,
+        });
       }
+
+      // Обновляем время чтения тайтла
+      existingEntry.readAt = currentTime;
     } else {
-      // Если тайтла нет в истории, создаем новую запись
-      const historyEntry = {
-        titleId: new Types.ObjectId(titleId),
+      // Тайтла нет в истории - создаем новую запись
+      const newEntry = {
+        titleId: titleObjectId,
         chapters: [
           {
             chapterId: chapterObjectId,
             chapterNumber,
             chapterTitle,
+            readAt: currentTime,
           },
         ],
-        readAt: new Date(),
+        readAt: currentTime,
       };
 
-      const updatedUser = await this.userModel
-        .findByIdAndUpdate(
-          userId,
-          {
-            $push: {
-              readingHistory: {
-                $each: [historyEntry],
-                $position: 0, // Добавляем в начало
-                $slice: 100, // Храним только последние 100 записей
-              },
-            },
-          },
-          { new: true },
-        )
-        .select('-password');
-
-      if (!updatedUser) {
-        throw new NotFoundException('User not found');
+      // Добавляем в начало и ограничиваем размер
+      user.readingHistory.unshift(newEntry);
+      if (user.readingHistory.length > 1000) {
+        user.readingHistory = user.readingHistory.slice(0, 1000);
       }
+    } // <- Добавлена закрывающая скобка для блока else
 
-      return updatedUser;
-    }
+    // Сохраняем изменения
+    await user.save();
+    return (await this.userModel.findById(userId).select('-password')) as User;
   }
 
   async getReadingHistory(userId: string) {
@@ -415,7 +362,8 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    return user.readingHistory.reverse(); // Новые сначала
+    // Возвращаем в обратном порядке (новые сначала)
+    return user.readingHistory.slice().reverse();
   }
 
   async clearReadingHistory(userId: string): Promise<User> {
@@ -437,6 +385,7 @@ export class UsersService {
 
     return user;
   }
+
   async removeFromReadingHistory(
     userId: string,
     titleId: string,
@@ -469,7 +418,6 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID or title ID');
     }
 
-    // Проверяем, является ли chapterId ObjectId или номером главы
     let chapterObjectId: Types.ObjectId;
     if (Types.ObjectId.isValid(chapterId)) {
       chapterObjectId = new Types.ObjectId(chapterId);
@@ -489,8 +437,8 @@ export class UsersService {
       chapterObjectId = chapter._id;
     }
 
-    // Ищем запись в истории чтения по titleId
-    const user = await this.userModel.findById(userId).select('readingHistory');
+    // Находим пользователя
+    const user = await this.userModel.findById(userId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -504,21 +452,8 @@ export class UsersService {
     }
 
     const existingEntry = user.readingHistory[existingEntryIndex];
-    // Нормализуем chapters в массив объектов
-    let chapters = existingEntry.chapters || [];
-    if (existingEntry.chapterId) {
-      // Старые данные: chapterId - массив или одиночный
-      const chapterIds = Array.isArray(existingEntry.chapterId)
-        ? existingEntry.chapterId
-        : [existingEntry.chapterId];
-      chapters = chapterIds.map((id) => ({
-        chapterId: id instanceof Types.ObjectId ? id : new Types.ObjectId(id),
-        chapterNumber: 0, // Заглушка
-        chapterTitle: undefined,
-      }));
-    }
-    const chapterIndex = chapters.findIndex((c) =>
-      c.chapterId.equals(chapterObjectId),
+    const chapterIndex = existingEntry.chapters.findIndex(
+      (chapter) => chapter.chapterId.toString() === chapterObjectId.toString(),
     );
 
     if (chapterIndex === -1) {
@@ -526,57 +461,15 @@ export class UsersService {
     }
 
     // Удаляем главу из массива
-    chapters.splice(chapterIndex, 1);
+    existingEntry.chapters.splice(chapterIndex, 1);
 
     // Если массив пустой, удаляем всю запись о тайтле
-    if (chapters.length === 0) {
-      const updatedUser = await this.userModel
-        .findByIdAndUpdate(
-          userId,
-          {
-            $pull: { readingHistory: { titleId: new Types.ObjectId(titleId) } },
-          },
-          { new: true },
-        )
-        .select('-password');
-
-      if (!updatedUser) {
-        throw new NotFoundException('User not found');
-      }
-
-      return updatedUser;
-    } else {
-      // Иначе обновляем запись
-      await this.userModel.findOneAndUpdate(
-        { _id: userId, 'readingHistory.titleId': new Types.ObjectId(titleId) },
-        {
-          $set: {
-            'readingHistory.$.chapters': chapters,
-          },
-        },
-        { new: true },
-      );
-
-      // Удаляем старые данные, если они есть
-      if (existingEntry.chapterId) {
-        await this.userModel.findOneAndUpdate(
-          {
-            _id: userId,
-            'readingHistory.titleId': new Types.ObjectId(titleId),
-          },
-          {
-            $unset: { 'readingHistory.$.chapterId': 1 },
-          },
-          { new: true },
-        );
-      }
-
-      const user = await this.userModel.findById(userId).select('-password');
-      if (!user) {
-        throw new NotFoundException('User not found');
-      }
-      return user;
+    if (existingEntry.chapters.length === 0) {
+      user.readingHistory.splice(existingEntryIndex, 1);
     }
+
+    await user.save();
+    return (await this.userModel.findById(userId).select('-password')) as User;
   }
 
   // 📊 Статистика пользователя

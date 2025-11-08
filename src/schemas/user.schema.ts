@@ -25,17 +25,37 @@ export class User {
   @Prop({ default: [] })
   bookmarks: string[];
 
-  @Prop()
+  @Prop({
+    type: [
+      {
+        titleId: { type: Types.ObjectId, ref: 'Title', required: true },
+        chapters: [
+          {
+            chapterId: { type: Types.ObjectId, ref: 'Chapter', required: true },
+            chapterNumber: { type: Number, required: true },
+            chapterTitle: String,
+            readAt: { type: Date, default: Date.now },
+          },
+        ],
+        readAt: { type: Date, default: Date.now },
+      },
+    ],
+    default: [],
+  })
   readingHistory: {
     titleId: Types.ObjectId;
-    chapterId?: Types.ObjectId[]; // Для совместимости со старыми данными
     chapters: {
       chapterId: Types.ObjectId;
       chapterNumber: number;
       chapterTitle?: string;
+      readAt: Date;
     }[];
     readAt: Date;
   }[];
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+UserSchema.index({ 'readingHistory.titleId': 1 });
+UserSchema.index({ 'readingHistory.chapters.chapterId': 1 });
+UserSchema.index({ 'readingHistory.readAt': -1 });
