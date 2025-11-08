@@ -14,7 +14,7 @@ export class FilesService {
       throw new BadRequestException('Нет файлов для загрузки');
     }
 
-    const chapterDir = `browse/${chapterId}`;
+    const chapterDir = `chapters/${chapterId}`;
     const uploadPath = join('uploads', chapterDir);
 
     // Создаем директорию для главы
@@ -209,7 +209,7 @@ export class FilesService {
         },
       });
 
-      const chapterDir = `browse/${chapterId}`;
+      const chapterDir = `chapters/${chapterId}`;
       const uploadPath = join('uploads', chapterDir);
 
       // Создаем директорию для главы
