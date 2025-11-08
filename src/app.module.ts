@@ -10,6 +10,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { getMongoConfig } from './config/mongo-config';
 import { SearchModule } from './search/search.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { MangaParserModule } from './manga-parser/manga-parser.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     ChaptersModule,
     SearchModule,
     NotificationsModule,
+    MangaParserModule,
   ],
   controllers: [AppController],
   providers: [AppService],

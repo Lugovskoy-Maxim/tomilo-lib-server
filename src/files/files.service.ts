@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+import axios from 'axios';
 
 @Injectable()
 export class FilesService {
@@ -190,6 +191,51 @@ export class FilesService {
           `Ошибка при удалении директории пользователя: ${error instanceof Error ? error.message : 'Unknown error'}`,
         );
       }
+    }
+  }
+
+  async downloadImageFromUrl(
+    imageUrl: string,
+    chapterId: string,
+    pageNumber: number,
+  ): Promise<string> {
+    try {
+      const response = await axios.get(imageUrl, {
+        responseType: 'arraybuffer',
+        timeout: 30000,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
+        },
+      });
+
+      const chapterDir = `browse/${chapterId}`;
+      const uploadPath = join('uploads', chapterDir);
+
+      // Создаем директорию для главы
+      await fs.mkdir(uploadPath, { recursive: true });
+
+      // Определяем расширение файла
+      const urlPath = new URL(imageUrl).pathname;
+      const ext = urlPath.split('.').pop()?.split('?')[0] || 'jpg';
+      const fileName = `${pageNumber.toString().padStart(3, '0')}.${ext}`;
+      const filePath = join(uploadPath, fileName);
+
+      // Сохраняем файл
+      await fs.writeFile(filePath, response.data);
+
+      return `/${chapterDir}/${fileName}`;
+    } catch (error) {
+      this.logger.error(
+        `Failed to download image ${imageUrl}: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
+      throw new BadRequestException(
+        `Failed to download image: ${
+          error instanceof Error ? error.message : 'Unknown error'
+        }`,
+      );
     }
   }
 }
