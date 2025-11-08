@@ -12,6 +12,7 @@ import { Title, TitleDocument } from '../schemas/title.schema';
 import { CreateChapterDto } from './dto/create-chapter.dto';
 import { UpdateChapterDto } from './dto/update-chapter.dto';
 import { FilesService } from '../files/files.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ChaptersService {
@@ -21,6 +22,7 @@ export class ChaptersService {
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     private filesService: FilesService,
+    private notificationsService: NotificationsService,
   ) {}
 
   async findAll({
@@ -177,6 +179,20 @@ export class ChaptersService {
       $push: { chapters: savedChapter._id },
       $inc: { totalChapters: 1 },
     });
+
+    // Создаем уведомления для пользователей, у которых этот тайтл в закладках
+    try {
+      await this.notificationsService.createNewChapterNotification(
+        titleId,
+        savedChapter._id.toString(),
+        chapterNumber,
+        title.name,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to create notifications for new chapter: ${error.message}`,
+      );
+    }
 
     return savedChapter.populate('titleId');
   }
@@ -366,6 +382,20 @@ export class ChaptersService {
         $push: { chapters: savedChapter._id },
         $inc: { totalChapters: 1 },
       });
+
+      // Создаем уведомления для пользователей, у которых этот тайтл в закладках
+      try {
+        await this.notificationsService.createNewChapterNotification(
+          titleId,
+          savedChapter.id.toString(),
+          chapterNumber,
+          title.name,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to create notifications for new chapter: ${error.message}`,
+        );
+      }
 
       return savedChapter.populate('titleId');
     } catch (error) {

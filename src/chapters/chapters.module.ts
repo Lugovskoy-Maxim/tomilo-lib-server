@@ -5,6 +5,7 @@ import { ChaptersController } from './chapters.controller';
 import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
 import { Title, TitleSchema } from '../schemas/title.schema';
 import { FilesModule } from '../files/files.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { FilesModule } from '../files/files.module';
       { name: Title.name, schema: TitleSchema },
     ]),
     FilesModule,
+    NotificationsModule,
   ],
   controllers: [ChaptersController],
   providers: [ChaptersService],
