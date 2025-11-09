@@ -30,7 +30,7 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   // 📝 Получить всех пользователей (с пагинацией)
-  @Get()
+  @Get('admin')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   async getAllUsers(
@@ -45,7 +45,7 @@ export class UsersController {
         success: true,
         data,
         timestamp: new Date().toISOString(),
-        path: 'users',
+        path: 'users/admin',
       };
     } catch (error) {
       return {
@@ -53,7 +53,7 @@ export class UsersController {
         message: 'Failed to fetch users',
         errors: [error.message],
         timestamp: new Date().toISOString(),
-        path: 'users',
+        path: 'users/admin',
       };
     }
   }

@@ -605,4 +605,112 @@ export class TitlesController {
       };
     }
   }
+
+  @Get('titles/top/day')
+  async getTopTitlesDay(
+    @Query('limit') limit = 10,
+  ): Promise<ApiResponseDto<TitleResponseDto[]>> {
+    try {
+      const titles = await this.titlesService.getTopTitlesForPeriod(
+        'day',
+        Number(limit),
+      );
+      const data = titles.map((title) => ({
+        id: title._id?.toString(),
+        title: title.name,
+        cover: title.coverImage,
+        rating: title.rating,
+        type: title.type,
+        releaseYear: title.releaseYear,
+        description: title.description,
+      }));
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'titles/top/day',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch top titles for day',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'titles/top/day',
+      };
+    }
+  }
+
+  @Get('titles/top/week')
+  async getTopTitlesWeek(
+    @Query('limit') limit = 10,
+  ): Promise<ApiResponseDto<TitleResponseDto[]>> {
+    try {
+      const titles = await this.titlesService.getTopTitlesForPeriod(
+        'week',
+        Number(limit),
+      );
+      const data = titles.map((title) => ({
+        id: title._id?.toString(),
+        title: title.name,
+        cover: title.coverImage,
+        rating: title.rating,
+        type: title.type,
+        releaseYear: title.releaseYear,
+        description: title.description,
+      }));
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'titles/top/week',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch top titles for week',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'titles/top/week',
+      };
+    }
+  }
+
+  @Get('titles/top/month')
+  async getTopTitlesMonth(
+    @Query('limit') limit = 10,
+  ): Promise<ApiResponseDto<TitleResponseDto[]>> {
+    try {
+      const titles = await this.titlesService.getTopTitlesForPeriod(
+        'month',
+        Number(limit),
+      );
+      const data = titles.map((title) => ({
+        id: title._id?.toString(),
+        title: title.name,
+        cover: title.coverImage,
+        rating: title.rating,
+        type: title.type,
+        releaseYear: title.releaseYear,
+        description: title.description,
+      }));
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'titles/top/month',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch top titles for month',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'titles/top/month',
+      };
+    }
+  }
 }

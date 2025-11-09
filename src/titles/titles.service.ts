@@ -331,4 +331,45 @@ export class TitlesService {
       throw new NotFoundException('Title not found');
     }
   }
+
+  async getTopTitlesForPeriod(
+    period: 'day' | 'week' | 'month',
+    limit = 10,
+  ): Promise<TitleDocument[]> {
+    const now = new Date();
+    let startDate: Date;
+
+    switch (period) {
+      case 'day':
+        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        break;
+      case 'week':
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case 'month':
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        throw new BadRequestException('Invalid period');
+    }
+
+    // Find chapters released in the period
+    const recentChapters = await this.chapterModel
+      .find({ releaseDate: { $gte: startDate }, isPublished: true })
+      .select('titleId')
+      .exec();
+
+    // Extract unique titleIds
+    const titleIds = [
+      ...new Set(recentChapters.map((ch) => ch.titleId.toString())),
+    ];
+
+    // Find titles with those IDs, sorted by views descending
+    return this.titleModel
+      .find({ _id: { $in: titleIds } })
+      .sort({ views: -1 })
+      .limit(limit)
+      .populate('chapters')
+      .exec();
+  }
 }
