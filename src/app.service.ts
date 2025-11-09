@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { Title, TitleDocument } from './schemas/title.schema';
 import { Chapter, ChapterDocument } from './schemas/chapter.schema';
 import { User, UserDocument } from './schemas/user.schema';
+import { StatsResponseDto } from './common/dto/stats-response.dto';
 
 @Injectable()
 export class AppService {
@@ -17,7 +18,7 @@ export class AppService {
     return 'Hello World!';
   }
 
-  async getStats() {
+  async getStats(): Promise<StatsResponseDto> {
     const [
       totalTitles,
       totalChapters,
@@ -45,12 +46,14 @@ export class AppService {
     const totalViews = totalTitleViews + totalChapterViews;
     const totalBookmarksCount = totalBookmarks[0]?.total || 0;
 
-    return {
+    const stats: StatsResponseDto = {
       totalTitles,
       totalChapters,
       totalUsers,
       totalViews,
       totalBookmarks: totalBookmarksCount,
     };
+
+    return stats;
   }
 }

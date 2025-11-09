@@ -1,5 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
+import { ApiResponseDto } from './common/dto/api-response.dto';
+import { StatsResponseDto } from './common/dto/stats-response.dto';
 
 @Controller()
 export class AppController {
@@ -21,7 +23,14 @@ export class AppController {
   }
 
   @Get('stats')
-  async getStats() {
-    return this.appService.getStats();
+  async getStats(): Promise<ApiResponseDto<StatsResponseDto>> {
+    const stats = await this.appService.getStats();
+    return {
+      success: true,
+      data: stats,
+      timestamp: new Date().toISOString(),
+      path: '/stats',
+      method: 'GET',
+    };
   }
 }
