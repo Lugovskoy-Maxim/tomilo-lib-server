@@ -1,10 +1,4 @@
-import {
-  IsString,
-  IsUrl,
-  IsOptional,
-  IsArray,
-  IsNumber,
-} from 'class-validator';
+import { IsString, IsUrl, IsOptional, IsArray } from 'class-validator';
 
 export class ParseTitleDto {
   @IsUrl()
@@ -12,8 +6,8 @@ export class ParseTitleDto {
 
   @IsOptional()
   @IsArray()
-  @IsNumber({}, { each: true })
-  chapterNumbers?: number[];
+  @IsString({ each: true })
+  chapterNumbers?: string[];
 
   @IsOptional()
   @IsString()

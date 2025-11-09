@@ -40,6 +40,28 @@ export class MangaParserService {
     return name.replace(/[\\/*?:"<>|]/g, '_').trim();
   }
 
+  private parseChapterNumbers(chapterNumbers: string[]): Set<number> {
+    const numbers = new Set<number>();
+    for (const item of chapterNumbers) {
+      if (item.includes('-')) {
+        const [start, end] = item.split('-').map((s) => parseInt(s.trim(), 10));
+        if (isNaN(start) || isNaN(end) || start > end) {
+          throw new BadRequestException(`Invalid range: ${item}`);
+        }
+        for (let i = start; i <= end; i++) {
+          numbers.add(i);
+        }
+      } else {
+        const num = parseInt(item.trim(), 10);
+        if (isNaN(num)) {
+          throw new BadRequestException(`Invalid number: ${item}`);
+        }
+        numbers.add(num);
+      }
+    }
+    return numbers;
+  }
+
   private async parseMangaShi(
     url: string,
   ): Promise<{ title: string; chapters: ChapterInfo[] }> {
@@ -309,8 +331,9 @@ export class MangaParserService {
 
     // Filter chapters if specific numbers requested
     if (chapterNumbers && chapterNumbers.length > 0) {
+      const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
       chapters = chapters.filter(
-        (ch) => ch.number && chapterNumbers.includes(ch.number),
+        (ch) => ch.number && requestedNumbers.has(ch.number),
       );
     }
 
@@ -372,57 +395,71 @@ export class MangaParserService {
     };
   }
 
-  async parseAndImportChapter(parseChapterDto: ParseChapterDto): Promise<any> {
-    const { url, titleId, chapterNumber, customName } = parseChapterDto;
+  async parseAndImportChapters(
+    parseChapterDto: ParseChapterDto,
+  ): Promise<any[]> {
+    const { url, titleId, chapterNumbers } = parseChapterDto;
 
     // Verify title exists
     await this.titlesService.findById(titleId);
 
-    let chapterInfo: ChapterInfo;
-
-    if (url.includes('senkuro.me')) {
-      // For senkuro, the URL should be a chapter URL like https://senkuro.me/chapter/slug
-      if (!url.includes('/chapter/')) {
-        throw new BadRequestException(
-          'Invalid chapter URL. Please provide a chapter URL, not a manga URL.',
-        );
-      }
-      const slug = url.split('/chapter/')[1]?.split('?')[0];
-      if (!slug) {
-        throw new BadRequestException('Invalid chapter URL');
-      }
-
-      chapterInfo = {
-        name: customName || `Chapter ${chapterNumber}`,
-        slug,
-        number: chapterNumber,
-      };
-    } else {
+    if (!url.includes('senkuro.me')) {
       throw new BadRequestException(
-        'Chapter import only supported for senkuro.me and sencuro.me',
+        'Chapter import only supported for senkuro.me',
       );
     }
 
-    // Create chapter
-    const createChapterDto: CreateChapterDto = {
-      titleId,
-      chapterNumber,
-      name: chapterInfo.name,
-      isPublished: true,
-    };
+    // Parse manga to get all chapters
+    const { chapters } = await this.parseSenkuro(url);
 
-    const createdChapter = await this.chaptersService.create(createChapterDto);
+    // Filter chapters if specific numbers requested
+    let selectedChapters = chapters;
+    if (chapterNumbers && chapterNumbers.length > 0) {
+      const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
+      selectedChapters = chapters.filter(
+        (ch) => ch.number && requestedNumbers.has(ch.number),
+      );
+    }
 
-    // Download images
-    const pagePaths = await this.downloadChapterImages(
-      chapterInfo,
-      createdChapter._id.toString(),
-    );
-    await this.chaptersService.update(createdChapter._id.toString(), {
-      pages: pagePaths,
-    });
+    if (selectedChapters.length === 0) {
+      throw new BadRequestException('No chapters found to import');
+    }
 
-    return createdChapter;
+    // Import chapters
+    const importedChapters: any[] = [];
+    for (const chapter of selectedChapters) {
+      try {
+        const chapterNumber = chapter.number || 1;
+
+        const createChapterDto: CreateChapterDto = {
+          titleId,
+          chapterNumber,
+          name: chapter.name,
+          isPublished: true,
+        };
+
+        const createdChapter =
+          await this.chaptersService.create(createChapterDto);
+
+        // Download images
+        const pagePaths = await this.downloadChapterImages(
+          chapter,
+          createdChapter._id.toString(),
+        );
+        await this.chaptersService.update(createdChapter._id.toString(), {
+          pages: pagePaths,
+        });
+
+        importedChapters.push(createdChapter);
+        this.logger.log(`Imported chapter ${chapterNumber}: ${chapter.name}`);
+      } catch (error) {
+        this.logger.error(
+          `Failed to import chapter ${chapter.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
+      }
+    }
+
+    return importedChapters;
   }
 
   getSupportedSites(): { sites: string[] } {

@@ -38,22 +38,22 @@ export class MangaParserController {
     }
   }
 
-  @Post('parse-chapter')
-  async parseAndImportChapter(
+  @Post('parse-chapters')
+  async parseAndImportChapters(
     @Body() parseChapterDto: ParseChapterDto,
-  ): Promise<any> {
+  ): Promise<any[]> {
     try {
-      this.logger.log(`Starting chapter import from: ${parseChapterDto.url}`);
+      this.logger.log(`Starting chapters import from: ${parseChapterDto.url}`);
       const result =
-        await this.mangaParserService.parseAndImportChapter(parseChapterDto);
-      this.logger.log(`Successfully imported chapter: ${result.name}`);
+        await this.mangaParserService.parseAndImportChapters(parseChapterDto);
+      this.logger.log(`Successfully imported ${result.length} chapters`);
       return result;
     } catch (error) {
       this.logger.error(
-        `Failed to import chapter: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to import chapters: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
       throw new HttpException(
-        `Failed to import chapter: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to import chapters: ${error instanceof Error ? error.message : 'Unknown error'}`,
         HttpStatus.BAD_REQUEST,
       );
     }
