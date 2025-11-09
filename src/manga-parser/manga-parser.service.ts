@@ -380,9 +380,14 @@ export class MangaParserService {
 
     let chapterInfo: ChapterInfo;
 
-    if (url.includes('senkuro.me') || url.includes('sencuro.me')) {
-      // For senkuro, we need to parse the chapter slug from URL
-      const slug = url.split('/').pop()?.split('?')[0];
+    if (url.includes('senkuro.me')) {
+      // For senkuro, the URL should be a chapter URL like https://senkuro.me/chapter/slug
+      if (!url.includes('/chapter/')) {
+        throw new BadRequestException(
+          'Invalid chapter URL. Please provide a chapter URL, not a manga URL.',
+        );
+      }
+      const slug = url.split('/chapter/')[1]?.split('?')[0];
       if (!slug) {
         throw new BadRequestException('Invalid chapter URL');
       }
@@ -394,7 +399,7 @@ export class MangaParserService {
       };
     } else {
       throw new BadRequestException(
-        'Chapter import only supported for senkuro.me',
+        'Chapter import only supported for senkuro.me and sencuro.me',
       );
     }
 
