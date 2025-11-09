@@ -1,6 +1,5 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
-import * as cheerio from 'cheerio';
 import { TitlesService } from '../titles/titles.service';
 import { ChaptersService } from '../chapters/chapters.service';
 import { FilesService } from '../files/files.service';
@@ -8,18 +7,15 @@ import { CreateTitleDto } from '../titles/dto/create-title.dto';
 import { CreateChapterDto } from '../chapters/dto/create-chapter.dto';
 import { ParseTitleDto } from './dto/parse-title.dto';
 import { ParseChapterDto } from './dto/parse-chapter.dto';
-
-interface ChapterInfo {
-  name: string;
-  url?: string;
-  slug?: string;
-  number?: number;
-}
+import { MangaParser, ChapterInfo } from './parsers/base.parser';
+import { SenkuroParser } from './parsers/senkuro.parser';
+import { MangaShiParser } from './parsers/manga-shi.parser';
 
 @Injectable()
 export class MangaParserService {
   private readonly logger = new Logger(MangaParserService.name);
   private session: AxiosInstance;
+  private parsers: Map<string, MangaParser>;
 
   constructor(
     private titlesService: TitlesService,
@@ -33,6 +29,11 @@ export class MangaParserService {
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
       },
     });
+
+    this.parsers = new Map();
+    this.parsers.set('manga-shi.org', new MangaShiParser());
+    this.parsers.set('senkuro.me', new SenkuroParser());
+    this.parsers.set('sencuro.me', new SenkuroParser());
   }
 
   private sanitizeFilename(name: string): string {
@@ -62,172 +63,22 @@ export class MangaParserService {
     return numbers;
   }
 
-  private async parseMangaShi(
-    url: string,
-  ): Promise<{ title: string; chapters: ChapterInfo[] }> {
-    try {
-      const response = await this.session.get(url);
-      const $ = cheerio.load(response.data);
-
-      const title = $('.post-title').text().trim() || url;
-      const ajaxUrl = url.replace(/\/$/, '') + '/ajax/chapters/?t=1';
-
-      const ajaxResponse = await this.session.post(ajaxUrl);
-      const $$ = cheerio.load(ajaxResponse.data);
-
-      const chapters: ChapterInfo[] = [];
-      $$('li.wp-manga-chapter a').each((_, element) => {
-        const name = $$(element).text().trim();
-        const link = $$(element).attr('href');
-        if (name && link) {
-          chapters.push({ name, url: link });
-        }
-      });
-
-      chapters.reverse();
-      return { title, chapters };
-    } catch (error) {
-      this.logger.error(
-        `Failed to parse manga-shi.org: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      );
-      throw new BadRequestException('Failed to parse manga-shi.org');
-    }
-  }
-
-  private async parseSenkuro(
-    url: string,
-  ): Promise<{ title: string; chapters: ChapterInfo[] }> {
-    try {
-      const urlObj = new URL(url);
-      const slug = url.split('/manga/')[1]?.replace(/\/$/, '') || '';
-      const domain = urlObj.hostname;
-
-      const graphqlUrl = `https://api.${domain}/graphql`;
-      const headers = {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Origin: `https://${domain}`,
-        Referer: `https://${domain}/`,
-      };
-
-      // Get branches
-      const branchesQuery = `
-        query MangaBranches($slug: String!) {
-          manga(slug: $slug) {
-            id
-            branches {
-              id
-              primaryBranch
-            }
-          }
-        }
-      `;
-
-      const branchesResponse = await this.session.post(
-        graphqlUrl,
-        {
-          query: branchesQuery,
-          variables: { slug },
-        },
-        { headers },
-      );
-
-      const branchesData = branchesResponse.data.data?.manga;
-      if (!branchesData) {
-        throw new Error('No manga data found');
-      }
-
-      const branches = branchesData.branches || [];
-      let branchId = (branches as any[]).find((b) => b.primaryBranch)?.id;
-      if (!branchId && branches.length > 0) {
-        branchId = branches[0].id;
-      }
-
-      if (!branchId) {
-        throw new Error('No branch ID found');
-      }
-
-      // Get chapters
-      const chaptersQuery = `
-        query ChaptersByBranch($branchId: ID!, $first: Int!, $after: String) {
-          mangaChapters(branchId: $branchId, first: $first, after: $after) {
-            edges {
-              node {
-                id
-                slug
-                name
-                number
-                createdAt
-              }
-            }
-            pageInfo {
-              hasNextPage
-              endCursor
-            }
-          }
-        }
-      `;
-
-      const chapters: ChapterInfo[] = [];
-      let hasNextPage = true;
-      let after: string | undefined;
-
-      while (hasNextPage) {
-        const chaptersResponse = await this.session.post(
-          graphqlUrl,
-          {
-            query: chaptersQuery,
-            variables: { branchId, first: 100, after },
-          },
-          { headers },
-        );
-
-        const chaptersData = chaptersResponse.data.data?.mangaChapters;
-        if (!chaptersData) break;
-
-        for (const edge of chaptersData.edges) {
-          const node = edge.node;
-          const name = node.name || `Глава ${node.number}`;
-          chapters.push({
-            name,
-            slug: node.slug,
-            number: node.number,
-          });
-        }
-
-        hasNextPage = chaptersData.pageInfo.hasNextPage;
-        after = chaptersData.pageInfo.endCursor;
-
-        if (hasNextPage) {
-          await new Promise((resolve) => setTimeout(resolve, 200));
-        }
-      }
-
-      chapters.reverse();
-      return { title: slug, chapters };
-    } catch (error) {
-      this.logger.error(
-        `Failed to parse senkuro.me: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      );
-      throw new BadRequestException('Failed to parse senkuro.me');
-    }
-  }
-
   private async downloadChapterImages(
     chapter: ChapterInfo,
     chapterId: string,
+    domain: string = 'senkuro.me',
   ): Promise<string[]> {
     if (!chapter.slug) {
       throw new BadRequestException('Chapter slug is required for downloading');
     }
 
     try {
-      const graphqlUrl = 'https://api.senkuro.me/graphql';
+      const graphqlUrl = `https://api.${domain}/graphql`;
       const headers = {
         Accept: 'application/json',
         'Content-Type': 'application/json',
-        Origin: 'https://senkuro.me',
-        Referer: 'https://senkuro.me/',
+        Origin: `https://${domain}`,
+        Referer: `https://${domain}/`,
       };
 
       const query = `
@@ -312,24 +163,19 @@ export class MangaParserService {
       customGenres,
     } = parseTitleDto;
 
-    let title: string;
-    let chapters: ChapterInfo[];
-
-    if (url.includes('manga-shi.org')) {
-      const result = await this.parseMangaShi(url);
-      title = result.title;
-      chapters = result.chapters;
-    } else if (url.includes('senkuro.me')) {
-      const result = await this.parseSenkuro(url);
-      title = result.title;
-      chapters = result.chapters;
-    } else {
+    // Find the appropriate parser
+    const parser = this.getParserForUrl(url);
+    if (!parser) {
       throw new BadRequestException(
         'Unsupported site. Only manga-shi.org and senkuro.me are supported.',
       );
     }
 
+    // Parse the manga data
+    const parsedData = await parser.parse(url);
+
     // Filter chapters if specific numbers requested
+    let chapters = parsedData.chapters;
     if (chapterNumbers && chapterNumbers.length > 0) {
       const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
       chapters = chapters.filter(
@@ -343,9 +189,12 @@ export class MangaParserService {
 
     // Create title
     const createTitleDto: CreateTitleDto = {
-      name: customTitle || this.sanitizeFilename(title),
-      description: customDescription || `Imported from ${url}`,
-      genres: customGenres || ['Unknown'],
+      name: customTitle || this.sanitizeFilename(parsedData.title),
+      altNames: parsedData.alternativeTitles || [],
+      description:
+        customDescription || parsedData.description || `Imported from ${url}`,
+      genres: customGenres || parsedData.genres || ['Unknown'],
+      coverImage: parsedData.coverUrl,
       isPublished: true,
     };
 
@@ -368,11 +217,13 @@ export class MangaParserService {
         const createdChapter =
           await this.chaptersService.create(createChapterDto);
 
-        // Download images if it's senkuro.me
+        // Download images if it's senkuro.me or sencuro.me
         if (chapter.slug) {
+          const domain = this.extractDomain(url);
           const pagePaths = await this.downloadChapterImages(
             chapter,
             createdChapter._id.toString(),
+            domain,
           );
           await this.chaptersService.update(createdChapter._id.toString(), {
             pages: pagePaths,
@@ -395,6 +246,15 @@ export class MangaParserService {
     };
   }
 
+  private getParserForUrl(url: string): MangaParser | null {
+    for (const [site, parser] of this.parsers) {
+      if (url.includes(site)) {
+        return parser;
+      }
+    }
+    return null;
+  }
+
   async parseAndImportChapters(
     parseChapterDto: ParseChapterDto,
   ): Promise<any[]> {
@@ -403,20 +263,22 @@ export class MangaParserService {
     // Verify title exists
     await this.titlesService.findById(titleId);
 
-    if (!url.includes('senkuro.me')) {
+    // Find the appropriate parser
+    const parser = this.getParserForUrl(url);
+    if (!parser) {
       throw new BadRequestException(
-        'Chapter import only supported for senkuro.me',
+        'Unsupported site. Only senkuro.me is supported for chapter import.',
       );
     }
 
     // Parse manga to get all chapters
-    const { chapters } = await this.parseSenkuro(url);
+    const parsedData = await parser.parse(url);
+    let selectedChapters = parsedData.chapters;
 
     // Filter chapters if specific numbers requested
-    let selectedChapters = chapters;
     if (chapterNumbers && chapterNumbers.length > 0) {
       const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
-      selectedChapters = chapters.filter(
+      selectedChapters = parsedData.chapters.filter(
         (ch) => ch.number && requestedNumbers.has(ch.number),
       );
     }
@@ -442,9 +304,11 @@ export class MangaParserService {
           await this.chaptersService.create(createChapterDto);
 
         // Download images
+        const domain = this.extractDomain(url);
         const pagePaths = await this.downloadChapterImages(
           chapter,
           createdChapter._id.toString(),
+          domain,
         );
         await this.chaptersService.update(createdChapter._id.toString(), {
           pages: pagePaths,
@@ -460,6 +324,11 @@ export class MangaParserService {
     }
 
     return importedChapters;
+  }
+
+  private extractDomain(url: string): string {
+    const urlObj = new URL(url);
+    return urlObj.hostname;
   }
 
   getSupportedSites(): { sites: string[] } {
