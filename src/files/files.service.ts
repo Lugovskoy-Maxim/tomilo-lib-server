@@ -279,4 +279,26 @@ export class FilesService {
       );
     }
   }
+
+  async deleteTitleCover(titleId: string): Promise<void> {
+    const titleDir = join('uploads', 'titles', titleId);
+
+    try {
+      await fs.access(titleDir);
+      await fs.rm(titleDir, { recursive: true, force: true });
+      this.logger.log(`Title cover directory ${titleId} successfully deleted`);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
+        this.logger.warn(`Title cover directory ${titleId} not found`);
+      } else {
+        this.logger.error(
+          `Error deleting title cover directory: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
+      }
+    }
+  }
 }

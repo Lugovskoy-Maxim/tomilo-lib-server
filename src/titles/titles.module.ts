@@ -4,6 +4,7 @@ import { TitlesService } from './titles.service';
 import { TitlesController } from './titles.controller';
 import { Title, TitleSchema } from '../schemas/title.schema';
 import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
+import { FilesModule } from '../files/files.module';
 
 @Module({
   imports: [
@@ -11,6 +12,7 @@ import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
       { name: Title.name, schema: TitleSchema },
       { name: Chapter.name, schema: ChapterSchema },
     ]),
+    FilesModule,
   ],
   controllers: [TitlesController],
   providers: [TitlesService],

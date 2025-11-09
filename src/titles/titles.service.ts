@@ -10,12 +10,14 @@ import { Title, TitleDocument, TitleStatus } from '../schemas/title.schema';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
 import { CreateTitleDto } from './dto/create-title.dto';
 import { UpdateTitleDto } from './dto/update-title.dto';
+import { FilesService } from '../files/files.service';
 
 @Injectable()
 export class TitlesService {
   constructor(
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
+    private readonly filesService: FilesService,
   ) {}
 
   async findAll({
@@ -173,10 +175,31 @@ export class TitlesService {
       throw new BadRequestException('Invalid title ID');
     }
 
-    const result = await this.titleModel.findByIdAndDelete(id).exec();
-    if (!result) {
+    // Find title with populated chapters
+    const title = await this.titleModel
+      .findById(id)
+      .populate('chapters')
+      .exec();
+
+    if (!title) {
       throw new NotFoundException('Title not found');
     }
+
+    // Delete chapter pages for each chapter
+    if (title.chapters && title.chapters.length > 0) {
+      for (const chapter of title.chapters) {
+        await this.filesService.deleteChapterPages(chapter._id.toString());
+      }
+    }
+
+    // Delete all chapters associated with the title
+    await this.chapterModel.deleteMany({ titleId: id });
+
+    // Delete title cover
+    await this.filesService.deleteTitleCover(id);
+
+    // Delete the title
+    await this.titleModel.findByIdAndDelete(id).exec();
   }
 
   async incrementViews(id: string): Promise<TitleDocument> {
