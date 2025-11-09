@@ -7,6 +7,7 @@ import { CreateTitleDto } from '../titles/dto/create-title.dto';
 import { CreateChapterDto } from '../chapters/dto/create-chapter.dto';
 import { ParseTitleDto } from './dto/parse-title.dto';
 import { ParseChapterDto } from './dto/parse-chapter.dto';
+import { ParseChaptersInfoDto } from './dto/parse-chapters-info.dto';
 import { MangaParser, ChapterInfo } from './parsers/base.parser';
 import { SenkuroParser } from './parsers/senkuro.parser';
 import { MangaShiParser } from './parsers/manga-shi.parser';
@@ -329,6 +330,37 @@ export class MangaParserService {
   private extractDomain(url: string): string {
     const urlObj = new URL(url);
     return urlObj.hostname;
+  }
+
+  async parseChaptersInfo(
+    parseChaptersInfoDto: ParseChaptersInfoDto,
+  ): Promise<{ title: string; chapters: ChapterInfo[] }> {
+    const { url, chapterNumbers } = parseChaptersInfoDto;
+
+    // Find the appropriate parser
+    const parser = this.getParserForUrl(url);
+    if (!parser) {
+      throw new BadRequestException(
+        'Unsupported site. Only manga-shi.org and senkuro.me are supported.',
+      );
+    }
+
+    // Parse the manga data
+    const parsedData = await parser.parse(url);
+
+    // Filter chapters if specific numbers requested
+    let chapters = parsedData.chapters;
+    if (chapterNumbers && chapterNumbers.length > 0) {
+      const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
+      chapters = chapters.filter(
+        (ch) => ch.number && requestedNumbers.has(ch.number),
+      );
+    }
+
+    return {
+      title: parsedData.title,
+      chapters,
+    };
   }
 
   getSupportedSites(): { sites: string[] } {
