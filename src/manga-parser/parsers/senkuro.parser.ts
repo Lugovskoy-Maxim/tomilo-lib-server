@@ -42,9 +42,7 @@ export class SenkuroParser implements MangaParser {
               content
               lang
             }
-            localizations {
-              lang
-            }
+
             labels {
               titles {
                 content
@@ -95,9 +93,6 @@ export class SenkuroParser implements MangaParser {
       // Extract alternative titles
       const alternativeTitles = this.extractAlternativeTitles(mangaData);
 
-      // Extract description
-      const description = this.extractDescription(mangaData);
-
       // Extract cover URL
       const coverUrl = this.extractCoverUrl(mangaData);
 
@@ -110,7 +105,7 @@ export class SenkuroParser implements MangaParser {
       return {
         title,
         alternativeTitles,
-        description,
+        description: undefined,
         coverUrl,
         genres,
         chapters,
@@ -124,7 +119,12 @@ export class SenkuroParser implements MangaParser {
   }
 
   private extractTitle(mangaData: any): string {
-    // Priority: EN title > originalName > first available title
+    // Priority: RU title > EN title > originalName > first available title
+    const ruTitle = mangaData.titles?.find(
+      (t: any) => t.lang === 'RU',
+    )?.content;
+    if (ruTitle) return ruTitle;
+
     const enTitle = mangaData.titles?.find(
       (t: any) => t.lang === 'EN',
     )?.content;
@@ -142,10 +142,10 @@ export class SenkuroParser implements MangaParser {
   private extractAlternativeTitles(mangaData: any): string[] {
     const alternativeTitles: string[] = [];
 
-    // Add all titles except EN and RU
+    // Add all titles except RU (since RU is now main)
     const titles = mangaData.titles || [];
     for (const title of titles) {
-      if (title.lang !== 'EN' && title.lang !== 'RU' && title.content) {
+      if (title.lang !== 'RU' && title.content) {
         alternativeTitles.push(title.content);
       }
     }
@@ -165,16 +165,16 @@ export class SenkuroParser implements MangaParser {
   }
 
   private extractDescription(mangaData: any): string | undefined {
-    // Priority: EN > RU > first available
+    // Priority: RU > EN > first available
     const localizations = mangaData.localizations || [];
-    const enLoc = localizations.find((l: any) => l.lang === 'EN');
-    if (enLoc?.description) {
-      return this.extractTextFromDescription(enLoc.description);
-    }
-
     const ruLoc = localizations.find((l: any) => l.lang === 'RU');
     if (ruLoc?.description) {
       return this.extractTextFromDescription(ruLoc.description);
+    }
+
+    const enLoc = localizations.find((l: any) => l.lang === 'EN');
+    if (enLoc?.description) {
+      return this.extractTextFromDescription(enLoc.description);
     }
 
     const firstLoc = localizations.find((l: any) => l.description);
@@ -229,11 +229,13 @@ export class SenkuroParser implements MangaParser {
     headers: any,
   ): Promise<ChapterInfo[]> {
     const branches = mangaData.branches || [];
+    console.log('Branches:', JSON.stringify(branches, null, 2));
     let branchId = branches.find((b: any) => b.primaryBranch)?.id;
     if (!branchId && branches.length > 0) {
       branchId = branches[0].id;
     }
 
+    console.log('Selected branchId:', branchId);
     if (!branchId) {
       throw new Error('No branch ID found');
     }
@@ -282,7 +284,7 @@ export class SenkuroParser implements MangaParser {
         chapters.push({
           name,
           slug: node.slug,
-          number: node.number,
+          number: parseInt(node.number, 10),
         });
       }
 
