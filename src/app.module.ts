@@ -11,6 +11,9 @@ import { getMongoConfig } from './config/mongo-config';
 import { SearchModule } from './search/search.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { MangaParserModule } from './manga-parser/manga-parser.module';
+import { Title, TitleSchema } from './schemas/title.schema';
+import { Chapter, ChapterSchema } from './schemas/chapter.schema';
+import { User, UserSchema } from './schemas/user.schema';
 
 @Module({
   imports: [
@@ -20,6 +23,11 @@ import { MangaParserModule } from './manga-parser/manga-parser.module';
       useFactory: getMongoConfig,
     }),
     ConfigModule.forRoot(),
+    MongooseModule.forFeature([
+      { name: Title.name, schema: TitleSchema },
+      { name: Chapter.name, schema: ChapterSchema },
+      { name: User.name, schema: UserSchema },
+    ]),
     UsersModule,
     AuthModule,
     TitlesModule,

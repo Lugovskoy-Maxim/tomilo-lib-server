@@ -1,0 +1,139 @@
+# Tomilo Library Server API Endpoints
+
+## Base URL
+`http://localhost:3000` (development)
+
+## Authentication
+Most endpoints require JWT authentication. Include the token in the Authorization header:
+```
+Authorization: Bearer <jwt_token>
+```
+
+## Endpoints Overview
+
+### App Controller
+- `GET /` - Hello World message
+- `GET /health` - Health check endpoint
+- `GET /stats` - Server statistics (total titles, chapters, users, views, bookmarks)
+
+### Authentication
+- `POST /auth/login` - User login
+- `POST /auth/register` - User registration
+
+### Users
+- `GET /users` - Get all users (admin only, paginated)
+- `GET /users/profile` - Get current user profile
+- `PUT /users/profile` - Update current user profile
+- `PUT /users/admin/:id` - Update user by admin
+- `DELETE /users/admin/:id` - Delete user by admin
+- `GET /users/profile/bookmarks` - Get user bookmarks
+- `POST /users/profile/bookmarks/:titleId` - Add title to bookmarks
+- `DELETE /users/profile/bookmarks/:titleId` - Remove title from bookmarks
+- `GET /users/profile/history` - Get reading history
+- `GET /users/history` - Alternative reading history endpoint
+- `POST /users/profile/history/:titleId/:chapterId` - Add to reading history
+- `DELETE /users/profile/history` - Clear reading history
+- `DELETE /users/profile/history/:titleId` - Remove title from history
+- `DELETE /users/profile/history/:titleId/:chapterId` - Remove chapter from history
+- `GET /users/profile/stats` - Get user statistics
+- `PUT /users/profile/avatar` - Update user avatar
+- `POST /users/avatar/admin/:id` - Update avatar by admin
+- `POST /users/avatar` - Remove user avatar
+- `GET /users/:id` - Get user by ID
+
+### Titles
+- `GET /titles/titles/popular` - Get popular titles
+- `GET /titles/collections` - Get title collections
+- `GET /titles/titles/filters/options` - Get filter options
+- `GET /titles/user/reading-progress` - Get user reading progress
+- `GET /titles/titles/latest-updates` - Get latest updates
+- `GET /titles/search` - Search titles
+- `POST /titles/titles` - Create new title
+- `PUT /titles/titles/:id` - Update title
+- `GET /titles/titles` - Get all titles (paginated)
+- `GET /titles/titles/recent` - Get recent titles
+- `GET /titles/titles/:id` - Get title by ID
+- `DELETE /titles/titles/:id` - Delete title
+- `POST /titles/titles/:id/views` - Increment title views
+- `POST /titles/titles/:id/rating` - Update title rating
+- `GET /titles/titles/:id/chapters/count` - Get chapters count for title
+
+### Chapters
+- `POST /chapters` - Create new chapter
+- `POST /chapters/upload` - Upload chapter with pages
+- `GET /chapters` - Get all chapters (paginated)
+- `GET /chapters/count` - Get total chapters count
+- `GET /chapters/:id` - Get chapter by ID
+- `GET /chapters/:id/next` - Get next chapter
+- `GET /chapters/:id/prev` - Get previous chapter
+- `GET /chapters/title/:titleId` - Get chapters by title ID
+- `GET /chapters/by-number/:titleId` - Get chapter by title and number
+- `GET /chapters/latest/:titleId` - Get latest chapter for title
+- `PATCH /chapters/:id` - Update chapter
+- `DELETE /chapters/:id` - Delete chapter
+- `POST /chapters/:id/view` - Increment chapter views
+- `POST /chapters/:id/pages` - Add pages to chapter
+- `POST /chapters/bulk-delete` - Bulk delete chapters
+
+### Search
+- `GET /search` - Search titles
+
+### Notifications
+- `GET /notifications` - Get notifications by user ID
+- `GET /notifications/unread-count` - Get unread notifications count
+- `POST /notifications/:id/read` - Mark notification as read
+- `POST /notifications/mark-all-read` - Mark all notifications as read
+- `DELETE /notifications/:id` - Delete notification
+
+### Manga Parser
+- `POST /manga-parser/parse-title` - Parse and import title
+- `POST /manga-parser/parse-chapters` - Parse and import chapters
+- `POST /manga-parser/parse-chapters-info` - Parse chapters info
+- `GET /manga-parser/supported-sites` - Get supported sites
+
+## Response Format
+All API responses follow this structure:
+```json
+{
+  "success": boolean,
+  "data": any,
+  "message": string,
+  "errors": string[],
+  "timestamp": string,
+  "path": string,
+  "method": string
+}
+```
+
+## Statistics Endpoint Response
+The `/stats` endpoint returns:
+```json
+{
+  "totalTitles": number,
+  "totalChapters": number,
+  "totalUsers": number,
+  "totalViews": number,
+  "totalBookmarks": number
+}
+```
+
+## Error Handling
+- 400 Bad Request - Invalid input data
+- 401 Unauthorized - Missing or invalid JWT token
+- 403 Forbidden - Insufficient permissions
+- 404 Not Found - Resource not found
+- 409 Conflict - Resource already exists
+- 500 Internal Server Error - Server error
+
+## Pagination
+Endpoints that return lists support pagination:
+- `page` - Page number (default: 1)
+- `limit` - Items per page (default: 10)
+
+Example: `GET /titles/titles?page=2&limit=20`
+
+## File Upload
+File uploads use multipart/form-data. Supported endpoints:
+- Title cover upload
+- Chapter pages upload
+- User avatar upload

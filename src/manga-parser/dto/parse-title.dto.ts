@@ -21,4 +21,8 @@ export class ParseTitleDto {
   @IsArray()
   @IsString({ each: true })
   customGenres?: string[];
+
+  @IsOptional()
+  @IsString()
+  customType?: string;
 }

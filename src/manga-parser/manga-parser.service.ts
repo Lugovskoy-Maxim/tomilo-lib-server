@@ -162,6 +162,7 @@ export class MangaParserService {
       customTitle,
       customDescription,
       customGenres,
+      customType,
     } = parseTitleDto;
 
     // Find the appropriate parser
@@ -196,6 +197,7 @@ export class MangaParserService {
         customDescription || parsedData.description || `Imported from ${url}`,
       genres: customGenres || parsedData.genres || ['Unknown'],
       coverImage: parsedData.coverUrl,
+      type: customType,
       isPublished: true,
     };
 

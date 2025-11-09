@@ -64,6 +64,10 @@ export class CreateTitleDto {
   @IsOptional()
   ageLimit?: number;
 
+  @IsString()
+  @IsOptional()
+  type?: string;
+
   @IsBoolean()
   @IsOptional()
   isPublished?: boolean;

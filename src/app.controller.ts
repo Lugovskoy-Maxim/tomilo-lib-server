@@ -19,4 +19,9 @@ export class AppController {
       service: 'tomilo-lib-server',
     };
   }
+
+  @Get('stats')
+  async getStats() {
+    return this.appService.getStats();
+  }
 }
