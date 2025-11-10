@@ -13,8 +13,8 @@ export class User {
   @Prop({ unique: true, required: true })
   email: string;
 
-  @Prop({ required: true })
-  password: string;
+  @Prop({ required: false })
+  password?: string;
 
   @Prop()
   avatar: string;
@@ -52,6 +52,19 @@ export class User {
     }[];
     readAt: Date;
   }[];
+
+  // OAuth providers
+  @Prop({
+    type: {
+      provider: String,
+      providerId: String,
+    },
+    default: null,
+  })
+  oauth?: {
+    provider: string;
+    providerId: string;
+  };
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

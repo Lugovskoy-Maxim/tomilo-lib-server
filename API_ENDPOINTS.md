@@ -19,6 +19,8 @@ Authorization: Bearer <jwt_token>
 ### Authentication
 - `POST /auth/login` - User login
 - `POST /auth/register` - User registration
+- `POST /auth/yandex` - Yandex OAuth login
+- `POST /auth/vk` - VK OAuth login
 
 ### Users
 - `GET /users` - Get all users (admin only, paginated)
@@ -137,3 +139,13 @@ File uploads use multipart/form-data. Supported endpoints:
 - Title cover upload
 - Chapter pages upload
 - User avatar upload
+
+## OAuth Authentication
+For OAuth authentication, send a POST request to the respective endpoint with the authorization code:
+```json
+{
+  "code": "authorization_code"
+}
+```
+
+The response will include a JWT token and user data, similar to regular login.

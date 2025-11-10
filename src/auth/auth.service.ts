@@ -16,7 +16,11 @@ export class AuthService {
   async validateUser(email: string, password: string): Promise<any> {
     const user = await this.userModel.findOne({ email });
 
-    if (user && (await bcrypt.compare(password, user.password))) {
+    if (
+      user &&
+      user.password &&
+      (await bcrypt.compare(password, user.password))
+    ) {
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password, ...result } = user.toObject();
       return result;
@@ -58,8 +62,11 @@ export class AuthService {
       );
     }
 
-    // Хэширование пароля
-    const hashedPassword = await bcrypt.hash(password, 10);
+    // Хэширование пароля, если он предоставлен
+    let hashedPassword: string | undefined = undefined;
+    if (password) {
+      hashedPassword = await bcrypt.hash(password, 10);
+    }
 
     const user = new this.userModel({
       ...createUserDto,
@@ -75,5 +82,51 @@ export class AuthService {
 
   async validateToken(payload: any) {
     return await this.userModel.findById(payload.userId);
+  }
+
+  async validateOAuthUser(oauthData: {
+    provider: string;
+    providerId: string;
+    email?: string;
+    username: string;
+  }) {
+    const { provider, providerId, email, username } = oauthData;
+
+    // Ищем пользователя по данным OAuth
+    let user = await this.userModel.findOne({
+      'oauth.provider': provider,
+      'oauth.providerId': providerId,
+    });
+
+    // Если пользователь не найден, ищем по email
+    if (!user && email) {
+      user = await this.userModel.findOne({ email });
+    }
+
+    // Если пользователь найден, но у него нет данных OAuth, добавляем их
+    if (user && (!user.oauth || !user.oauth.provider)) {
+      user.oauth = { provider, providerId };
+      await user.save();
+    }
+
+    // Если пользователь не найден, создаем нового
+    if (!user) {
+      // Генерируем случайный пароль для OAuth пользователей
+      const randomPassword = Math.random().toString(36).slice(-8);
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+
+      user = new this.userModel({
+        email: email || `${provider}_${providerId}@temp.com`,
+        username: username,
+        password: hashedPassword,
+        oauth: { provider, providerId },
+      });
+
+      await user.save();
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password, ...result } = user.toObject();
+    return result;
   }
 }
