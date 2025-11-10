@@ -11,14 +11,19 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { FilesService } from '../files/files.service';
 import { ChaptersService } from '../chapters/chapters.service';
+import { LoggerService } from '../common/logger/logger.service';
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new LoggerService();
+
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private filesService: FilesService,
     private chaptersService: ChaptersService,
-  ) {}
+  ) {
+    this.logger.setContext(UsersService.name);
+  }
 
   async findAll({
     page,
@@ -29,6 +34,9 @@ export class UsersService {
     limit: number;
     search: string;
   }) {
+    this.logger.log(
+      `Fetching users list with page: ${page}, limit: ${limit}, search: ${search}`,
+    );
     const skip = (page - 1) * limit;
     const query = search
       ? {
@@ -49,6 +57,7 @@ export class UsersService {
       this.userModel.countDocuments(query),
     ]);
 
+    this.logger.log(`Found ${users.length} users out of ${total} total`);
     return {
       users,
       pagination: {
@@ -61,23 +70,26 @@ export class UsersService {
   }
 
   async findById(id: string): Promise<User> {
+    this.logger.log(`Finding user by ID: ${id}`);
     if (!Types.ObjectId.isValid(id)) {
+      this.logger.warn(`Invalid user ID format: ${id}`);
       throw new BadRequestException('Invalid user ID');
     }
 
     const user = await this.userModel.findById(id).select('-password');
     if (!user) {
+      this.logger.warn(`User not found with ID: ${id}`);
       throw new NotFoundException('User not found');
     }
+    this.logger.log(`User found with ID: ${id}`);
     return user;
-  }
-
-  async findByEmail(email: string): Promise<User | null> {
-    return this.userModel.findOne({ email });
   }
 
   async create(createUserDto: CreateUserDto): Promise<User> {
     const { email, username } = createUserDto;
+    this.logger.log(
+      `Creating new user with email: ${email}, username: ${username}`,
+    );
 
     // Проверка на существующего пользователя
     const existingUser = await this.userModel.findOne({
@@ -85,13 +97,20 @@ export class UsersService {
     });
 
     if (existingUser) {
+      this.logger.warn(
+        `User with email ${email} or username ${username} already exists`,
+      );
       throw new ConflictException(
         'User with this email or username already exists',
       );
     }
 
     const user = new this.userModel(createUserDto);
-    return user.save();
+    const savedUser = await user.save();
+    this.logger.log(
+      `User created successfully with ID: ${savedUser._id.toString()}`,
+    );
+    return savedUser;
   }
 
   async update(id: string, updateUserDto: UpdateUserDto): Promise<User> {
@@ -111,12 +130,15 @@ export class UsersService {
   }
 
   async delete(id: string): Promise<void> {
+    this.logger.log(`Deleting user with ID: ${id}`);
     if (!Types.ObjectId.isValid(id)) {
+      this.logger.warn(`Invalid user ID format: ${id}`);
       throw new BadRequestException('Invalid user ID');
     }
 
     const user = await this.userModel.findById(id);
     if (!user) {
+      this.logger.warn(`User not found with ID: ${id}`);
       throw new NotFoundException('User not found');
     }
 
@@ -125,13 +147,17 @@ export class UsersService {
 
     const result = await this.userModel.findByIdAndDelete(id);
     if (!result) {
+      this.logger.warn(`User not found with ID: ${id} during deletion`);
       throw new NotFoundException('User not found');
     }
+    this.logger.log(`User deleted successfully with ID: ${id}`);
   }
 
   // 🔖 Методы для работы с закладками
   async addBookmark(userId: string, titleId: string): Promise<User> {
+    this.logger.log(`Adding bookmark for user ${userId} to title ${titleId}`);
     if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
+      this.logger.warn(`Invalid user ID ${userId} or title ID ${titleId}`);
       throw new BadRequestException('Invalid user ID or title ID');
     }
 
@@ -144,9 +170,13 @@ export class UsersService {
       .select('-password');
 
     if (!user) {
+      this.logger.warn(`User not found with ID: ${userId}`);
       throw new NotFoundException('User not found');
     }
 
+    this.logger.log(
+      `Bookmark added successfully for user ${userId} to title ${titleId}`,
+    );
     return user;
   }
 
@@ -245,7 +275,11 @@ export class UsersService {
     titleId: string,
     chapterId: string,
   ): Promise<User> {
+    this.logger.log(
+      `Adding to reading history for user ${userId}, title ${titleId}, chapter ${chapterId}`,
+    );
     if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
+      this.logger.warn(`Invalid user ID ${userId} or title ID ${titleId}`);
       throw new BadRequestException('Invalid user ID or title ID');
     }
 
@@ -261,6 +295,7 @@ export class UsersService {
       chapterObjectId = new Types.ObjectId(chapterId);
       const chapter = await this.chaptersService.findById(chapterId);
       if (!chapter) {
+        this.logger.warn(`Chapter not found with ID: ${chapterId}`);
         throw new NotFoundException('Chapter not found');
       }
       chapterNumber = chapter.chapterNumber;
@@ -268,6 +303,7 @@ export class UsersService {
     } else {
       chapterNumber = parseInt(chapterId, 10);
       if (isNaN(chapterNumber)) {
+        this.logger.warn(`Invalid chapter ID or number: ${chapterId}`);
         throw new BadRequestException('Invalid chapter ID or number');
       }
 
@@ -276,6 +312,9 @@ export class UsersService {
         chapterNumber,
       );
       if (!chapter) {
+        this.logger.warn(
+          `Chapter not found with title ID ${titleId} and number ${chapterNumber}`,
+        );
         throw new NotFoundException('Chapter not found');
       }
       chapterObjectId = chapter._id;
@@ -285,6 +324,7 @@ export class UsersService {
     // Находим пользователя
     const user = await this.userModel.findById(userId);
     if (!user) {
+      this.logger.warn(`User not found with ID: ${userId}`);
       throw new NotFoundException('User not found');
     }
 
@@ -308,6 +348,9 @@ export class UsersService {
       if (existingChapterIndex !== -1) {
         // Глава уже есть - обновляем время чтения
         existingEntry.chapters[existingChapterIndex].readAt = currentTime;
+        this.logger.log(
+          `Updated read time for existing chapter in user ${userId}'s history`,
+        );
       } else {
         // Главы нет - добавляем новую
         existingEntry.chapters.push({
@@ -316,6 +359,9 @@ export class UsersService {
           chapterTitle,
           readAt: currentTime,
         });
+        this.logger.log(
+          `Added new chapter to existing title in user ${userId}'s history`,
+        );
       }
 
       // Обновляем время чтения тайтла
@@ -340,10 +386,12 @@ export class UsersService {
       if (user.readingHistory.length > 10000) {
         user.readingHistory = user.readingHistory.slice(0, 10000);
       }
+      this.logger.log(`Added new title to user ${userId}'s reading history`);
     } // <- Добавлена закрывающая скобка для блока else
 
     // Сохраняем изменения
     await user.save();
+    this.logger.log(`Reading history updated successfully for user ${userId}`);
     return (await this.userModel.findById(userId).select('-password')) as User;
   }
 

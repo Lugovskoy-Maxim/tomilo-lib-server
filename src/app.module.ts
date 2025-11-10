@@ -12,6 +12,7 @@ import { SearchModule } from './search/search.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { MangaParserModule } from './manga-parser/manga-parser.module';
 import { CollectionsModule } from './collections/collections.module';
+import { LoggerModule } from './common/logger/logger.module';
 import { Title, TitleSchema } from './schemas/title.schema';
 import { Chapter, ChapterSchema } from './schemas/chapter.schema';
 import { User, UserSchema } from './schemas/user.schema';
@@ -36,6 +37,7 @@ import { User, UserSchema } from './schemas/user.schema';
     NotificationsModule,
     MangaParserModule,
     CollectionsModule,
+    LoggerModule,
   ],
   controllers: [AppController],
   providers: [AppService],

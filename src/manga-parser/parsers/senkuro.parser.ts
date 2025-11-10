@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Injectable, BadRequestException } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import { MangaParser, ParsedMangaData, ChapterInfo } from './base.parser';
@@ -75,11 +76,16 @@ export class SenkuroParser implements MangaParser {
       console.log('GraphQL URL:', graphqlUrl);
       console.log('Slug:', slug);
       console.log('Response status:', mangaResponse.status);
-      console.log('Response data:', JSON.stringify(mangaResponse.data, null, 2));
+      console.log(
+        'Response data:',
+        JSON.stringify(mangaResponse.data, null, 2),
+      );
 
       if (mangaResponse.data.errors) {
         console.log('GraphQL errors:', mangaResponse.data.errors);
-        throw new Error(`GraphQL errors: ${JSON.stringify(mangaResponse.data.errors)}`);
+        throw new Error(
+          `GraphQL errors: ${JSON.stringify(mangaResponse.data.errors)}`,
+        );
       }
 
       const mangaData = mangaResponse.data.data?.manga;

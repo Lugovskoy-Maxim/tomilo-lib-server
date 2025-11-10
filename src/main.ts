@@ -4,9 +4,11 @@ import { join } from 'path';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { ValidationPipe } from '@nestjs/common';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { LoggerService } from './common/logger/logger.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const logger = new LoggerService();
 
   app.enableCors({
     origin: [
@@ -39,6 +41,6 @@ async function bootstrap() {
 
   const port = process.env.PORT || 3001;
   await app.listen(port, '0.0.0.0');
-  console.log(`Application is running on: http://localhost:${port}`);
+  logger.log(`Application is running on: http://localhost:${port}`);
 }
 bootstrap();

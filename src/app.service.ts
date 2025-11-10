@@ -5,20 +5,27 @@ import { Title, TitleDocument } from './schemas/title.schema';
 import { Chapter, ChapterDocument } from './schemas/chapter.schema';
 import { User, UserDocument } from './schemas/user.schema';
 import { StatsResponseDto } from './common/dto/stats-response.dto';
+import { LoggerService } from './common/logger/logger.service';
 
 @Injectable()
 export class AppService {
+  private readonly logger = new LoggerService();
+
   constructor(
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
-  ) {}
+  ) {
+    this.logger.setContext(AppService.name);
+  }
 
   getHello(): string {
+    this.logger.log('Hello World endpoint called');
     return 'Hello World!';
   }
 
   async getStats(): Promise<StatsResponseDto> {
+    this.logger.log('Fetching application statistics');
     const [
       totalTitles,
       totalChapters,
@@ -54,6 +61,9 @@ export class AppService {
       totalBookmarks: totalBookmarksCount,
     };
 
+    this.logger.log(
+      `Statistics fetched successfully: ${JSON.stringify(stats)}`,
+    );
     return stats;
   }
 }
