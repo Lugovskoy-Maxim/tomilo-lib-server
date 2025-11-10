@@ -45,6 +45,24 @@ export class Title {
   views: number;
 
   @Prop({ default: 0 })
+  dayViews: number;
+
+  @Prop({ default: 0 })
+  weekViews: number;
+
+  @Prop({ default: 0 })
+  monthViews: number;
+
+  @Prop()
+  lastDayReset: Date;
+
+  @Prop()
+  lastWeekReset: Date;
+
+  @Prop()
+  lastMonthReset: Date;
+
+  @Prop({ default: 0 })
   totalChapters: number;
 
   @Prop({ default: 0 })

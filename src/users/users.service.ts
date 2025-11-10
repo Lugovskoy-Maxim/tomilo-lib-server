@@ -82,7 +82,7 @@ export class UsersService {
       .populate('bookmarks')
       .populate('readingHistory.titleId')
       .populate('readingHistory.chapters.chapterId');
-      
+
     if (!user) {
       this.logger.warn(`User not found with ID: ${id}`);
       throw new NotFoundException('User not found');

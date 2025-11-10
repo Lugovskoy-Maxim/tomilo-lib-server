@@ -203,15 +203,61 @@ export class TitlesService {
   }
 
   async incrementViews(id: string): Promise<TitleDocument> {
-    const title = await this.titleModel
-      .findByIdAndUpdate(id, { $inc: { views: 1 } }, { new: true })
-      .exec();
+    const title = await this.titleModel.findById(id).exec();
 
     if (!title) {
       throw new NotFoundException('Title not found');
     }
 
-    return title;
+    // Получаем текущую дату
+    const now = new Date();
+
+    // Подготавливаем обновления для счетчиков по периодам
+    const update: any = { $inc: { views: 1 } };
+
+    // Проверяем, нужно ли сбросить дневной счетчик
+    if (
+      !title.lastDayReset ||
+      now.getDate() !== title.lastDayReset.getDate() ||
+      now.getMonth() !== title.lastDayReset.getMonth() ||
+      now.getFullYear() !== title.lastDayReset.getFullYear()
+    ) {
+      update.dayViews = 1;
+      update.lastDayReset = now;
+    } else {
+      update.$inc.dayViews = 1;
+    }
+
+    // Проверяем, нужно ли сбросить недельный счетчик
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    if (!title.lastWeekReset || title.lastWeekReset < oneWeekAgo) {
+      update.weekViews = 1;
+      update.lastWeekReset = now;
+    } else {
+      update.$inc.weekViews = 1;
+    }
+
+    // Проверяем, нужно ли сбросить месячный счетчик
+    if (
+      !title.lastMonthReset ||
+      now.getMonth() !== title.lastMonthReset.getMonth() ||
+      now.getFullYear() !== title.lastMonthReset.getFullYear()
+    ) {
+      update.monthViews = 1;
+      update.lastMonthReset = now;
+    } else {
+      update.$inc.monthViews = 1;
+    }
+
+    const updatedTitle = await this.titleModel
+      .findByIdAndUpdate(id, update, { new: true })
+      .exec();
+
+    if (!updatedTitle) {
+      throw new NotFoundException('Title not found');
+    }
+
+    return updatedTitle;
   }
 
   async updateRating(id: string, newRating: number): Promise<TitleDocument> {
@@ -336,38 +382,26 @@ export class TitlesService {
     period: 'day' | 'week' | 'month',
     limit = 10,
   ): Promise<TitleDocument[]> {
-    const now = new Date();
-    let startDate: Date;
-
+    // Определяем поле для сортировки в зависимости от периода
+    let sortField: string;
     switch (period) {
       case 'day':
-        startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+        sortField = 'dayViews';
         break;
       case 'week':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        sortField = 'weekViews';
         break;
       case 'month':
-        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        sortField = 'monthViews';
         break;
       default:
         throw new BadRequestException('Invalid period');
     }
 
-    // Find chapters released in the period
-    const recentChapters = await this.chapterModel
-      .find({ releaseDate: { $gte: startDate }, isPublished: true })
-      .select('titleId')
-      .exec();
-
-    // Extract unique titleIds
-    const titleIds = [
-      ...new Set(recentChapters.map((ch) => ch.titleId.toString())),
-    ];
-
-    // Find titles with those IDs, sorted by views descending
+    // Возвращаем тайтлы, отсортированные по просмотрам за период
     return this.titleModel
-      .find({ _id: { $in: titleIds } })
-      .sort({ views: -1 })
+      .find()
+      .sort({ [sortField]: -1 })
       .limit(limit)
       .populate('chapters')
       .exec();
