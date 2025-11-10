@@ -337,8 +337,8 @@ export class UsersService {
 
       // Добавляем в начало и ограничиваем размер
       user.readingHistory.unshift(newEntry);
-      if (user.readingHistory.length > 1000) {
-        user.readingHistory = user.readingHistory.slice(0, 1000);
+      if (user.readingHistory.length > 10000) {
+        user.readingHistory = user.readingHistory.slice(0, 10000);
       }
     } // <- Добавлена закрывающая скобка для блока else
 
