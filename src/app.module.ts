@@ -11,10 +11,10 @@ import { getMongoConfig } from './config/mongo-config';
 import { SearchModule } from './search/search.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { MangaParserModule } from './manga-parser/manga-parser.module';
+import { CollectionsModule } from './collections/collections.module';
 import { Title, TitleSchema } from './schemas/title.schema';
 import { Chapter, ChapterSchema } from './schemas/chapter.schema';
 import { User, UserSchema } from './schemas/user.schema';
-
 @Module({
   imports: [
     MongooseModule.forRootAsync({
@@ -35,6 +35,7 @@ import { User, UserSchema } from './schemas/user.schema';
     SearchModule,
     NotificationsModule,
     MangaParserModule,
+    CollectionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
