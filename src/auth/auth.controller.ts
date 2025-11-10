@@ -77,10 +77,10 @@ export class AuthController {
   @UseGuards(AuthGuard('yandex'))
   @Post('yandex')
   @HttpCode(HttpStatus.OK)
-  async yandexLogin(
+  yandexLogin(
     @Body() oauthLoginDto: OAuthLoginDto,
     @Request() req,
-  ): Promise<ApiResponseDto<any>> {
+  ): ApiResponseDto<any> {
     try {
       const data = this.authService.login(req.user);
 
@@ -107,10 +107,10 @@ export class AuthController {
   @UseGuards(AuthGuard('vk'))
   @Post('vk')
   @HttpCode(HttpStatus.OK)
-  async vkLogin(
+  vkLogin(
     @Body() oauthLoginDto: OAuthLoginDto,
     @Request() req,
-  ): Promise<ApiResponseDto<any>> {
+  ): ApiResponseDto<any> {
     try {
       const data = this.authService.login(req.user);
 
