@@ -76,7 +76,13 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID');
     }
 
-    const user = await this.userModel.findById(id).select('-password');
+    const user = await this.userModel
+      .findById(id)
+      .select('-password')
+      .populate('bookmarks')
+      .populate('readingHistory.titleId')
+      .populate('readingHistory.chapters.chapterId');
+      
     if (!user) {
       this.logger.warn(`User not found with ID: ${id}`);
       throw new NotFoundException('User not found');

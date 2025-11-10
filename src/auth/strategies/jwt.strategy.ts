@@ -21,8 +21,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const user = {
       userId: payload.userId,
       email: payload.email,
-      username: payload.username,
-      roles: payload.role,
+      username: payload.username || '', // Добавляем значение по умолчанию
+      roles: payload.role ? [payload.role] : [], // Используем payload.role и преобразуем в массив
     };
 
     return user;
