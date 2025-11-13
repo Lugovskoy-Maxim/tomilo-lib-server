@@ -265,7 +265,7 @@ export class FilesService {
       // Сохраняем файл
       await fs.writeFile(filePath, response.data);
 
-      return `/${titleDir}/${fileName}`;
+      return `/uploads/${titleDir}/${fileName}`;
     } catch (error) {
       this.logger.error(
         `Failed to download title cover ${imageUrl}: ${

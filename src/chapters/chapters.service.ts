@@ -277,6 +277,59 @@ export class ChaptersService {
     return chapter;
   }
 
+  // Paid chapter unlocking
+  async unlockPaidChapter(
+    userId: string,
+    chapterId: string,
+  ): Promise<ChapterDocument> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const chapter = await this.findById(chapterId);
+    if (!chapter) {
+      throw new NotFoundException('Chapter not found');
+    }
+
+    if (!chapter.isPaid) {
+      throw new BadRequestException('This chapter is not paid');
+    }
+
+    if (chapter.unlockPrice <= 0) {
+      throw new BadRequestException('Invalid unlock price');
+    }
+
+    // Balance checking and deduction will be handled in the controller
+    // to avoid circular dependency issues
+
+    this.logger.log(
+      `User ${userId} unlocked paid chapter ${chapterId} for ${chapter.unlockPrice} coins`,
+    );
+
+    return chapter;
+  }
+
+  async checkChapterAccess(
+    userId: string,
+    chapterId: string,
+  ): Promise<boolean> {
+    const chapter = await this.findById(chapterId);
+    if (!chapter) {
+      return false;
+    }
+
+    // Free chapters are always accessible
+    if (!chapter.isPaid) {
+      return true;
+    }
+
+    // For paid chapters, check if user has unlocked it
+    // This could be implemented with a separate collection tracking unlocks
+    // For now, we'll assume paid chapters require unlocking each time
+    // In a real implementation, you'd want to cache unlocks or use a separate table
+    return false; // Paid chapters not accessible without explicit unlock
+  }
+
   async getNextChapter(
     titleId: string,
     currentChapterNumber: number,

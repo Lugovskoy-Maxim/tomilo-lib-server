@@ -55,17 +55,36 @@ jobs:
             ls -la
             echo "Package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
 
-            # Копируем файлы настройки приложений из шаблонов 
-            cp .env.example .env
-            cp docker-compose.yml.example docker-compose.yml
+            # Устанавливаем MongoDB если она не установлена
+            if ! command -v mongod &> /dev/null; then
+              echo "Installing MongoDB..."
+              # Добавляем репозиторий MongoDB
+              wget -qO - https://www.mongodb.org/static/pgp/server-4.4.asc | sudo apt-key add -
+              echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/4.4 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.4.list
+              
+              # Обновляем пакеты и устанавливаем MongoDB
+              sudo apt-get update
+              sudo apt-get install -y mongodb-org
+              
+              # Запускаем и включаем MongoDB как службу
+              sudo systemctl start mongod
+              sudo systemctl enable mongod
+            else
+              echo "MongoDB is already installed"
+            fi
 
-            # Всё делаем на сервере
+            # Устанавливаем зависимости Node.js
             npm install
-            npm run build
 
-            # Запускаем контейнеры
-            docker-compose down || true
-            docker-compose up -d --build
+            # Настраиваем переменные окружения
+            cp .env.example .env
+
+            # Создаем пользователя MongoDB если он не существует
+            echo "Creating MongoDB user..."
+            node create-user.js
+
+            # Собираем приложение
+            npm run build
 
             # Перезапускаем приложение
             pm2 stop tomilo-lib-server || true

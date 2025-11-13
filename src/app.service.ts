@@ -4,6 +4,7 @@ import { Model } from 'mongoose';
 import { Title, TitleDocument } from './schemas/title.schema';
 import { Chapter, ChapterDocument } from './schemas/chapter.schema';
 import { User, UserDocument } from './schemas/user.schema';
+import { Collection, CollectionDocument } from './schemas/collection.schema';
 import { StatsResponseDto } from './common/dto/stats-response.dto';
 import { LoggerService } from './common/logger/logger.service';
 
@@ -15,6 +16,8 @@ export class AppService {
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(Collection.name)
+    private collectionModel: Model<CollectionDocument>,
   ) {
     this.logger.setContext(AppService.name);
   }
@@ -30,6 +33,7 @@ export class AppService {
       totalTitles,
       totalChapters,
       totalUsers,
+      totalCollections,
       titleViewsResult,
       chapterViewsResult,
       totalBookmarks,
@@ -37,6 +41,7 @@ export class AppService {
       this.titleModel.countDocuments(),
       this.chapterModel.countDocuments(),
       this.userModel.countDocuments(),
+      this.collectionModel.countDocuments(),
       this.titleModel.aggregate([
         { $group: { _id: null, total: { $sum: '$views' } } },
       ]),
@@ -57,6 +62,7 @@ export class AppService {
       totalTitles,
       totalChapters,
       totalUsers,
+      totalCollections,
       totalViews,
       totalBookmarks: totalBookmarksCount,
     };

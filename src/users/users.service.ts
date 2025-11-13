@@ -395,6 +395,9 @@ export class UsersService {
       this.logger.log(`Added new title to user ${userId}'s reading history`);
     } // <- Добавлена закрывающая скобка для блока else
 
+    // Award experience for reading
+    await this.addExperience(userId, 10); // 10 XP per chapter read
+
     // Сохраняем изменения
     await user.save();
     this.logger.log(`Reading history updated successfully for user ${userId}`);
@@ -541,6 +544,97 @@ export class UsersService {
       totalBookmarks: user.bookmarks.length,
       totalRead: user.readingHistory.length,
       lastRead: user.readingHistory[user.readingHistory.length - 1] || null,
+      level: user.level,
+      experience: user.experience,
+      balance: user.balance,
+      nextLevelExp: this.calculateNextLevelExp(user.level),
     };
+  }
+
+  // 🎯 Leveling system methods
+  private calculateNextLevelExp(level: number): number {
+    // Simple exponential growth: 100 * level^1.5
+    return Math.floor(100 * Math.pow(level, 1.5));
+  }
+
+  async addExperience(userId: string, expAmount: number): Promise<User> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.experience += expAmount;
+
+    // Check for level up
+    let leveledUp = false;
+    while (user.experience >= this.calculateNextLevelExp(user.level)) {
+      user.level += 1;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      leveledUp = true;
+      // Award some balance for leveling up
+      user.balance += user.level * 10; // 10 coins per level
+    }
+
+    await user.save();
+    this.logger.log(
+      `User ${userId} gained ${expAmount} XP. Current level: ${user.level}, XP: ${user.experience}`,
+    );
+
+    return user;
+  }
+
+  // 💰 Balance management
+  async addBalance(userId: string, amount: number): Promise<User> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    if (amount < 0) {
+      throw new BadRequestException('Amount must be positive');
+    }
+
+    const user = await this.userModel
+      .findByIdAndUpdate(userId, { $inc: { balance: amount } }, { new: true })
+      .select('-password');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    this.logger.log(
+      `Added ${amount} balance to user ${userId}. New balance: ${user.balance}`,
+    );
+    return user;
+  }
+
+  async deductBalance(userId: string, amount: number): Promise<User> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    if (amount < 0) {
+      throw new BadRequestException('Amount must be positive');
+    }
+
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.balance < amount) {
+      throw new BadRequestException('Insufficient balance');
+    }
+
+    user.balance -= amount;
+    await user.save();
+
+    this.logger.log(
+      `Deducted ${amount} balance from user ${userId}. New balance: ${user.balance}`,
+    );
+    return user;
   }
 }

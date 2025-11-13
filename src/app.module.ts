@@ -13,9 +13,11 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { MangaParserModule } from './manga-parser/manga-parser.module';
 import { CollectionsModule } from './collections/collections.module';
 import { LoggerModule } from './common/logger/logger.module';
+import { ShopModule } from './shop/shop.module';
 import { Title, TitleSchema } from './schemas/title.schema';
 import { Chapter, ChapterSchema } from './schemas/chapter.schema';
 import { User, UserSchema } from './schemas/user.schema';
+import { Collection, CollectionSchema } from './schemas/collection.schema';
 @Module({
   imports: [
     MongooseModule.forRootAsync({
@@ -28,6 +30,7 @@ import { User, UserSchema } from './schemas/user.schema';
       { name: Title.name, schema: TitleSchema },
       { name: Chapter.name, schema: ChapterSchema },
       { name: User.name, schema: UserSchema },
+      { name: Collection.name, schema: CollectionSchema },
     ]),
     UsersModule,
     AuthModule,
@@ -38,6 +41,7 @@ import { User, UserSchema } from './schemas/user.schema';
     MangaParserModule,
     CollectionsModule,
     LoggerModule,
+    ShopModule,
   ],
   controllers: [AppController],
   providers: [AppService],

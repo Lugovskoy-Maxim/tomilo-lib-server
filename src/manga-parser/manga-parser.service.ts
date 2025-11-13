@@ -204,6 +204,27 @@ export class MangaParserService {
     const createdTitle = await this.titlesService.create(createTitleDto);
     this.logger.log(`Created title: ${createdTitle.name}`);
 
+    // Download and save title cover image locally if it's from Senkuro
+    if (parsedData.coverUrl && url.includes('senkuro.me')) {
+      try {
+        const localCoverPath = await this.filesService.downloadTitleCover(
+          parsedData.coverUrl,
+          createdTitle._id.toString(),
+        );
+        await this.titlesService.update(createdTitle._id.toString(), {
+          coverImage: localCoverPath,
+        });
+        this.logger.log(`Downloaded and saved title cover: ${localCoverPath}`);
+      } catch (error) {
+        this.logger.error(
+          `Failed to download title cover: ${
+            error instanceof Error ? error.message : 'Unknown error'
+          }`,
+        );
+        // Continue without cover - don't fail the entire import
+      }
+    }
+
     // Import chapters
     const importedChapters: any[] = [];
     for (const chapter of chapters) {
@@ -220,7 +241,7 @@ export class MangaParserService {
         const createdChapter =
           await this.chaptersService.create(createChapterDto);
 
-        // Download images if it's senkuro.me or sencuro.me
+        // Download images if it's senkuro.me
         if (chapter.slug) {
           const domain = this.extractDomain(url);
           const pagePaths = await this.downloadChapterImages(
@@ -367,7 +388,7 @@ export class MangaParserService {
 
   getSupportedSites(): { sites: string[] } {
     return {
-      sites: ['manga-shi.org', 'senkuro.me', 'sencuro.me'],
+      sites: ['manga-shi.org', 'senkuro.me'],
     };
   }
 }

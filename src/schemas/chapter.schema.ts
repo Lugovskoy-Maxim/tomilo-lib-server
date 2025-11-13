@@ -30,6 +30,13 @@ export class Chapter {
 
   @Prop()
   translator: string;
+
+  // Paid chapter system
+  @Prop({ default: false })
+  isPaid: boolean;
+
+  @Prop({ default: 0 })
+  unlockPrice: number;
 }
 
 export const ChapterSchema = SchemaFactory.createForClass(Chapter);

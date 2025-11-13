@@ -22,6 +22,63 @@ export class User {
   @Prop({ default: 'user' })
   role: string;
 
+  // Leveling system
+  @Prop({ default: 1 })
+  level: number;
+
+  @Prop({ default: 0 })
+  experience: number;
+
+  @Prop({ default: 0 })
+  balance: number;
+
+  // Profile decorations
+  @Prop({
+    type: {
+      avatar: {
+        type: Types.ObjectId,
+        ref: 'AvatarDecoration',
+        default: null,
+      },
+      background: {
+        type: Types.ObjectId,
+        ref: 'BackgroundDecoration',
+        default: null,
+      },
+      card: {
+        type: Types.ObjectId,
+        ref: 'CardDecoration',
+        default: null,
+      },
+    },
+    default: { avatar: null, background: null, card: null },
+  })
+  equippedDecorations: {
+    avatar: Types.ObjectId | null;
+    background: Types.ObjectId | null;
+    card: Types.ObjectId | null;
+  };
+
+  @Prop({
+    type: [
+      {
+        decorationType: {
+          type: String,
+          enum: ['avatar', 'background', 'card'],
+          required: true,
+        },
+        decorationId: { type: Types.ObjectId, required: true },
+        purchasedAt: { type: Date, default: Date.now },
+      },
+    ],
+    default: [],
+  })
+  ownedDecorations: {
+    decorationType: string;
+    decorationId: Types.ObjectId;
+    purchasedAt: Date;
+  }[];
+
   @Prop({ default: [] })
   bookmarks: string[];
 
