@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebSocket Test</title>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>WebSocket Parsing Test</h1>
+
+    <div>
+        <button id="connect">Connect to WebSocket</button>
+        <button id="disconnect">Disconnect</button>
+    </div>
+
+    <div>
+        <h3>Parse Chapters Info</h3>
+        <input type="text" id="url" placeholder="Enter manga URL" value="https://senkuro.me/manga/one-piece">
+        <button id="parseChaptersInfo">Parse Chapters Info</button>
+    </div>
+
+    <div>
+        <h3>Parse Chapters</h3>
+        <input type="text" id="titleId" placeholder="Title ID" value="6915f577d003c8238a5a4451">
+        <input type="text" id="chapterNumbers" placeholder="Chapter numbers (comma separated)" value="14">
+        <button id="parseChapters">Parse Chapters</button>
+    </div>
+
+    <div>
+        <h3>Logs</h3>
+        <pre id="logs"></pre>
+    </div>
+
+    <script>
+        let socket;
+        const logs = document.getElementById('logs');
+
+        function log(message) {
+            logs.textContent += new Date().toLocaleTimeString() + ': ' + message + '\n';
+            logs.scrollTop = logs.scrollHeight;
+        }
+
+        document.getElementById('connect').addEventListener('click', () => {
+            socket = io('http://localhost:3001/parsing');
+            log('Connecting to WebSocket...');
+
+            socket.on('connect', () => {
+                log('Connected to WebSocket');
+            });
+
+            socket.on('disconnect', () => {
+                log('Disconnected from WebSocket');
+            });
+
+            socket.on('parsing_progress', (data) => {
+                log('Progress: ' + JSON.stringify(data, null, 2));
+            });
+
+            socket.on('connect_error', (error) => {
+                log('Connection error: ' + error.message);
+            });
+        });
+
+        document.getElementById('disconnect').addEventListener('click', () => {
+            if (socket) {
+                socket.disconnect();
+                log('Disconnected');
+            }
+        });
+
+        document.getElementById('parseChaptersInfo').addEventListener('click', () => {
+            const url = document.getElementById('url').value;
+            const sessionId = 'test-session-' + Date.now();
+
+            log('Sending parse_chapters_info for URL: ' + url);
+            socket.emit('parse_chapters_info', {
+                dto: { url: url },
+                sessionId: sessionId
+            });
+        });
+
+        document.getElementById('parseChapters').addEventListener('click', () => {
+            const url = document.getElementById('url').value;
+            const titleId = document.getElementById('titleId').value;
+            const chapterNumbers = document.getElementById('chapterNumbers').value.split(',').map(s => s.trim());
+
+            const sessionId = 'test-session-' + Date.now();
+
+            log('Sending parse_chapters for chapters: ' + chapterNumbers.join(', '));
+            socket.emit('parse_chapters', {
+                dto: {
+                    url: url,
+                    titleId: titleId,
+                    chapterNumbers: chapterNumbers
+                },
+                sessionId: sessionId
+            });
+        });
+    </script>
+</body>
+</html>

@@ -270,7 +270,7 @@ export class MangaParserService {
     };
   }
 
-  private getParserForUrl(url: string): MangaParser | null {
+  getParserForUrl(url: string): MangaParser | null {
     for (const [site, parser] of this.parsers) {
       if (url.includes(site)) {
         return parser;
