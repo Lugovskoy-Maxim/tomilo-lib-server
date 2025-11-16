@@ -14,6 +14,7 @@ import { MangaParserModule } from './manga-parser/manga-parser.module';
 import { CollectionsModule } from './collections/collections.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { ShopModule } from './shop/shop.module';
+import { CommentsModule } from './comments/comments.module';
 import { Title, TitleSchema } from './schemas/title.schema';
 import { Chapter, ChapterSchema } from './schemas/chapter.schema';
 import { User, UserSchema } from './schemas/user.schema';
@@ -42,6 +43,7 @@ import { Collection, CollectionSchema } from './schemas/collection.schema';
     CollectionsModule,
     LoggerModule,
     ShopModule,
+    CommentsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
