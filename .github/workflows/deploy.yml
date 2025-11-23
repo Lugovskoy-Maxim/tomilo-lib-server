@@ -24,14 +24,12 @@ jobs:
             cd "$PROJECT_DIR"
             echo "Current directory: $(pwd)"
 
-            # Настраиваем SSH для GitHub (только если есть ключ)
+            # Настраиваем SSH для GitHub
             if [ -n "${{ secrets.GITHUB_SSH_KEY }}" ]; then
               mkdir -p ~/.ssh
               echo "${{ secrets.GITHUB_SSH_KEY }}" > ~/.ssh/github_key
               chmod 600 ~/.ssh/github_key
               ssh-keyscan github.com >> ~/.ssh/known_hosts
-              
-              # Настраиваем git для использования SSH ключа
               git config --global core.sshCommand "ssh -i ~/.ssh/github_key -o StrictHostKeyChecking=no"
             fi
 
@@ -41,7 +39,6 @@ jobs:
               if [ -n "${{ secrets.GITHUB_SSH_KEY }}" ]; then
                 git clone git@github.com:${{ github.repository }}.git .
               else
-                # Используем HTTPS если нет SSH ключа
                 git clone https://github.com/${{ github.repository }}.git .
               fi
             else
@@ -50,27 +47,31 @@ jobs:
               git reset --hard origin/main
             fi
 
-            # Проверяем что мы в правильной папке
-            echo "Project contents:"
-            ls -la
             echo "Package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
 
-            # Устанавливаем MongoDB если она не установлена
+            # Устанавливаем MongoDB с передачей пароля
             if ! command -v mongod &> /dev/null; then
               echo "Installing MongoDB..."
               # Добавляем репозиторий MongoDB
-              wget -qO - https://www.mongodb.org/static/pgp/server-4.4.asc | sudo apt-key add -
-              echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/4.4 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-4.4.list
+              wget -qO - https://www.mongodb.org/static/pgp/server-4.4.asc | echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-key add -
+              echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/4.4 multiverse" | echo "${{ secrets.VM_PASSWORD }}" | sudo -S tee /etc/apt/sources.list.d/mongodb-org-4.4.list
               
               # Обновляем пакеты и устанавливаем MongoDB
-              sudo apt-get update
-              sudo apt-get install -y mongodb-org
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get update
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -y mongodb-org
               
               # Запускаем и включаем MongoDB как службу
-              sudo systemctl start mongod
-              sudo systemctl enable mongod
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl start mongod
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl enable mongod
             else
               echo "MongoDB is already installed"
+            fi
+
+            # Устанавливаем Node.js если не установлен
+            if ! command -v npm &> /dev/null; then
+              echo "Installing Node.js..."
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get update
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -y nodejs npm
             fi
 
             # Устанавливаем зависимости Node.js
