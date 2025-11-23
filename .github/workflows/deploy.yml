@@ -122,6 +122,13 @@ jobs:
             echo "📋 MongoDB logs:"
             docker compose logs mongo --tail=20
 
+            # Обновляем .env для фронтенда
+            if [ -f .env ]; then
+            sed -i 's/PORT=3000/PORT=3001/g' .env
+            sed -i 's|FRONTEND_URL=.*|FRONTEND_URL=https://tomilo-lib.ru|g' .env
+            echo "✅ Updated .env for production"
+            fi
+
             # Запускаем приложение через pm2
             echo "🔄 Starting application with PM2..."
             pm2 stop tomilo-lib-server 2>/dev/null || true
