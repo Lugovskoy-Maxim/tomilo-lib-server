@@ -18,126 +18,78 @@ jobs:
           script: |
             echo "🚀 Deploying to cloud.ru server..."
 
-            # Создаем папку проекта если не существует
             PROJECT_DIR="/home/${{ secrets.VM_USERNAME }}/tomilo-lib-server"
-            mkdir -p "$PROJECT_DIR"
             cd "$PROJECT_DIR"
-            echo "Current directory: $(pwd)"
 
-            # Настраиваем SSH для GitHub
-            if [ -n "${{ secrets.GITHUB_SSH_KEY }}" ]; then
-              mkdir -p ~/.ssh
-              echo "${{ secrets.GITHUB_SSH_KEY }}" > ~/.ssh/github_key
-              chmod 600 ~/.ssh/github_key
-              ssh-keyscan github.com >> ~/.ssh/known_hosts
-              git config --global core.sshCommand "ssh -i ~/.ssh/github_key -o StrictHostKeyChecking=no"
-            fi
+            # Обновляем код
+            git fetch origin
+            git reset --hard origin/main
 
-            # Клонируем или обновляем репозиторий
-            if [ ! -d .git ]; then
-              echo "Cloning repository for the first time..."
-              if [ -n "${{ secrets.GITHUB_SSH_KEY }}" ]; then
-                git clone git@github.com:${{ github.repository }}.git .
-              else
-                git clone https://github.com/${{ github.repository }}.git .
-              fi
-            else
-              echo "Updating existing repository..."
-              git fetch origin
-              git reset --hard origin/main
-            fi
-
-            echo "Package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
-
-            # Устанавливаем Node.js и npm правильно
-            if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
-              echo "Installing Node.js and npm..."
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get update
-              
-              # Устанавливаем curl если нет
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -y curl
-              
-              # Скачиваем и выполняем скрипт установки Node.js (включая npm)
-              curl -fsSL https://deb.nodesource.com/setup_18.x -o node_setup.sh
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S bash node_setup.sh
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -y nodejs
-              
-              # Проверяем установку
-              echo "Node.js version: $(node --version)"
-              echo "npm version: $(npm --version)"
-              
-              # Устанавливаем PM2 глобально
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S npm install -g pm2
-              
-              # Очищаем временный файл
-              rm -f node_setup.sh
-            else
-              echo "Node.js is already installed"
-              echo "Node.js version: $(node --version)"
-              echo "npm version: $(npm --version)"
-            fi
-
-            # Устанавливаем MongoDB используя Docker (надежнее)
-            if ! command -v docker &> /dev/null; then
-              echo "Installing Docker..."
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get update
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -y docker.io
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl start docker
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl enable docker
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S usermod -aG docker $USER
-            else
-              echo "Docker is already installed"
-            fi
-
-            # Запускаем MongoDB в Docker
-            if ! echo "${{ secrets.VM_PASSWORD }}" | sudo -S docker ps | grep mongodb &> /dev/null; then
-              echo "Starting MongoDB in Docker..."
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S docker run -d \
-                --name mongodb \
-                -p 27017:27017 \
-                -e MONGO_INITDB_ROOT_USERNAME=admin \
-                -e MONGO_INITDB_ROOT_PASSWORD=password \
-                --restart unless-stopped \
-                mongo:latest
-              
-              # Ждем запуска MongoDB
-              sleep 10
-            else
-              echo "MongoDB is already running in Docker"
-            fi
-
-            # Устанавливаем зависимости проекта
-            echo "Installing project dependencies..."
+            # Устанавливаем зависимости
             npm install
 
-            # Настраиваем переменные окружения
-            if [ -f .env.example ]; then
-              cp .env.example .env
+            # Убедимся что MongoDB установлена и запущена
+            if ! command -v mongod &> /dev/null; then
+              echo "Installing MongoDB..."
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt update
+              
+              # Устанавливаем зависимости для MongoDB
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt install -y wget gnupg
+              
+              # Добавляем репозиторий MongoDB
+              wget -qO - https://www.mongodb.org/static/pgp/server-6.0.asc | echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-key add -
+              echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/6.0 multiverse" | echo "${{ secrets.VM_PASSWORD }}" | sudo -S tee /etc/apt/sources.list.d/mongodb-org-6.0.list
+              
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt update
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt install -y mongodb-org
+              
+              # Запускаем MongoDB
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl start mongod
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl enable mongod
+              echo "MongoDB installed and started"
+            else
+              echo "MongoDB is already installed"
             fi
 
-            # Создаем пользователя MongoDB если скрипт существует
+            # Перезапускаем MongoDB чтобы убедиться что он работает
+            echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl restart mongod
+
+            # Ждем запуска MongoDB
+            sleep 3
+
+            # Проверяем статус MongoDB
+            echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl status mongod --no-pager
+
+            # Создаем пользователя если нужно
             if [ -f create-user.js ]; then
               echo "Creating MongoDB user..."
-              # Даем время MongoDB полностью запуститься
+              # Даем дополнительное время для полного запуска MongoDB
               sleep 5
-              node create-user.js || echo "MongoDB user creation completed or skipped"
+              node create-user.js || echo "User creation completed or skipped"
             fi
 
             # Собираем приложение
-            echo "Building application..."
             npm run build
 
-            # Перезапускаем приложение через PM2
-            echo "Restarting application with PM2..."
+            # Проверяем что приложение может запуститься
+            echo "Testing application startup..."
+            timeout 10s node dist/main.js || echo "Application test completed"
+
+            # Перезапускаем приложение в PM2
             pm2 stop tomilo-lib-server 2>/dev/null || true
             pm2 delete tomilo-lib-server 2>/dev/null || true
             pm2 start dist/main.js --name "tomilo-lib-server"
-            pm2 save
-            echo "${{ secrets.VM_PASSWORD }}" | sudo -S env PATH=$PATH:/usr/bin pm2 startup -u ${{ secrets.VM_USERNAME }} --hp /home/${{ secrets.VM_USERNAME }} 2>/dev/null || echo "PM2 startup setup skipped"
+            
+            # Ждем и проверяем статус
+            sleep 5
+            echo "PM2 status:"
+            pm2 status
+            
+            echo "✅ Deployment completed!"
 
-            # Очистка
-            if [ -f ~/.ssh/github_key ]; then
-              rm -f ~/.ssh/github_key
+            # Показываем логи если приложение упало
+            if pm2 status | grep -q "errored"; then
+              echo "❌ Application has errors. Showing logs:"
+              pm2 logs tomilo-lib-server --lines 30
+              exit 1
             fi
-
-            echo "✅ Successfully deployed!"
