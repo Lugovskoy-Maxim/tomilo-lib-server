@@ -96,6 +96,7 @@ jobs:
 
             # Запускаем mongo в docker
             echo "🐳 Starting MongoDB container..."
+            cp docker-compose.yml.example docker-compose.yml
             docker compose up -d --remove-orphans mongo
 
             # Проверяем статус контейнера
