@@ -16,33 +16,7 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           port: ${{ secrets.VM_SSH_PORT || 22 }}
           script: |
-            echo "🚀 Deploying to cloud.ru server with Docker..."
-
-            # Установка Docker Compose V2 если не установлен
-            if ! docker compose version &> /dev/null; then
-              echo "📦 Installing Docker Compose V2..."
-              
-              # Удаляем старую версию если есть
-              sudo apt remove -y docker-compose 2>/dev/null || true
-              
-              # Скачиваем бинарник Docker Compose
-              sudo mkdir -p /usr/local/lib/docker/cli-plugins
-              sudo curl -SL https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
-              
-              # Даем права на выполнение
-              sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
-              
-              # Создаем симлинк для обратной совместимости
-              sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/bin/docker-compose
-              
-              echo "✅ Docker Compose V2 installed"
-            else
-              echo "✅ Docker Compose is already installed"
-            fi
-
-            # Проверяем версию
-            echo "Docker Compose version:"
-            docker compose version
+            echo "🚀 Deploying to cloud.ru server..."
 
             # Создаем папку проекта если не существует
             PROJECT_DIR="/home/${{ secrets.VM_USERNAME }}/tomilo-lib-server"
@@ -56,7 +30,7 @@ jobs:
               echo "${{ secrets.GITHUB_SSH_KEY }}" > ~/.ssh/github_key
               chmod 600 ~/.ssh/github_key
               ssh-keyscan github.com >> ~/.ssh/known_hosts
-              
+
               # Настраиваем git для использования SSH ключа
               git config --global core.sshCommand "ssh -i ~/.ssh/github_key -o StrictHostKeyChecking=no"
             fi
@@ -102,53 +76,51 @@ jobs:
             echo "Node.js version: $(node --version)"
             echo "npm version: $(npm --version)"
 
-            # Копируем файлы настройки приложений из шаблонов 
-            if [ -f .env.example ]; then
+            # Копируем .env из примера, если нет
+            if [ -f .env.example ] && [ ! -f .env ]; then
               cp .env.example .env
               echo "✅ .env created from example"
             fi
 
-            if [ -f docker-compose.yml.example ]; then
-              cp docker-compose.yml.example docker-compose.yml
-              echo "✅ docker-compose.yml created from example"
+            # Обновляем .env для порта 3001
+            if [ -f .env ]; then
+              sed -i 's/PORT=3000/PORT=3001/g' .env
+              echo "✅ Updated PORT to 3001 in .env"
             fi
 
-            # Переустанавливаем зависимости с правильной версией Node
-            echo "Installing dependencies with Node 20..."
+            # Устанавливаем зависимости и собираем проект
+            echo "Installing dependencies and building..."
             rm -rf node_modules
             npm install
-
-            # Собираем приложение
             npm run build
 
-            # Запускаем контейнеры с Docker Compose V2
-            echo "🐳 Starting Docker containers..."
-            docker compose down || true
-            docker compose up -d --build
+            # Запускаем mongo в docker
+            echo "🐳 Starting MongoDB container..."
+            docker compose up -d --remove-orphans mongo
 
-            # Ждем запуска контейнеров
-            sleep 10
+            # Проверяем статус контейнера
+            echo "📊 MongoDB container status:"
+            docker compose ps mongo
 
-            # Проверяем статус контейнеров
-            echo "📊 Container status:"
-            docker compose ps
+            # Проверяем логи Mongo
+            echo "📋 MongoDB logs:"
+            docker compose logs mongo --tail=20
 
-            # Проверяем логи
-            echo "📋 Application logs:"
-            docker compose logs app --tail=20
+            # Запускаем приложение через pm2
+            echo "🔄 Starting application with PM2..."
+            pm2 stop tomilo-lib-server 2>/dev/null || true
+            pm2 delete tomilo-lib-server 2>/dev/null || true
+            pm2 start dist/main.js --name "tomilo-lib-server"
+            pm2 save
 
-            # Проверяем здоровье приложения
-            echo "🏥 Health check..."
-            if curl -f http://localhost:3001/health 2>/dev/null || curl -f http://localhost:3001 2>/dev/null; then
-              echo "✅ Application is healthy!"
-            else
-              echo "⚠️  Application health check failed, but continuing..."
-              docker compose logs app --tail=30
-            fi
+            # Вывод версии Node и состояние pm2
+            echo "Node.js version used by PM2: $(pm2 show tomilo-lib-server | grep 'Node.js Version' || echo 'N/A')"
+            echo "PM2 process list:"
+            pm2 ls
 
-            # Очистка
+            # Очистка временных ключей SSH
             if [ -f ~/.ssh/github_key ]; then
               rm -f ~/.ssh/github_key
             fi
 
-            echo "✅ Successfully deployed with Docker!"
+            echo "✅ Successfully deployed MongoDB in Docker and app with PM2 on server."
