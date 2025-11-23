@@ -47,18 +47,55 @@ jobs:
               echo "✅ MongoDB already installed"
             fi
 
+            # Убираем проблемную переменную окружения если она есть
+            if grep -q "MONGODB_CONFIG_OVERRIDE_NOFORK" /etc/environment; then
+              echo "🔄 Removing MONGODB_CONFIG_OVERRIDE_NOFORK from environment..."
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S sed -i '/MONGODB_CONFIG_OVERRIDE_NOFORK/d' /etc/environment
+            fi
+
+            # Также убираем из профилей если есть
+            for profile in ~/.bashrc ~/.profile ~/.bash_profile; do
+              if [ -f "$profile" ] && grep -q "MONGODB_CONFIG_OVERRIDE_NOFORK" "$profile"; then
+                echo "🔄 Removing MONGODB_CONFIG_OVERRIDE_NOFORK from $profile..."
+                sed -i '/MONGODB_CONFIG_OVERRIDE_NOFORK/d' "$profile"
+              fi
+            done
+
+            # Обновляем environment
+            source /etc/environment 2>/dev/null || true
+
+            # Создаем директорию для данных MongoDB если не существует
+            echo "${{ secrets.VM_PASSWORD }}" | sudo -S mkdir -p /data/db
+            echo "${{ secrets.VM_PASSWORD }}" | sudo -S chown mongodb:mongodb /data/db 2>/dev/null || true
+
             # Запускаем и включаем автозагрузку MongoDB
+            echo "🔄 Starting MongoDB..."
+            echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl daemon-reload
+            echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl stop mongod 2>/dev/null || true
             echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl start mongod
             echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl enable mongod
-            sleep 3
+            sleep 5
 
             # Проверяем статус MongoDB
             if echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl is-active --quiet mongod; then
               echo "✅ MongoDB is running"
             else
-              echo "❌ MongoDB failed to start"
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl status mongod
-              exit 1
+              echo "❌ MongoDB failed to start, checking logs..."
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S journalctl -u mongod --no-pager -n 20
+              
+              # Пробуем альтернативный способ запуска
+              echo "🔄 Trying alternative startup method..."
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S mkdir -p /var/lib/mongodb
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S chown mongodb:mongodb /var/lib/mongodb
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S mongod --fork --logpath /var/log/mongodb/mongod.log --dbpath /var/lib/mongodb
+              sleep 3
+              
+              if pgrep mongod > /dev/null; then
+                echo "✅ MongoDB started manually"
+              else
+                echo "❌ MongoDB still failed to start"
+                exit 1
+              fi
             fi
 
             # Подгружаем nvm, если он установлен
@@ -86,7 +123,7 @@ jobs:
             # Создаем пользователя если нужно
             if [ -f create-user.js ]; then
               echo "Creating MongoDB user..."
-              sleep 2
+              sleep 5  # Даем больше времени MongoDB для полного запуска
               node create-user.js || echo "User creation completed"
             fi
 
