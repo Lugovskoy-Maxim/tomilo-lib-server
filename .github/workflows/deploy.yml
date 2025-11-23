@@ -102,6 +102,13 @@ jobs:
             # Проверяем статус контейнера
             echo "📊 MongoDB container status:"
             docker compose ps mongo
+            echo "⏳ Waiting for MongoDB to be ready..."
+            sleep 10
+            docker compose exec -T mongo mongosh --eval "db.adminCommand('ping')" -u admin -p password123 --authenticationDatabase admin
+            echo "✅ MongoDB is ready and authenticated"
+
+            echo "🔍 Checking MongoDB connection details..."
+            docker compose exec -T mongo mongosh -u admin -p password123 --authenticationDatabase admin --eval "db.runCommand({connectionStatus: 1})"
 
             # Проверяем логи Mongo
             echo "📋 MongoDB logs:"
