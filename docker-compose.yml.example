@@ -9,7 +9,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: password123
       MONGO_INITDB_DATABASE: tomilo-lib_db
     ports:
-      - 27017:27017
+      - "27017:27017"
     volumes:
       - ./mongo-data-4.4:/data/db
     command: ["--auth"]
