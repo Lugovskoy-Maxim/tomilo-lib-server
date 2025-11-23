@@ -1,4 +1,4 @@
-name: Deploy to home - Server Build
+name: Deploy to home server - Docker
 
 on:
   push:
@@ -16,7 +16,33 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY }}
           port: ${{ secrets.VM_SSH_PORT || 22 }}
           script: |
-            echo "🚀 Deploying to cloud.ru server..."
+            echo "🚀 Deploying to cloud.ru server with Docker..."
+
+            # Установка Docker Compose V2 если не установлен
+            if ! docker compose version &> /dev/null; then
+              echo "📦 Installing Docker Compose V2..."
+              
+              # Удаляем старую версию если есть
+              sudo apt remove -y docker-compose 2>/dev/null || true
+              
+              # Скачиваем бинарник Docker Compose
+              sudo mkdir -p /usr/local/lib/docker/cli-plugins
+              sudo curl -SL https://github.com/docker/compose/releases/download/v2.24.5/docker-compose-linux-x86_64 -o /usr/local/lib/docker/cli-plugins/docker-compose
+              
+              # Даем права на выполнение
+              sudo chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+              
+              # Создаем симлинк для обратной совместимости
+              sudo ln -sf /usr/local/lib/docker/cli-plugins/docker-compose /usr/bin/docker-compose
+              
+              echo "✅ Docker Compose V2 installed"
+            else
+              echo "✅ Docker Compose is already installed"
+            fi
+
+            # Проверяем версию
+            echo "Docker Compose version:"
+            docker compose version
 
             # Создаем папку проекта если не существует
             PROJECT_DIR="/home/${{ secrets.VM_USERNAME }}/tomilo-lib-server"
@@ -25,9 +51,9 @@ jobs:
             echo "Current directory: $(pwd)"
 
             # Настраиваем SSH для GitHub (только если есть ключ)
-            if [ -n "${{ secrets.VM_SSH_KEY }}" ]; then
+            if [ -n "${{ secrets.GITHUB_SSH_KEY }}" ]; then
               mkdir -p ~/.ssh
-              echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/github_key
+              echo "${{ secrets.GITHUB_SSH_KEY }}" > ~/.ssh/github_key
               chmod 600 ~/.ssh/github_key
               ssh-keyscan github.com >> ~/.ssh/known_hosts
               
@@ -38,7 +64,7 @@ jobs:
             # Клонируем или обновляем репозиторий
             if [ ! -d .git ]; then
               echo "Cloning repository for the first time..."
-              if [ -n "${{ secrets.VM_SSH_KEY }}" ]; then
+              if [ -n "${{ secrets.GITHUB_SSH_KEY }}" ]; then
                 git clone git@github.com:${{ github.repository }}.git .
               else
                 # Используем HTTPS если нет SSH ключа
@@ -55,28 +81,74 @@ jobs:
             ls -la
             echo "Package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
 
-            # Копируем файлы настройки приложений из шаблонов 
-            cp .env.example .env
-            cp docker-compose.yml.example docker-compose.yml
+            # Устанавливаем правильную версию Node.js через nvm
+            echo "🔧 Setting up Node.js 20..."
+            if [ -s "$HOME/.nvm/nvm.sh" ]; then
+              source "$HOME/.nvm/nvm.sh"
+            else
+              echo "Installing nvm..."
+              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+              source "$HOME/.nvm/nvm.sh"
+            fi
 
-            # Всё делаем на сервере
+            # Устанавливаем Node.js 20 если не установлена
+            if ! nvm ls 20 &> /dev/null; then
+              echo "Installing Node.js 20..."
+              nvm install 20
+            fi
+            nvm use 20
+            nvm alias default 20
+
+            echo "Node.js version: $(node --version)"
+            echo "npm version: $(npm --version)"
+
+            # Копируем файлы настройки приложений из шаблонов 
+            if [ -f .env.example ]; then
+              cp .env.example .env
+              echo "✅ .env created from example"
+            fi
+
+            if [ -f docker-compose.yml.example ]; then
+              cp docker-compose.yml.example docker-compose.yml
+              echo "✅ docker-compose.yml created from example"
+            fi
+
+            # Переустанавливаем зависимости с правильной версией Node
+            echo "Installing dependencies with Node 20..."
+            rm -rf node_modules
             npm install
+
+            # Собираем приложение
             npm run build
 
-            # Запускаем контейнеры
-            docker-compose down || true
-            docker-compose up -d --build
+            # Запускаем контейнеры с Docker Compose V2
+            echo "🐳 Starting Docker containers..."
+            docker compose down || true
+            docker compose up -d --build
 
-            # Перезапускаем приложение
-            pm2 stop tomilo-lib-server || true
-            pm2 delete tomilo-lib-server || true
-            pm2 start dist/main.js --name "tomilo-lib-server"
-            pm2 save
-            pm2 startup
+            # Ждем запуска контейнеров
+            sleep 10
+
+            # Проверяем статус контейнеров
+            echo "📊 Container status:"
+            docker compose ps
+
+            # Проверяем логи
+            echo "📋 Application logs:"
+            docker compose logs app --tail=20
+
+            # Проверяем здоровье приложения
+            echo "🏥 Health check..."
+            if curl -f http://localhost:3001/health 2>/dev/null || curl -f http://localhost:3001 2>/dev/null; then
+              echo "✅ Application is healthy!"
+            else
+              echo "⚠️  Application health check failed, but continuing..."
+              docker compose logs app --tail=30
+            fi
 
             # Очистка
             if [ -f ~/.ssh/github_key ]; then
               rm -f ~/.ssh/github_key
             fi
 
-            echo "✅ Successfully deployed!"
+            echo "✅ Successfully deployed with Docker!"
