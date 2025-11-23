@@ -1,4 +1,4 @@
-name: Deploy to home server - Server Build
+name: Deploy to home - Server Build
 
 on:
   push:
@@ -18,141 +18,65 @@ jobs:
           script: |
             echo "🚀 Deploying to cloud.ru server..."
 
+            # Создаем папку проекта если не существует
             PROJECT_DIR="/home/${{ secrets.VM_USERNAME }}/tomilo-lib-server"
+            mkdir -p "$PROJECT_DIR"
             cd "$PROJECT_DIR"
+            echo "Current directory: $(pwd)"
 
-            # Обновляем код
-            git fetch origin
-            git reset --hard origin/main
-
-            # Установка MongoDB если не установлена
-            if ! command -v mongod &> /dev/null; then
-              echo "📦 Installing MongoDB..."
+            # Настраиваем SSH для GitHub (только если есть ключ)
+            if [ -n "${{ secrets.VM_SSH_KEY }}" ]; then
+              mkdir -p ~/.ssh
+              echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/github_key
+              chmod 600 ~/.ssh/github_key
+              ssh-keyscan github.com >> ~/.ssh/known_hosts
               
-              # Скачиваем пакеты MongoDB
-              wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/6.0/multiverse/binary-amd64/mongodb-org-server_6.0.15_amd64.deb
-              wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/6.0/multiverse/binary-amd64/mongodb-org-shell_6.0.15_amd64.deb
-              wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/6.0/multiverse/binary-amd64/mongodb-org-mongos_6.0.15_amd64.deb
-              wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/6.0/multiverse/binary-amd64/mongodb-org-tools_6.0.15_amd64.deb
-
-              # Устанавливаем пакеты
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S dpkg -i mongodb-org-*.deb
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -f  # Устанавливаем зависимости
-              
-              # Очищаем скачанные пакеты
-              rm -f mongodb-org-*.deb
-              
-              echo "✅ MongoDB installed successfully"
-            else
-              echo "✅ MongoDB already installed"
+              # Настраиваем git для использования SSH ключа
+              git config --global core.sshCommand "ssh -i ~/.ssh/github_key -o StrictHostKeyChecking=no"
             fi
 
-            # Убираем проблемную переменную окружения если она есть
-            if grep -q "MONGODB_CONFIG_OVERRIDE_NOFORK" /etc/environment; then
-              echo "🔄 Removing MONGODB_CONFIG_OVERRIDE_NOFORK from environment..."
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S sed -i '/MONGODB_CONFIG_OVERRIDE_NOFORK/d' /etc/environment
-            fi
-
-            # Также убираем из профилей если есть
-            for profile in ~/.bashrc ~/.profile ~/.bash_profile; do
-              if [ -f "$profile" ] && grep -q "MONGODB_CONFIG_OVERRIDE_NOFORK" "$profile"; then
-                echo "🔄 Removing MONGODB_CONFIG_OVERRIDE_NOFORK from $profile..."
-                sed -i '/MONGODB_CONFIG_OVERRIDE_NOFORK/d' "$profile"
-              fi
-            done
-
-            # Обновляем environment
-            source /etc/environment 2>/dev/null || true
-
-            # Создаем директорию для данных MongoDB если не существует
-            echo "${{ secrets.VM_PASSWORD }}" | sudo -S mkdir -p /data/db
-            echo "${{ secrets.VM_PASSWORD }}" | sudo -S chown mongodb:mongodb /data/db 2>/dev/null || true
-
-            # Запускаем и включаем автозагрузку MongoDB
-            echo "🔄 Starting MongoDB..."
-            echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl daemon-reload
-            echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl stop mongod 2>/dev/null || true
-            echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl start mongod
-            echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl enable mongod
-            sleep 5
-
-            # Проверяем статус MongoDB
-            if echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl is-active --quiet mongod; then
-              echo "✅ MongoDB is running"
-            else
-              echo "❌ MongoDB failed to start, checking logs..."
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S journalctl -u mongod --no-pager -n 20
-              
-              # Пробуем альтернативный способ запуска
-              echo "🔄 Trying alternative startup method..."
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S mkdir -p /var/lib/mongodb
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S chown mongodb:mongodb /var/lib/mongodb
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S mongod --fork --logpath /var/log/mongodb/mongod.log --dbpath /var/lib/mongodb
-              sleep 3
-              
-              if pgrep mongod > /dev/null; then
-                echo "✅ MongoDB started manually"
+            # Клонируем или обновляем репозиторий
+            if [ ! -d .git ]; then
+              echo "Cloning repository for the first time..."
+              if [ -n "${{ secrets.VM_SSH_KEY }}" ]; then
+                git clone git@github.com:${{ github.repository }}.git .
               else
-                echo "❌ MongoDB still failed to start"
-                exit 1
+                # Используем HTTPS если нет SSH ключа
+                git clone https://github.com/${{ github.repository }}.git .
               fi
-            fi
-
-            # Подгружаем nvm, если он установлен
-            if [ -s "$HOME/.nvm/nvm.sh" ]; then
-              source "$HOME/.nvm/nvm.sh"
             else
-              echo "nvm is not installed. Installing nvm..."
-              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
-              source "$HOME/.nvm/nvm.sh"
+              echo "Updating existing repository..."
+              git fetch origin
+              git reset --hard origin/main
             fi
 
-            # Проверяем и устанавливаем Node.js 20
-            if ! nvm ls 20 &> /dev/null; then
-              echo "Installing Node.js 20..."
-              nvm install 20
-            fi
-            nvm use 20
-            nvm alias default 20
+            # Проверяем что мы в правильной папке
+            echo "Project contents:"
+            ls -la
+            echo "Package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
 
-            # Переустанавливаем зависимости
-            echo "Installing dependencies..."
-            rm -rf node_modules
+            # Копируем файлы настройки приложений из шаблонов 
+            cp .env.example .env
+            cp docker-compose.yml.example docker-compose.yml
+
+            # Всё делаем на сервере
             npm install
-
-            # Создаем пользователя если нужно
-            if [ -f create-user.js ]; then
-              echo "Creating MongoDB user..."
-              sleep 5  # Даем больше времени MongoDB для полного запуска
-              node create-user.js || echo "User creation completed"
-            fi
-
-            # Собираем приложение
             npm run build
 
-            # Проверяем сборку
-            if [ -f dist/main.js ]; then
-              echo "Build successful"
-            else
-              echo "Build failed!"
-              exit 1
-            fi
+            # Запускаем контейнеры
+            docker-compose down || true
+            docker-compose up -d --build
 
             # Перезапускаем приложение
-            pm2 stop tomilo-lib-server 2>/dev/null || true
-            pm2 delete tomilo-lib-server 2>/dev/null || true
+            pm2 stop tomilo-lib-server || true
+            pm2 delete tomilo-lib-server || true
             pm2 start dist/main.js --name "tomilo-lib-server"
-            
-            # Ждем и проверяем
-            sleep 5
-            echo "PM2 status:"
-            pm2 status
-            
-            # Если есть ошибки - показываем логи
-            if pm2 status | grep -q "errored"; then
-              echo "Application errors:"
-              pm2 logs tomilo-lib-server --lines 20
-              exit 1
-            else
-              echo "✅ Successfully deployed!"
+            pm2 save
+            pm2 startup
+
+            # Очистка
+            if [ -f ~/.ssh/github_key ]; then
+              rm -f ~/.ssh/github_key
             fi
+
+            echo "✅ Successfully deployed!"
