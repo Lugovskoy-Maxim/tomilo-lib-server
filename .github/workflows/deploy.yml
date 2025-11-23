@@ -25,6 +25,42 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
+            # Установка MongoDB если не установлена
+            if ! command -v mongod &> /dev/null; then
+              echo "📦 Installing MongoDB..."
+              
+              # Скачиваем пакеты MongoDB
+              wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/6.0/multiverse/binary-amd64/mongodb-org-server_6.0.15_amd64.deb
+              wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/6.0/multiverse/binary-amd64/mongodb-org-shell_6.0.15_amd64.deb
+              wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/6.0/multiverse/binary-amd64/mongodb-org-mongos_6.0.15_amd64.deb
+              wget https://repo.mongodb.org/apt/ubuntu/dists/jammy/mongodb-org/6.0/multiverse/binary-amd64/mongodb-org-tools_6.0.15_amd64.deb
+
+              # Устанавливаем пакеты
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S dpkg -i mongodb-org-*.deb
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -f  # Устанавливаем зависимости
+              
+              # Очищаем скачанные пакеты
+              rm -f mongodb-org-*.deb
+              
+              echo "✅ MongoDB installed successfully"
+            else
+              echo "✅ MongoDB already installed"
+            fi
+
+            # Запускаем и включаем автозагрузку MongoDB
+            echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl start mongod
+            echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl enable mongod
+            sleep 3
+
+            # Проверяем статус MongoDB
+            if echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl is-active --quiet mongod; then
+              echo "✅ MongoDB is running"
+            else
+              echo "❌ MongoDB failed to start"
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl status mongod
+              exit 1
+            fi
+
             # Подгружаем nvm, если он установлен
             if [ -s "$HOME/.nvm/nvm.sh" ]; then
               source "$HOME/.nvm/nvm.sh"
@@ -46,10 +82,6 @@ jobs:
             echo "Installing dependencies..."
             rm -rf node_modules
             npm install
-
-            # Убедимся что MongoDB работает
-            echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl restart mongod
-            sleep 3
 
             # Создаем пользователя если нужно
             if [ -f create-user.js ]; then
