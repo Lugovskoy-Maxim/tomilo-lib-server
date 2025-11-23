@@ -1,4 +1,4 @@
-name: Deploy to Cloud.ru - Server Build
+name: Deploy to home server - Server Build
 
 on:
   push:
@@ -8,7 +8,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy to cloud.ru server
+      - name: Deploy to home server
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.VM_HOST }}
@@ -25,71 +25,58 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
-            # Устанавливаем зависимости
-            npm install
-
-            # Убедимся что MongoDB установлена и запущена
-            if ! command -v mongod &> /dev/null; then
-              echo "Installing MongoDB..."
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt update
-              
-              # Устанавливаем зависимости для MongoDB
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt install -y wget gnupg
-              
-              # Добавляем репозиторий MongoDB
-              wget -qO - https://www.mongodb.org/static/pgp/server-6.0.asc | echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-key add -
-              echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/6.0 multiverse" | echo "${{ secrets.VM_PASSWORD }}" | sudo -S tee /etc/apt/sources.list.d/mongodb-org-6.0.list
-              
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt update
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt install -y mongodb-org
-              
-              # Запускаем MongoDB
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl start mongod
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl enable mongod
-              echo "MongoDB installed and started"
+            # Устанавливаем Node.js 18 (LTS) если нужно
+            if ! nvm ls 18 &> /dev/null; then
+              echo "Installing Node.js 18..."
+              nvm install 18
+              nvm use 18
+              nvm alias default 18
             else
-              echo "MongoDB is already installed"
+              nvm use 18
             fi
 
-            # Перезапускаем MongoDB чтобы убедиться что он работает
+            # Переустанавливаем зависимости
+            echo "Installing dependencies..."
+            rm -rf node_modules
+            npm install
+
+            # Убедимся что MongoDB работает
             echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl restart mongod
-
-            # Ждем запуска MongoDB
             sleep 3
-
-            # Проверяем статус MongoDB
-            echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl status mongod --no-pager
 
             # Создаем пользователя если нужно
             if [ -f create-user.js ]; then
               echo "Creating MongoDB user..."
-              # Даем дополнительное время для полного запуска MongoDB
-              sleep 5
-              node create-user.js || echo "User creation completed or skipped"
+              sleep 2
+              node create-user.js || echo "User creation completed"
             fi
 
             # Собираем приложение
             npm run build
 
-            # Проверяем что приложение может запуститься
-            echo "Testing application startup..."
-            timeout 10s node dist/main.js || echo "Application test completed"
+            # Проверяем сборку
+            if [ -f dist/main.js ]; then
+              echo "Build successful"
+            else
+              echo "Build failed!"
+              exit 1
+            fi
 
-            # Перезапускаем приложение в PM2
+            # Перезапускаем приложение
             pm2 stop tomilo-lib-server 2>/dev/null || true
             pm2 delete tomilo-lib-server 2>/dev/null || true
             pm2 start dist/main.js --name "tomilo-lib-server"
             
-            # Ждем и проверяем статус
+            # Ждем и проверяем
             sleep 5
             echo "PM2 status:"
             pm2 status
             
-            echo "✅ Deployment completed!"
-
-            # Показываем логи если приложение упало
+            # Если есть ошибки - показываем логи
             if pm2 status | grep -q "errored"; then
-              echo "❌ Application has errors. Showing logs:"
-              pm2 logs tomilo-lib-server --lines 30
+              echo "Application errors:"
+              pm2 logs tomilo-lib-server --lines 20
               exit 1
+            else
+              echo "✅ Successfully deployed!"
             fi
