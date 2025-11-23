@@ -49,50 +49,77 @@ jobs:
 
             echo "Package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
 
-            # Устанавливаем MongoDB с передачей пароля
+            # Очищаем возможные предыдущие ошибки MongoDB
+            echo "${{ secrets.VM_PASSWORD }}" | sudo -S rm -f /etc/apt/sources.list.d/mongodb-org-4.4.list
+
+            # Устанавливаем Node.js (приоритетная задача)
+            if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+              echo "Installing Node.js..."
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get update
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -y curl
+              
+              # Устанавливаем Node.js 18.x (LTS)
+              curl -fsSL https://deb.nodesource.com/setup_18.x | echo "${{ secrets.VM_PASSWORD }}" | sudo -S -E bash -
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -y nodejs
+              
+              # Устанавливаем PM2 глобально
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S npm install -g pm2
+            else
+              echo "Node.js is already installed"
+            fi
+
+            # Проверяем установку Node.js
+            echo "Node.js version: $(node --version)"
+            echo "npm version: $(npm --version)"
+
+            # Устанавливаем MongoDB (упрощенная версия)
             if ! command -v mongod &> /dev/null; then
               echo "Installing MongoDB..."
-              # Добавляем репозиторий MongoDB
-              wget -qO - https://www.mongodb.org/static/pgp/server-4.4.asc | echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-key add -
-              echo "deb [ arch=amd64,arm64 ] https://repo.mongodb.org/apt/ubuntu focal/mongodb-org/4.4 multiverse" | echo "${{ secrets.VM_PASSWORD }}" | sudo -S tee /etc/apt/sources.list.d/mongodb-org-4.4.list
               
-              # Обновляем пакеты и устанавливаем MongoDB
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get update
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -y mongodb-org
+              # Устанавливаем MongoDB из официальных репозиториев Ubuntu (проще)
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -y mongodb
               
-              # Запускаем и включаем MongoDB как службу
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl start mongod
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl enable mongod
+              # Или альтернативный вариант - использовать Docker
+              # echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -y docker.io
+              # echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl start docker
+              # echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl enable docker
+              # echo "${{ secrets.VM_PASSWORD }}" | sudo -S docker run -d -p 27017:27017 --name mongodb mongo:latest
             else
               echo "MongoDB is already installed"
             fi
 
-            # Устанавливаем Node.js если не установлен
-            if ! command -v npm &> /dev/null; then
-              echo "Installing Node.js..."
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get update
-              echo "${{ secrets.VM_PASSWORD }}" | sudo -S apt-get install -y nodejs npm
+            # Запускаем MongoDB если установлен
+            if command -v mongod &> /dev/null; then
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl start mongodb || true
+              echo "${{ secrets.VM_PASSWORD }}" | sudo -S systemctl enable mongodb || true
             fi
 
-            # Устанавливаем зависимости Node.js
+            # Устанавливаем зависимости проекта
+            echo "Installing project dependencies..."
             npm install
 
             # Настраиваем переменные окружения
-            cp .env.example .env
+            if [ -f .env.example ]; then
+              cp .env.example .env
+            fi
 
-            # Создаем пользователя MongoDB если он не существует
-            echo "Creating MongoDB user..."
-            node create-user.js
+            # Создаем пользователя MongoDB если скрипт существует
+            if [ -f create-user.js ]; then
+              echo "Creating MongoDB user..."
+              node create-user.js || echo "MongoDB user creation skipped or failed"
+            fi
 
             # Собираем приложение
+            echo "Building application..."
             npm run build
 
-            # Перезапускаем приложение
-            pm2 stop tomilo-lib-server || true
-            pm2 delete tomilo-lib-server || true
+            # Перезапускаем приложение через PM2
+            echo "Restarting application with PM2..."
+            pm2 stop tomilo-lib-server 2>/dev/null || true
+            pm2 delete tomilo-lib-server 2>/dev/null || true
             pm2 start dist/main.js --name "tomilo-lib-server"
             pm2 save
-            pm2 startup
+            pm2 startup 2>/dev/null || echo "PM2 startup setup skipped"
 
             # Очистка
             if [ -f ~/.ssh/github_key ]; then
