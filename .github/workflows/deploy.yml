@@ -105,6 +105,13 @@ jobs:
             # Проверяем логи Mongo
             echo "📋 MongoDB logs:"
             docker compose logs mongo --tail=20
+          environment:
+            - MONGO_LOGIN=admin
+            - MONGO_PASSWORD=password123
+            - MONGO_HOST=localhost
+            - MONGO_PORT=27017
+            - MONGO_AUTHDATABASE=admin
+            - MONGO_DATABASE=tomilo-lib_db
 
             # Запускаем приложение через pm2
             echo "🔄 Starting application with PM2..."
