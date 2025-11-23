@@ -25,15 +25,22 @@ jobs:
             git fetch origin
             git reset --hard origin/main
 
-            # Устанавливаем Node.js 18 (LTS) если нужно
-            if ! nvm ls 18 &> /dev/null; then
-              echo "Installing Node.js 18..."
-              nvm install 18
-              nvm use 18
-              nvm alias default 18
+            # Подгружаем nvm, если он установлен
+            if [ -s "$HOME/.nvm/nvm.sh" ]; then
+              source "$HOME/.nvm/nvm.sh"
             else
-              nvm use 18
+              echo "nvm is not installed. Installing nvm..."
+              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
+              source "$HOME/.nvm/nvm.sh"
             fi
+
+            # Проверяем и устанавливаем Node.js 20
+            if ! nvm ls 20 &> /dev/null; then
+              echo "Installing Node.js 20..."
+              nvm install 20
+            fi
+            nvm use 20
+            nvm alias default 20
 
             # Переустанавливаем зависимости
             echo "Installing dependencies..."
