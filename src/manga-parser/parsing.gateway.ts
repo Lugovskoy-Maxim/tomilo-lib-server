@@ -23,7 +23,7 @@ import {
   cors: {
     origin: '*',
   },
-  namespace: '/parsing',
+  namespace: '/api/parsing',
 })
 export class ParsingGateway {
   @WebSocketServer()
