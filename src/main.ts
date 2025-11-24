@@ -10,9 +10,11 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const logger = new LoggerService();
 
-  // Устанавливаем заголовки для правильной кодировки
+  // Устанавливаем заголовки для правильной кодировки, кроме запросов к статическим файлам uploads
   app.use((req, res, next) => {
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    if (!req.url.startsWith('/uploads/')) {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    }
     next();
   });
 
@@ -41,11 +43,6 @@ async function bootstrap() {
 
   // Добавляем глобальный фильтр исключений
   app.useGlobalFilters(new HttpExceptionFilter());
-
-  // Настройка для обслуживания статических файлов
-  app.useStaticAssets(join(__dirname, '..', 'uploads'), {
-    prefix: '/uploads/',
-  });
 
   const port = process.env.PORT || 3001;
   await app.listen(port, '0.0.0.0');
