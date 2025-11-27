@@ -297,7 +297,7 @@ export class TitlesService {
       .exec();
   }
 
-  async getTitlesWithRecentChapters(limit = 10): Promise<any[]> {
+  async getTitlesWithRecentChapters(limit = 20): Promise<any[]> {
     // Получаем недавние главы, отсортированные по дате добавления
     const recentChapters = await this.chapterModel
       .find({ isPublished: true })
