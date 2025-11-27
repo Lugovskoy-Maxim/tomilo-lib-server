@@ -23,6 +23,17 @@ export class MangaShiParser implements MangaParser {
       const mainResponse = await this.session.get(url);
       const $main = cheerio.load(mainResponse.data);
 
+      // Debug: Log some HTML content to understand structure
+      console.log('Title element:', $main('.post-title').text().trim());
+      console.log(
+        'Chapter list HTML sample:',
+        $main('ul.main.version-chap').html()?.substring(0, 500),
+      );
+      console.log(
+        'All chapter links found:',
+        $main('a[href*="/chapter/"]').length,
+      );
+
       // Extract title
       const title = $main('.post-title').text().trim() || url;
 
@@ -47,20 +58,34 @@ export class MangaShiParser implements MangaParser {
         }
       });
 
-      // Extract chapters from main page
+      // Extract chapters from main page - try multiple selectors
       const chapters: ChapterInfo[] = [];
-      $main('ul.main.version-chap.no-volumn li.wp-manga-chapter a').each(
-        (_, element) => {
+
+      // Try different selectors for chapters
+      const chapterSelectors = [
+        'ul.main.version-chap.no-volumn li.wp-manga-chapter a',
+        'ul.version-chap li.wp-manga-chapter a',
+        '.chapter-list li a',
+        '.listing-chapters_wrap ul li a',
+        '.wp-manga-chapter a',
+        'li.wp-manga-chapter a',
+        '.chapter-item a',
+        '.chapters-list a',
+      ];
+
+      for (const selector of chapterSelectors) {
+        $main(selector).each((_, element) => {
           const name = $main(element).text().trim();
           const link = $main(element).attr('href');
-          if (name && link) {
-            // Extract chapter number from name like "Глава 67"
-            const match = name.match(/Глава (\d+)/);
+          if (name && link && link.includes('/chapter/')) {
+            // Extract chapter number from various patterns
+            const match = name.match(/(?:Глава|Chapter|Ch\.?)\s*(\d+)/i);
             const number = match ? parseInt(match[1], 10) : undefined;
             chapters.push({ name, url: link, number });
           }
-        },
-      );
+        });
+        if (chapters.length > 0) break; // Stop if we found chapters
+      }
 
       // If no chapters found on main page, try AJAX fallback
       if (chapters.length === 0) {
@@ -82,18 +107,20 @@ export class MangaShiParser implements MangaParser {
             });
 
             const $chapters = cheerio.load(chaptersResponse.data);
-            $chapters(
-              'ul.main.version-chap.no-volumn li.wp-manga-chapter a',
-            ).each((_, element) => {
-              const name = $chapters(element).text().trim();
-              const link = $chapters(element).attr('href');
-              if (name && link) {
-                // Extract chapter number from name like "Глава 67"
-                const match = name.match(/Глава (\d+)/);
-                const number = match ? parseInt(match[1], 10) : undefined;
-                chapters.push({ name, url: link, number });
-              }
-            });
+            // Try the same selectors on AJAX response
+            for (const selector of chapterSelectors) {
+              $chapters(selector).each((_, element) => {
+                const name = $chapters(element).text().trim();
+                const link = $chapters(element).attr('href');
+                if (name && link && link.includes('/chapter/')) {
+                  // Extract chapter number from various patterns
+                  const match = name.match(/(?:Глава|Chapter|Ch\.?)\s*(\d+)/i);
+                  const number = match ? parseInt(match[1], 10) : undefined;
+                  chapters.push({ name, url: link, number });
+                }
+              });
+              if (chapters.length > 0) break; // Stop if we found chapters
+            }
           } catch (ajaxError) {
             // AJAX failed, continue with empty chapters
             console.warn(
