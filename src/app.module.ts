@@ -19,6 +19,11 @@ import { Title, TitleSchema } from './schemas/title.schema';
 import { Chapter, ChapterSchema } from './schemas/chapter.schema';
 import { User, UserSchema } from './schemas/user.schema';
 import { Collection, CollectionSchema } from './schemas/collection.schema';
+import {
+  AutoParsingJob,
+  AutoParsingJobSchema,
+} from './schemas/auto-parsing-job.schema';
+import { AutoParsingModule } from './auto-parsing/auto-parsing.module';
 @Module({
   imports: [
     MongooseModule.forRootAsync({
@@ -32,6 +37,7 @@ import { Collection, CollectionSchema } from './schemas/collection.schema';
       { name: Chapter.name, schema: ChapterSchema },
       { name: User.name, schema: UserSchema },
       { name: Collection.name, schema: CollectionSchema },
+      { name: AutoParsingJob.name, schema: AutoParsingJobSchema },
     ]),
     UsersModule,
     AuthModule,
@@ -44,6 +50,7 @@ import { Collection, CollectionSchema } from './schemas/collection.schema';
     LoggerModule,
     ShopModule,
     CommentsModule,
+    AutoParsingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
