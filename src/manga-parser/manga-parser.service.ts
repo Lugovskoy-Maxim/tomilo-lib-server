@@ -263,8 +263,8 @@ export class MangaParserService {
     const createdTitle = await this.titlesService.create(createTitleDto);
     this.logger.log(`Created title: ${createdTitle.name}`);
 
-    // Download and save title cover image locally if it's from Senkuro
-    if (parsedData.coverUrl && url.includes('senkuro.me')) {
+    // Download and save title cover image locally for both sites
+    if (parsedData.coverUrl) {
       try {
         const localCoverPath = await this.filesService.downloadTitleCover(
           parsedData.coverUrl,
@@ -365,7 +365,7 @@ export class MangaParserService {
     const parser = this.getParserForUrl(url);
     if (!parser) {
       throw new BadRequestException(
-        'Unsupported site. Only senkuro.me is supported for chapter import.',
+        'Unsupported site. Only manga-shi.org and senkuro.me are supported for chapter import.',
       );
     }
 
