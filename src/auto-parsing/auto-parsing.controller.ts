@@ -29,7 +29,8 @@ export class AutoParsingController {
       const result = await this.autoParsingService.create(
         createAutoParsingJobDto,
       );
-      this.logger.log(`Successfully created auto-parsing job: ${result._id}`);
+      const jobId = result._id.toString();
+      this.logger.log(`Successfully created auto-parsing job: ${jobId}`);
       return result;
     } catch (error) {
       this.logger.error(
