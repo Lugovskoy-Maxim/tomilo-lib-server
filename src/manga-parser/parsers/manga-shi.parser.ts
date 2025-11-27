@@ -19,13 +19,34 @@ export class MangaShiParser implements MangaParser {
 
   async parse(url: string): Promise<ParsedMangaData> {
     try {
-      const response = await this.session.get(url);
-      const $ = cheerio.load(response.data);
+      // First, get the main page to extract title
+      const mainResponse = await this.session.get(url);
+      const $main = cheerio.load(mainResponse.data);
+      const title = $main('.post-title').text().trim() || url;
 
-      const title = $('.post-title').text().trim() || url;
+      // Extract manga slug from URL
+      const urlMatch = url.match(/\/manga\/([^/]+)\//);
+      if (!urlMatch) {
+        throw new BadRequestException('Invalid manga URL format');
+      }
+      const slug = urlMatch[1];
+
+      // Construct AJAX URL for chapters
+      const ajaxUrl = `https://manga-shi.org/manga/${slug}/ajax/chapters/?t=1`;
+
+      // Make POST request to get chapters
+      const chaptersResponse = await this.session.post(ajaxUrl, null, {
+        headers: {
+          Referer: url,
+          'X-Requested-With': 'XMLHttpRequest',
+          Origin: 'https://manga-shi.org',
+        },
+      });
+
+      const $chapters = cheerio.load(chaptersResponse.data);
 
       const chapters: ChapterInfo[] = [];
-      $('ul.main.version-chap.no-volumn li.wp-manga-chapter a').each(
+      $chapters('ul.main.version-chap.no-volumn li.wp-manga-chapter a').each(
         (_, element) => {
           const name = $(element).text().trim();
           const link = $(element).attr('href');
