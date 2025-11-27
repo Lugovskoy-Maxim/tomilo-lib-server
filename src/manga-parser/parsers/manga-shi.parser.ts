@@ -23,42 +23,11 @@ export class MangaShiParser implements MangaParser {
       const mainResponse = await this.session.get(url);
       const $main = cheerio.load(mainResponse.data);
 
-      // Debug: Log some HTML content to understand structure
-      console.log('Title element:', $main('.post-title').text().trim());
-      console.log(
-        'Chapter list HTML sample:',
-        $main('ul.main.version-chap').html()?.substring(0, 500),
-      );
-      console.log(
-        'All chapter links found:',
-        $main('a[href*="/chapter/"]').length,
-      );
-
-      // More debugging - check what elements actually exist
-      console.log('All ul elements:', $main('ul').length);
-      console.log('All li elements:', $main('li').length);
-      console.log('All a elements:', $main('a').length);
-      console.log(
-        'Elements with wp-manga-chapter class:',
-        $main('.wp-manga-chapter').length,
-      );
-      console.log(
-        'Elements with chapter in href:',
-        $main('a[href*="chapter"]').length,
-      );
-
-      // Check for common manga site structures
-      console.log(
-        'Body content sample:',
-        $main('body').html()?.substring(0, 1000),
-      );
-      console.log(
-        'Main content sample:',
-        $main('#main, .main, .content').html()?.substring(0, 1000),
-      );
-
       // Extract title
-      const title = $main('.post-title').text().trim() || url;
+      const title =
+        $main('.post-title h1').text().trim() ||
+        $main('.post-title').text().trim() ||
+        url;
 
       // Extract cover URL
       const coverUrl =
@@ -68,165 +37,29 @@ export class MangaShiParser implements MangaParser {
 
       // Extract description
       const description =
+        $main('.summary__content .post-content').text().trim() ||
         $main('.summary .post-content').text().trim() ||
         $main('.description').text().trim() ||
         $main('.manga-summary').text().trim();
 
       // Extract genres
       const genres: string[] = [];
-      $main('.genres-content a, .genre a').each((_, element) => {
+      $main('.genres-content a, .genre a, .mg_genres a').each((_, element) => {
         const genre = $main(element).text().trim();
         if (genre) {
           genres.push(genre);
         }
       });
 
-      // Extract chapters from main page - try multiple selectors
-      const chapters: ChapterInfo[] = [];
+      // Try to get chapters via AJAX first (as per user's example)
+      let chapters: ChapterInfo[] = await this.fetchChaptersViaAjax(url);
 
-      // Try different selectors for chapters
-      const chapterSelectors = [
-        'ul.main.version-chap.no-volumn li.wp-manga-chapter a',
-        'ul.version-chap li.wp-manga-chapter a',
-        '.chapter-list li a',
-        '.listing-chapters_wrap ul li a',
-        '.wp-manga-chapter a',
-        'li.wp-manga-chapter a',
-        '.chapter-item a',
-        '.chapters-list a',
-      ];
-
-      for (const selector of chapterSelectors) {
-        const elements = $main(selector);
-        console.log(`Selector "${selector}" found ${elements.length} elements`);
-        elements.each((_, element) => {
-          const name = $main(element).text().trim();
-          const link = $main(element).attr('href');
-          console.log(`  Found: "${name}" -> ${link}`);
-          if (name && link && link.includes('/chapter/')) {
-            // Extract chapter number from various patterns
-            const match = name.match(/(?:Глава|Chapter|Ch\.?)\s*(\d+)/i);
-            const number = match ? parseInt(match[1], 10) : undefined;
-            chapters.push({ name, url: link, number });
-          }
-        });
-        console.log(`  Chapters found so far: ${chapters.length}`);
-        if (chapters.length > 0) break; // Stop if we found chapters
-      }
-
-      // If no chapters found on main page, try AJAX fallback
+      // If AJAX failed, try to extract from main page
       if (chapters.length === 0) {
-        // Extract manga slug from URL
-        const urlMatch = url.match(/\/manga\/([^/]+)\//);
-        if (urlMatch) {
-          const slug = urlMatch[1];
-          // Construct AJAX URL for chapters
-          const ajaxUrl = `https://manga-shi.org/manga/${slug}/ajax/chapters/?t=1`;
-
-          try {
-            console.log('Trying AJAX URL:', ajaxUrl);
-            // Make POST request to get chapters (as shown in user's example)
-            const chaptersResponse = await this.session.post(ajaxUrl, null, {
-              headers: {
-                Referer: url,
-                'X-Requested-With': 'XMLHttpRequest',
-                Origin: 'https://manga-shi.org',
-              },
-            });
-
-            console.log('AJAX response status:', chaptersResponse.status);
-            console.log(
-              'AJAX response data sample:',
-              chaptersResponse.data?.substring(0, 500),
-            );
-
-            const $chapters = cheerio.load(chaptersResponse.data);
-            console.log('AJAX HTML structure check:');
-            console.log('AJAX ul elements:', $chapters('ul').length);
-            console.log('AJAX li elements:', $chapters('li').length);
-            console.log('AJAX a elements:', $chapters('a').length);
-            console.log(
-              'AJAX wp-manga-chapter elements:',
-              $chapters('.wp-manga-chapter').length,
-            );
-            console.log(
-              'AJAX chapter href elements:',
-              $chapters('a[href*="chapter"]').length,
-            );
-
-            // Try the same selectors on AJAX response
-            for (const selector of chapterSelectors) {
-              const elements = $chapters(selector);
-              console.log(
-                `AJAX Selector "${selector}" found ${elements.length} elements`,
-              );
-              elements.each((_, element) => {
-                const name = $chapters(element).text().trim();
-                const link = $chapters(element).attr('href');
-                console.log(`  AJAX Found: "${name}" -> ${link}`);
-                if (
-                  name &&
-                  link &&
-                  (link.includes('/chapter/') || link.includes('/glava/'))
-                ) {
-                  // Extract chapter number from various patterns
-                  const match = name.match(/(?:Глава|Chapter|Ch\.?)\s*(\d+)/i);
-                  const number = match ? parseInt(match[1], 10) : undefined;
-                  chapters.push({ name, url: link, number });
-                }
-              });
-              console.log(`  AJAX Chapters found so far: ${chapters.length}`);
-              if (chapters.length > 0) break; // Stop if we found chapters
-            }
-
-            // If still no chapters found, try simpler selectors specific to AJAX response
-            if (chapters.length === 0) {
-              console.log('Trying simpler AJAX selectors...');
-              const simpleSelectors = [
-                'li.wp-manga-chapter a',
-                '.wp-manga-chapter a',
-                'a[href*="/glava/"]', // Russian chapter URLs
-                'a[href*="/chapter/"]',
-              ];
-
-              for (const selector of simpleSelectors) {
-                const elements = $chapters(selector);
-                console.log(
-                  `Simple AJAX Selector "${selector}" found ${elements.length} elements`,
-                );
-                elements.each((_, element) => {
-                  const name = $chapters(element).text().trim();
-                  const link = $chapters(element).attr('href');
-                  console.log(`  Simple AJAX Found: "${name}" -> ${link}`);
-                  if (
-                    name &&
-                    link &&
-                    (link.includes('/chapter/') || link.includes('/glava/'))
-                  ) {
-                    // Extract chapter number from various patterns
-                    const match = name.match(
-                      /(?:Глава|Chapter|Ch\.?)\s*(\d+)/i,
-                    );
-                    const number = match ? parseInt(match[1], 10) : undefined;
-                    chapters.push({ name, url: link, number });
-                  }
-                });
-                console.log(
-                  `  Simple AJAX Chapters found so far: ${chapters.length}`,
-                );
-                if (chapters.length > 0) break;
-              }
-            }
-          } catch (ajaxError) {
-            // AJAX failed, continue with empty chapters
-            console.warn(
-              'AJAX chapters fetch failed:',
-              ajaxError instanceof Error ? ajaxError.message : 'Unknown error',
-            );
-          }
-        }
+        chapters = this.extractChaptersFromHtml($main);
       }
 
+      // Reverse to have chapters in ascending order
       chapters.reverse();
 
       return {
@@ -241,5 +74,131 @@ export class MangaShiParser implements MangaParser {
         `Failed to parse manga-shi.org: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
     }
+  }
+
+  private async fetchChaptersViaAjax(url: string): Promise<ChapterInfo[]> {
+    const chapters: ChapterInfo[] = [];
+
+    try {
+      // Extract manga slug from URL
+      const urlMatch = url.match(/\/manga\/([^/]+)\/?/);
+      if (!urlMatch) {
+        return chapters;
+      }
+
+      const slug = urlMatch[1];
+      const ajaxUrl = `https://manga-shi.org/manga/${slug}/ajax/chapters/`;
+
+      console.log('Trying AJAX URL:', ajaxUrl);
+
+      // Make POST request to get chapters with proper headers
+      const chaptersResponse = await this.session.post(ajaxUrl, null, {
+        headers: {
+          'X-Requested-With': 'XMLHttpRequest',
+          Referer: url,
+          Origin: 'https://manga-shi.org',
+          Accept: '*/*',
+          'Content-Length': '0',
+        },
+      });
+
+      console.log('AJAX response status:', chaptersResponse.status);
+
+      if (chaptersResponse.status !== 200) {
+        return chapters;
+      }
+
+      const $chapters = cheerio.load(chaptersResponse.data);
+
+      // Extract chapters from AJAX response
+      $chapters('li.wp-manga-chapter').each((_, element) => {
+        const chapterElement = $chapters(element);
+        const linkElement = chapterElement.find('a');
+
+        const name = linkElement.text().trim();
+        const link = linkElement.attr('href');
+
+        if (name && link) {
+          // Extract chapter number from name or URL
+          let number: number | undefined;
+
+          // Try to extract from name (e.g., "Глава 274")
+          const nameMatch = name.match(/(?:Глава|Chapter)\s*(\d+)/i);
+          if (nameMatch) {
+            number = parseInt(nameMatch[1], 10);
+          } else {
+            // Try to extract from URL (e.g., "/glava-274/")
+            const urlMatch = link.match(/\/(?:glava|chapter)-(\d+)\//i);
+            if (urlMatch) {
+              number = parseInt(urlMatch[1], 10);
+            }
+          }
+
+          chapters.push({
+            name,
+            url: link,
+            number,
+          });
+        }
+      });
+
+      console.log(`Found ${chapters.length} chapters via AJAX`);
+    } catch (ajaxError) {
+      console.warn(
+        'AJAX chapters fetch failed:',
+        ajaxError instanceof Error ? ajaxError.message : 'Unknown error',
+      );
+    }
+
+    return chapters;
+  }
+
+  private extractChaptersFromHtml($: cheerio.Root): ChapterInfo[] {
+    const chapters: ChapterInfo[] = [];
+
+    // Try different selectors for chapters on main page
+    const chapterSelectors = [
+      'li.wp-manga-chapter a',
+      '.wp-manga-chapter a',
+      '.chapter-item a',
+      '.chapter-list li a',
+      '.listing-chapters_wrap ul li a',
+    ];
+
+    for (const selector of chapterSelectors) {
+      const elements = $(selector);
+      console.log(`Selector "${selector}" found ${elements.length} elements`);
+
+      elements.each((_, element) => {
+        const name = $(element).text().trim();
+        const link = $(element).attr('href');
+
+        if (
+          name &&
+          link &&
+          (link.includes('/glava/') || link.includes('/chapter/'))
+        ) {
+          // Extract chapter number
+          let number: number | undefined;
+
+          const nameMatch = name.match(/(?:Глава|Chapter)\s*(\d+)/i);
+          if (nameMatch) {
+            number = parseInt(nameMatch[1], 10);
+          } else {
+            const urlMatch = link.match(/\/(?:glava|chapter)-(\d+)\//i);
+            if (urlMatch) {
+              number = parseInt(urlMatch[1], 10);
+            }
+          }
+
+          chapters.push({ name, url: link, number });
+        }
+      });
+
+      if (chapters.length > 0) break;
+    }
+
+    console.log(`Found ${chapters.length} chapters from main page`);
+    return chapters;
   }
 }
