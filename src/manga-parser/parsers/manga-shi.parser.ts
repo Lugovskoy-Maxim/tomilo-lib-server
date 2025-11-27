@@ -31,8 +31,11 @@ export class MangaShiParser implements MangaParser {
 
       // Extract cover URL
       const coverUrl =
+        $main('.summary_image img').attr('data-src') ||
         $main('.summary_image img').attr('src') ||
+        $main('.summary_image a img').attr('data-src') ||
         $main('.summary_image a img').attr('src') ||
+        $main('.thumb img').attr('data-src') ||
         $main('.thumb img').attr('src');
 
       // Extract description
