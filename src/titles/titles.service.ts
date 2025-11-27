@@ -62,7 +62,10 @@ export class TitlesService {
     const [titles, total] = await Promise.all([
       this.titleModel
         .find(query)
-        .populate('chapters')
+        .populate({
+          path: 'chapters',
+          select: '-pages',
+        })
         .sort(sortOptions)
         .skip(skip)
         .limit(limit)
@@ -121,6 +124,7 @@ export class TitlesService {
       .findById(id)
       .populate({
         path: 'chapters',
+        select: '-pages',
         options: { sort: { chapterNumber: 1 } },
       })
       .exec();
@@ -286,7 +290,10 @@ export class TitlesService {
       .find()
       .sort({ createdAt: -1 })
       .limit(limit)
-      .populate('chapters')
+      .populate({
+        path: 'chapters',
+        select: '-pages',
+      })
       .exec();
   }
 
@@ -403,7 +410,10 @@ export class TitlesService {
       .find()
       .sort({ [sortField]: -1 })
       .limit(limit)
-      .populate('chapters')
+      .populate({
+        path: 'chapters',
+        select: '-pages',
+      })
       .exec();
   }
 }
