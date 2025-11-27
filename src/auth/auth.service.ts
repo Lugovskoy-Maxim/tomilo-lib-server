@@ -63,37 +63,36 @@ export class AuthService {
       `Registering new user with email: ${email}, username: ${username}`,
     );
 
-    // Проверка на существующего пользователя
-    const existingUser = await this.userModel.findOne({
-      $or: [{ email }, { username }],
-    });
-
-    if (existingUser) {
-      this.logger.warn(
-        `User with email ${email} or username ${username} already exists`,
-      );
-      throw new ConflictException(
-        'User with this email or username already exists',
-      );
-    }
-
     // Хэширование пароля, если он предоставлен
     let hashedPassword: string | undefined = undefined;
     if (password) {
       hashedPassword = await bcrypt.hash(password, 10);
     }
 
-    const user = new this.userModel({
-      ...createUserDto,
-      password: hashedPassword,
-    });
+    try {
+      const user = new this.userModel({
+        ...createUserDto,
+        password: hashedPassword,
+      });
 
-    await user.save();
-    this.logger.log(`User ${email} registered successfully`);
+      await user.save();
+      this.logger.log(`User ${email} registered successfully`);
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { password: _, ...result } = user.toObject();
-    return result;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { password: _, ...result } = user.toObject();
+      return result;
+    } catch (error) {
+      if (error.code === 11000) {
+        // Duplicate key error
+        this.logger.warn(
+          `User with email ${email} or username ${username} already exists`,
+        );
+        throw new ConflictException(
+          'User with this email or username already exists',
+        );
+      }
+      throw error;
+    }
   }
 
   async validateToken(payload: any) {
