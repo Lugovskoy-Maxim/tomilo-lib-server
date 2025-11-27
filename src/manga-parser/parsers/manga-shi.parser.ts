@@ -134,10 +134,15 @@ export class MangaShiParser implements MangaParser {
             }
           }
 
+          // Extract slug from URL for image downloading
+          const slugMatch = link.match(/\/manga\/[^/]+\/(.+)\/$/);
+          const slug = slugMatch ? slugMatch[1] : undefined;
+
           chapters.push({
             name,
             url: link,
             number,
+            slug, // Add slug for image downloading
           });
         }
       });
@@ -191,7 +196,11 @@ export class MangaShiParser implements MangaParser {
             }
           }
 
-          chapters.push({ name, url: link, number });
+          // Extract slug from URL for image downloading
+          const slugMatch = link.match(/\/manga\/[^/]+\/(.+)\/$/);
+          const slug = slugMatch ? slugMatch[1] : undefined;
+
+          chapters.push({ name, url: link, number, slug });
         }
       });
 

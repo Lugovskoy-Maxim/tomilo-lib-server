@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
+import * as cheerio from 'cheerio';
 import { TitlesService } from '../titles/titles.service';
 import { ChaptersService } from '../chapters/chapters.service';
 import { FilesService } from '../files/files.service';
@@ -153,6 +154,64 @@ export class MangaParserService {
     }
   }
 
+  /**
+   * Download chapter images for manga-shi.org
+   * @param chapter Chapter info with slug
+   * @param chapterId Chapter ID for saving images
+   * @returns Array of page paths
+   */
+  private async downloadMangaShiChapterImages(
+    chapter: ChapterInfo,
+    chapterId: string,
+  ): Promise<string[]> {
+    if (!chapter.url) {
+      throw new BadRequestException('Chapter URL is required for downloading');
+    }
+
+    try {
+      // Get chapter page
+      const chapterResponse = await this.session.get(chapter.url);
+      const $chapter = cheerio.load(chapterResponse.data);
+
+      // Extract image URLs
+      const imageUrls: string[] = [];
+      $chapter('.page-break img').each((_, element) => {
+        const src =
+          $chapter(element).attr('src') || $chapter(element).attr('data-src');
+        if (src) {
+          // Convert relative URLs to absolute
+          const absoluteUrl = new URL(src, chapter.url).href;
+          imageUrls.push(absoluteUrl);
+        }
+      });
+
+      if (imageUrls.length === 0) {
+        throw new Error('No images found in chapter');
+      }
+
+      const pagePaths: string[] = [];
+      for (let i = 0; i < imageUrls.length; i++) {
+        const imgUrl = imageUrls[i];
+        const pagePath = await this.filesService.downloadImageFromUrl(
+          imgUrl,
+          chapterId,
+          i + 1, // Page number starts from 1
+        );
+        pagePaths.push(pagePath);
+
+        // Small delay between downloads
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      return pagePaths;
+    } catch (error) {
+      this.logger.error(
+        `Failed to download manga-shi chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      throw new BadRequestException('Failed to download chapter images');
+    }
+  }
+
   async parseAndImportTitle(
     parseTitleDto: ParseTitleDto,
   ): Promise<{ title: any; importedChapters: any[]; totalChapters: number }> {
@@ -241,14 +300,29 @@ export class MangaParserService {
         const createdChapter =
           await this.chaptersService.create(createChapterDto);
 
-        // Download images if it's senkuro.me
-        if (chapter.slug) {
+        // Download images for both senkuro.me and manga-shi.org
+        if (chapter.slug || chapter.url) {
           const domain = this.extractDomain(url);
-          const pagePaths = await this.downloadChapterImages(
-            chapter,
-            createdChapter._id.toString(),
-            domain,
-          );
+          let pagePaths: string[] = [];
+
+          try {
+            pagePaths = await this.downloadChapterImages(
+              chapter,
+              createdChapter._id.toString(),
+              domain,
+            );
+          } catch (error) {
+            // For manga-shi.org, we need to implement a different download method
+            if (url.includes('manga-shi.org')) {
+              pagePaths = await this.downloadMangaShiChapterImages(
+                chapter,
+                createdChapter._id.toString(),
+              );
+            } else {
+              throw error; // Re-throw for other domains
+            }
+          }
+
           await this.chaptersService.update(createdChapter._id.toString(), {
             pages: pagePaths,
           });
@@ -327,17 +401,33 @@ export class MangaParserService {
         const createdChapter =
           await this.chaptersService.create(createChapterDto);
 
-        // Download images
-        const domain = this.extractDomain(url);
-        const pagePaths = await this.downloadChapterImages(
-          chapter,
-          createdChapter._id.toString(),
-          domain,
-        );
-        await this.chaptersService.update(createdChapter._id.toString(), {
-          pages: pagePaths,
-        });
+        // Download images for both senkuro.me and manga-shi.org
+        if (chapter.slug || chapter.url) {
+          const domain = this.extractDomain(url);
+          let pagePaths: string[] = [];
 
+          try {
+            pagePaths = await this.downloadChapterImages(
+              chapter,
+              createdChapter._id.toString(),
+              domain,
+            );
+          } catch (error) {
+            // For manga-shi.org, we need to implement a different download method
+            if (url.includes('manga-shi.org')) {
+              pagePaths = await this.downloadMangaShiChapterImages(
+                chapter,
+                createdChapter._id.toString(),
+              );
+            } else {
+              throw error; // Re-throw for other domains
+            }
+          }
+
+          await this.chaptersService.update(createdChapter._id.toString(), {
+            pages: pagePaths,
+          });
+        }
         importedChapters.push(createdChapter);
         this.logger.log(`Imported chapter ${chapterNumber}: ${chapter.name}`);
       } catch (error) {
