@@ -25,7 +25,7 @@ export class MangaShiParser implements MangaParser {
       const title = $('.post-title').text().trim() || url;
       const ajaxUrl = url.replace(/\/$/, '') + '/ajax/chapters/?t=1';
 
-      const ajaxResponse = await this.session.post(ajaxUrl);
+      const ajaxResponse = await this.session.get(ajaxUrl);
       const $$ = cheerio.load(ajaxResponse.data);
 
       const chapters: ChapterInfo[] = [];
