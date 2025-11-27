@@ -6,7 +6,11 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { Comment, CommentDocument, CommentEntityType } from '../schemas/comment.schema';
+import {
+  Comment,
+  CommentDocument,
+  CommentEntityType,
+} from '../schemas/comment.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
 import { CreateCommentDto } from './dto/create-comment.dto';
@@ -25,7 +29,10 @@ export class CommentsService {
     userId: string,
   ): Promise<CommentDocument> {
     // Validate that the entity exists
-    await this.validateEntity(createCommentDto.entityType, createCommentDto.entityId);
+    await this.validateEntity(
+      createCommentDto.entityType,
+      createCommentDto.entityId,
+    );
 
     // If parentId is provided, validate it exists and belongs to the same entity
     if (createCommentDto.parentId) {
@@ -87,7 +94,9 @@ export class CommentsService {
     // Get replies for each comment if includeReplies is true (recursively)
     if (includeReplies && comments.length > 0) {
       // Рекурсивная функция для загрузки всех ответов
-      const loadRepliesRecursively = async (parentIds: Types.ObjectId[]): Promise<Map<string, any[]>> => {
+      const loadRepliesRecursively = async (
+        parentIds: Types.ObjectId[],
+      ): Promise<Map<string, any[]>> => {
         if (parentIds.length === 0) {
           return new Map();
         }
@@ -115,7 +124,7 @@ export class CommentsService {
         if (replies.length > 0) {
           const replyIds = replies.map((r) => r._id);
           const nestedRepliesMap = await loadRepliesRecursively(replyIds);
-          
+
           // Объединяем вложенные ответы с текущими
           replies.forEach((reply: any) => {
             const replyId = reply._id.toString();
@@ -192,9 +201,7 @@ export class CommentsService {
 
     // Allow deletion if user is the owner or admin
     if (comment.userId.toString() !== userId && userRole !== 'admin') {
-      throw new ForbiddenException(
-        'You can only delete your own comments',
-      );
+      throw new ForbiddenException('You can only delete your own comments');
     }
 
     // Soft delete: mark as not visible instead of actually deleting
@@ -210,9 +217,7 @@ export class CommentsService {
     }
 
     const userIdObj = new Types.ObjectId(userId);
-    const hasLiked = comment.likedBy.some(
-      (id) => id.toString() === userId,
-    );
+    const hasLiked = comment.likedBy.some((id) => id.toString() === userId);
     const hasDisliked = comment.dislikedBy.some(
       (id) => id.toString() === userId,
     );
@@ -251,9 +256,7 @@ export class CommentsService {
     const hasDisliked = comment.dislikedBy.some(
       (id) => id.toString() === userId,
     );
-    const hasLiked = comment.likedBy.some(
-      (id) => id.toString() === userId,
-    );
+    const hasLiked = comment.likedBy.some((id) => id.toString() === userId);
 
     if (hasDisliked) {
       // Remove dislike
@@ -304,4 +307,3 @@ export class CommentsService {
     }
   }
 }
-

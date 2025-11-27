@@ -67,7 +67,8 @@ export class CommentsController {
     @Query('includeReplies') includeReplies: string | boolean = false,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const includeRepliesBool = includeReplies === 'true' || includeReplies === true;
+      const includeRepliesBool =
+        includeReplies === 'true' || includeReplies === true;
       const data = await this.commentsService.findAll(
         entityType,
         entityId,
@@ -239,4 +240,3 @@ export class CommentsController {
     }
   }
 }
-

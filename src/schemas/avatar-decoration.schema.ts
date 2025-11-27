@@ -26,4 +26,5 @@ export class AvatarDecoration {
   description: string;
 }
 
-export const AvatarDecorationSchema = SchemaFactory.createForClass(AvatarDecoration);
+export const AvatarDecorationSchema =
+  SchemaFactory.createForClass(AvatarDecoration);

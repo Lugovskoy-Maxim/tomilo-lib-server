@@ -29,7 +29,6 @@ async function bootstrap() {
       'https://tomilo-lib.ru',
       'http://46.72.32.145',
       'https://46.72.32.145',
-      
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,

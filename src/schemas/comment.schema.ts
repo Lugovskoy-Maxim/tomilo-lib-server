@@ -52,4 +52,3 @@ CommentSchema.index({ entityType: 1, entityId: 1, createdAt: -1 });
 CommentSchema.index({ userId: 1 });
 CommentSchema.index({ parentId: 1 });
 CommentSchema.index({ createdAt: -1 });
-

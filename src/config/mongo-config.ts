@@ -18,9 +18,9 @@ export const getMongoConfig = (
   console.log(`Database: ${database}`);
   console.log(`Auth DB: ${authDatabase}`);
 
-  return { 
+  return {
     uri,
     retryAttempts: 5,
-    retryDelay: 3000
+    retryDelay: 3000,
   };
 };

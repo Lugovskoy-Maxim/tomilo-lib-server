@@ -13,4 +13,3 @@ export class UpdateCommentDto {
   @MaxLength(5000)
   content: string;
 }
-

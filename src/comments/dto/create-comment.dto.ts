@@ -28,4 +28,3 @@ export class CreateCommentDto {
   @IsOptional()
   parentId?: string;
 }
-
