@@ -4,6 +4,7 @@ import { AutoParsingService } from './auto-parsing.service';
 import { AutoParsingController } from './auto-parsing.controller';
 import { MangaParserModule } from '../manga-parser/manga-parser.module';
 import { TitlesModule } from '../titles/titles.module';
+import { ChaptersModule } from '../chapters/chapters.module';
 import {
   AutoParsingJob,
   AutoParsingJobSchema,
@@ -16,6 +17,7 @@ import {
     ]),
     MangaParserModule,
     TitlesModule,
+    ChaptersModule,
   ],
   controllers: [AutoParsingController],
   providers: [AutoParsingService],
