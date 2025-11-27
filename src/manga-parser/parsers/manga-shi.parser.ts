@@ -34,6 +34,17 @@ export class MangaShiParser implements MangaParser {
         $main('a[href*="/chapter/"]').length,
       );
 
+      // More debugging - check what elements actually exist
+      console.log('All ul elements:', $main('ul').length);
+      console.log('All li elements:', $main('li').length);
+      console.log('All a elements:', $main('a').length);
+      console.log('Elements with wp-manga-chapter class:', $main('.wp-manga-chapter').length);
+      console.log('Elements with chapter in href:', $main('a[href*="chapter"]').length);
+
+      // Check for common manga site structures
+      console.log('Body content sample:', $main('body').html()?.substring(0, 1000));
+      console.log('Main content sample:', $main('#main, .main, .content').html()?.substring(0, 1000));
+
       // Extract title
       const title = $main('.post-title').text().trim() || url;
 
@@ -101,6 +112,7 @@ export class MangaShiParser implements MangaParser {
           const ajaxUrl = `https://manga-shi.org/manga/${slug}/ajax/chapters/?t=1`;
 
           try {
+            console.log('Trying AJAX URL:', ajaxUrl);
             // Make GET request to get chapters (changed from POST)
             const chaptersResponse = await this.session.get(ajaxUrl, {
               headers: {
@@ -109,6 +121,9 @@ export class MangaShiParser implements MangaParser {
                 Origin: 'https://manga-shi.org',
               },
             });
+
+            console.log('AJAX response status:', chaptersResponse.status);
+            console.log('AJAX response data sample:', chaptersResponse.data?.substring(0, 500));
 
             const $chapters = cheerio.load(chaptersResponse.data);
             // Try the same selectors on AJAX response
