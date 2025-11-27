@@ -91,6 +91,26 @@ export class UsersService {
     return user;
   }
 
+  async findProfileById(id: string): Promise<User> {
+    this.logger.log(`Finding user profile by ID: ${id}`);
+    if (!Types.ObjectId.isValid(id)) {
+      this.logger.warn(`Invalid user ID format: ${id}`);
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel
+      .findById(id)
+      .select('-password -readingHistory')
+      .populate('bookmarks');
+
+    if (!user) {
+      this.logger.warn(`User not found with ID: ${id}`);
+      throw new NotFoundException('User not found');
+    }
+    this.logger.log(`User profile found with ID: ${id}`);
+    return user;
+  }
+
   async create(createUserDto: CreateUserDto): Promise<User> {
     const { email, username } = createUserDto;
     this.logger.log(

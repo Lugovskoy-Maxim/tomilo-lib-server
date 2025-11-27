@@ -63,7 +63,7 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   async getProfile(@Request() req): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.usersService.findById(req.user.userId);
+      const data = await this.usersService.findProfileById(req.user.userId);
 
       return {
         success: true,
