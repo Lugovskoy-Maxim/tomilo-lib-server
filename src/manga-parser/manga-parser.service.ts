@@ -169,15 +169,31 @@ export class MangaParserService {
     }
 
     try {
+      // Create a new session with manga-shi specific headers
+      const mangaShiSession = axios.create({
+        timeout: 20000,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
+          Referer: 'https://manga-shi.org/',
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept-Encoding': 'gzip, deflate, br',
+          Connection: 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
+        },
+      });
+
       // Get chapter page
-      const chapterResponse = await this.session.get(chapter.url);
+      const chapterResponse = await mangaShiSession.get(chapter.url);
       const $chapter = cheerio.load(chapterResponse.data);
 
       // Extract image URLs
       const imageUrls: string[] = [];
       $chapter('.page-break img').each((_, element) => {
         const src =
-          $chapter(element).attr('src') || $chapter(element).attr('data-src');
+          $chapter(element).attr('data-src') || $chapter(element).attr('src');
         if (src) {
           // Convert relative URLs to absolute
           const absoluteUrl = new URL(src, chapter.url).href;
@@ -192,15 +208,26 @@ export class MangaParserService {
       const pagePaths: string[] = [];
       for (let i = 0; i < imageUrls.length; i++) {
         const imgUrl = imageUrls[i];
-        const pagePath = await this.filesService.downloadImageFromUrl(
-          imgUrl,
-          chapterId,
-          i + 1, // Page number starts from 1
-        );
-        pagePaths.push(pagePath);
+        try {
+          const pagePath = await this.filesService.downloadImageFromUrl(
+            imgUrl,
+            chapterId,
+            i + 1, // Page number starts from 1
+          );
+          pagePaths.push(pagePath);
+        } catch (imageError) {
+          this.logger.error(
+            `Failed to download image ${imgUrl}: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`,
+          );
+          // Continue with other images even if one fails
+        }
 
         // Small delay between downloads
         await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      if (pagePaths.length === 0) {
+        throw new Error('No images could be downloaded');
       }
 
       return pagePaths;
