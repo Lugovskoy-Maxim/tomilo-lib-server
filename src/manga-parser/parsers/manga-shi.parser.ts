@@ -48,8 +48,8 @@ export class MangaShiParser implements MangaParser {
       const chapters: ChapterInfo[] = [];
       $chapters('ul.main.version-chap.no-volumn li.wp-manga-chapter a').each(
         (_, element) => {
-          const name = $(element).text().trim();
-          const link = $(element).attr('href');
+          const name = $chapters(element).text().trim();
+          const link = $chapters(element).attr('href');
           if (name && link) {
             // Extract chapter number from name like "Глава 67"
             const match = name.match(/Глава (\d+)/);
