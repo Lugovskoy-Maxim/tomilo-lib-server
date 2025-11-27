@@ -23,19 +23,20 @@ export class MangaShiParser implements MangaParser {
       const $ = cheerio.load(response.data);
 
       const title = $('.post-title').text().trim() || url;
-      const ajaxUrl = url.replace(/\/$/, '') + '/ajax/chapters/?t=1';
-
-      const ajaxResponse = await this.session.get(ajaxUrl);
-      const $$ = cheerio.load(ajaxResponse.data);
 
       const chapters: ChapterInfo[] = [];
-      $$('li.wp-manga-chapter a').each((_, element) => {
-        const name = $$(element).text().trim();
-        const link = $$(element).attr('href');
-        if (name && link) {
-          chapters.push({ name, url: link });
-        }
-      });
+      $('ul.main.version-chap.no-volumn li.wp-manga-chapter a').each(
+        (_, element) => {
+          const name = $(element).text().trim();
+          const link = $(element).attr('href');
+          if (name && link) {
+            // Extract chapter number from name like "Глава 67"
+            const match = name.match(/Глава (\d+)/);
+            const number = match ? parseInt(match[1], 10) : undefined;
+            chapters.push({ name, url: link, number });
+          }
+        },
+      );
 
       chapters.reverse();
 
