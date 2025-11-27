@@ -74,9 +74,12 @@ export class MangaShiParser implements MangaParser {
       ];
 
       for (const selector of chapterSelectors) {
-        $main(selector).each((_, element) => {
+        const elements = $main(selector);
+        console.log(`Selector "${selector}" found ${elements.length} elements`);
+        elements.each((_, element) => {
           const name = $main(element).text().trim();
           const link = $main(element).attr('href');
+          console.log(`  Found: "${name}" -> ${link}`);
           if (name && link && link.includes('/chapter/')) {
             // Extract chapter number from various patterns
             const match = name.match(/(?:Глава|Chapter|Ch\.?)\s*(\d+)/i);
@@ -84,6 +87,7 @@ export class MangaShiParser implements MangaParser {
             chapters.push({ name, url: link, number });
           }
         });
+        console.log(`  Chapters found so far: ${chapters.length}`);
         if (chapters.length > 0) break; // Stop if we found chapters
       }
 
