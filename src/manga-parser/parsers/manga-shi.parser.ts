@@ -113,8 +113,8 @@ export class MangaShiParser implements MangaParser {
 
           try {
             console.log('Trying AJAX URL:', ajaxUrl);
-            // Make GET request to get chapters (changed from POST)
-            const chaptersResponse = await this.session.get(ajaxUrl, {
+            // Make POST request to get chapters (as shown in user's example)
+            const chaptersResponse = await this.session.post(ajaxUrl, null, {
               headers: {
                 Referer: url,
                 'X-Requested-With': 'XMLHttpRequest',
