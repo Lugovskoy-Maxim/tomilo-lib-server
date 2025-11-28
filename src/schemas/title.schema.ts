@@ -65,8 +65,14 @@ export class Title {
   @Prop({ default: 0 })
   totalChapters: number;
 
+  @Prop([Number])
+  ratings: number[];
+
   @Prop({ default: 0 })
-  rating: number;
+  totalRatings: number;
+
+  @Prop({ default: 0 })
+  averageRating: number;
 
   @Prop({ min: 1900, max: new Date().getFullYear() })
   releaseYear: number;

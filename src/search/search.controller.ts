@@ -35,7 +35,7 @@ export class SearchController {
         cover: title.coverImage,
         description: title.description,
         totalChapters: title.chapters.length,
-        rating: title.rating,
+        rating: title.averageRating,
         releaseYear: title.releaseYear,
         type: title.type,
       }));

@@ -279,13 +279,22 @@ export class TitlesService {
   }
 
   async updateRating(id: string, newRating: number): Promise<TitleDocument> {
-    const title = await this.titleModel
-      .findByIdAndUpdate(id, { rating: newRating }, { new: true })
-      .exec();
+    const title = await this.titleModel.findById(id).exec();
 
     if (!title) {
       throw new NotFoundException('Title not found');
     }
+
+    // Add the new rating to the ratings array
+    title.ratings.push(newRating);
+
+    // Update total ratings count
+    title.totalRatings = title.ratings.length;
+
+    // Calculate average rating
+    title.averageRating = title.ratings.reduce((sum, rating) => sum + rating, 0) / title.ratings.length;
+
+    await title.save();
 
     return title;
   }
