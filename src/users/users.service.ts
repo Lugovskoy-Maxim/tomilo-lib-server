@@ -12,6 +12,27 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { FilesService } from '../files/files.service';
 import { ChaptersService } from '../chapters/chapters.service';
 import { LoggerService } from '../common/logger/logger.service';
+// Interfaces for type safety in reading history operations
+interface ReadingHistoryEntry {
+  titleId: Types.ObjectId;
+  chapters: {
+    chapterId: Types.ObjectId;
+    chapterNumber: number;
+    chapterTitle?: string;
+    readAt: Date;
+  }[];
+  readAt: Date;
+}
+
+interface PopulatedReadingHistoryEntry extends ReadingHistoryEntry {
+  titleId: any; // Populated title object
+  chapters: {
+    chapterId: any; // Populated chapter object
+    chapterNumber: number;
+    chapterTitle?: string;
+    readAt: Date;
+  }[];
+}
 
 @Injectable()
 export class UsersService {
@@ -441,6 +462,36 @@ export class UsersService {
 
     // Возвращаем в обратном порядке (новые сначала)
     return user.readingHistory.slice().reverse();
+  }
+
+  async getTitleReadingHistory(userId: string, titleId: string) {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid user ID or title ID');
+    }
+
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Находим запись для указанного тайтла
+    const titleHistory = user.readingHistory.find(
+      (entry) => entry.titleId.toString() === titleId,
+    );
+
+    if (!titleHistory) {
+      // Если истории нет, возвращаем пустой массив
+      return [];
+    }
+
+    // Популируем информацию о тайтле и главах
+    const populatedHistory = (await this.userModel.populate(titleHistory, [
+      { path: 'titleId' },
+      { path: 'chapters.chapterId' },
+    ])) as unknown as PopulatedReadingHistoryEntry;
+
+    // Возвращаем главы в обратном порядке (новые сначала)
+    return populatedHistory.chapters.slice().reverse();
   }
 
   async clearReadingHistory(userId: string): Promise<User> {

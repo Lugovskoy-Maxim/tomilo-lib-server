@@ -310,6 +310,35 @@ export class UsersController {
     }
   }
 
+  // 📖 История чтения для конкретного тайтла
+  @Get('profile/history/:titleId')
+  @UseGuards(JwtAuthGuard)
+  async getTitleReadingHistory(
+    @Request() req,
+    @Param('titleId') titleId: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getTitleReadingHistory(
+        req.user.userId,
+        titleId,
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `users/profile/history/${titleId}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch title reading history',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `users/profile/history/${titleId}`,
+      };
+    }
+  }
+
   // ➕ Добавить в историю чтения
   @Post('profile/history/:titleId/:chapterId')
   @UseGuards(JwtAuthGuard)
