@@ -4,6 +4,7 @@ import { TitlesService } from './titles.service';
 import { TitlesController } from './titles.controller';
 import { Title, TitleSchema } from '../schemas/title.schema';
 import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
+import { Collection, CollectionSchema } from '../schemas/collection.schema';
 import { FilesModule } from '../files/files.module';
 
 @Module({
@@ -11,6 +12,7 @@ import { FilesModule } from '../files/files.module';
     MongooseModule.forFeature([
       { name: Title.name, schema: TitleSchema },
       { name: Chapter.name, schema: ChapterSchema },
+      { name: Collection.name, schema: CollectionSchema },
     ]),
     FilesModule,
   ],
