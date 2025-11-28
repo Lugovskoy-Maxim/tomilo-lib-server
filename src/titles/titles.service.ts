@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Title, TitleDocument, TitleStatus } from '../schemas/title.schema';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
+import { Collection, CollectionDocument } from '../schemas/collection.schema';
 import { CreateTitleDto } from './dto/create-title.dto';
 import { UpdateTitleDto } from './dto/update-title.dto';
 import { FilesService } from '../files/files.service';
@@ -17,6 +18,8 @@ export class TitlesService {
   constructor(
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
+    @InjectModel(Collection.name)
+    private collectionModel: Model<CollectionDocument>,
     private readonly filesService: FilesService,
   ) {}
 
@@ -426,5 +429,9 @@ export class TitlesService {
         select: '-pages',
       })
       .exec();
+  }
+
+  async getCollections(limit = 10): Promise<CollectionDocument[]> {
+    return this.collectionModel.find().limit(limit).exec();
   }
 }

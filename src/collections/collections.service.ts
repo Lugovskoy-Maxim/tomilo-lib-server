@@ -104,7 +104,9 @@ export class CollectionsService {
     }
 
     const collection = new this.collectionModel(createCollectionDto);
-    return collection.save();
+    const saved = await collection.save();
+    await saved.populate('titles');
+    return saved;
   }
 
   async update(

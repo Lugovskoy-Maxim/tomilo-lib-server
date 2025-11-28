@@ -110,44 +110,19 @@ export class TitlesController {
   }
 
   @Get('collections')
-  getCollections(
+  async getCollections(
     @Query('limit') limit = 10,
-  ): ApiResponseDto<CollectionResponseDto[]> {
+  ): Promise<ApiResponseDto<CollectionResponseDto[]>> {
     try {
-      // Здесь должна быть логика получения коллекций
-      // Временно возвращаем заглушку
-      const data: CollectionResponseDto[] = [
-        {
-          id: '1',
-          name: 'Сёнен',
-          image: '/uploads/collections/1.webp',
-          link: '/collections/shonen',
-        },
-        {
-          id: '2',
-          name: 'Романтика',
-          image: '/uploads/collections/2.webp',
-          link: '/collections/romance',
-        },
-        {
-          id: '3',
-          name: 'Фэнтези',
-          image: '/uploads/collections/3.webp',
-          link: '/collections/fantasy',
-        },
-        {
-          id: '4',
-          name: 'Фэнтези',
-          image: '/uploads/collections/3.webp',
-          link: '/collections/fantasy',
-        },
-        {
-          id: '5',
-          name: 'Фэнтези',
-          image: '/uploads/collections/3.webp',
-          link: '/collections/fantasy',
-        },
-      ].slice(0, limit);
+      const collections = await this.titlesService.getCollections(
+        Number(limit),
+      );
+      const data = collections.map((collection) => ({
+        id: collection._id?.toString(),
+        name: collection.name,
+        image: collection.cover,
+        link: `/collections/${collection._id.toString()}`,
+      }));
 
       return {
         success: true,
