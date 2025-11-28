@@ -38,6 +38,11 @@ class CollectionResponseDto {
   name: string;
   image: string;
   link: string;
+  cover: string;
+  description?: string;
+  titles: string[];
+  comments: string[];
+  views: number;
 }
 
 class ReadingProgressResponseDto {
@@ -122,6 +127,11 @@ export class TitlesController {
         name: collection.name,
         image: collection.cover,
         link: `/collections/${collection._id.toString()}`,
+        cover: collection.cover,
+        description: collection.description,
+        titles: collection.titles?.map((title) => title.toString()) || [],
+        comments: collection.comments || [],
+        views: collection.views,
       }));
 
       return {
