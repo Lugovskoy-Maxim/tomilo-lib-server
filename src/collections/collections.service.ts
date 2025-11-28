@@ -18,19 +18,14 @@ export class CollectionsService {
   ) {}
 
   async findAll({
-    page = 1,
-    limit = 10,
     search,
     sortBy = 'views',
     sortOrder = 'desc',
   }: {
-    page?: number;
-    limit?: number;
     search?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }) {
-    const skip = (page - 1) * limit;
     const query: any = {};
 
     if (search) {
@@ -45,26 +40,13 @@ export class CollectionsService {
       sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
     }
 
-    const [collections, total] = await Promise.all([
-      this.collectionModel
-        .find(query)
-        .populate('titles')
-        .sort(sortOptions)
-        .skip(skip)
-        .limit(limit)
-        .exec(),
-      this.collectionModel.countDocuments(query),
-    ]);
+    const collections = await this.collectionModel
+      .find(query)
+      .populate('titles')
+      .sort(sortOptions)
+      .exec();
 
-    return {
-      collections,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit),
-      },
-    };
+    return collections;
   }
 
   async findById(id: string): Promise<CollectionDocument> {
