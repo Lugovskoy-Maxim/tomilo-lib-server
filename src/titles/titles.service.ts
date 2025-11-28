@@ -28,6 +28,7 @@ export class TitlesService {
     status,
     sortBy = 'createdAt',
     sortOrder = 'desc',
+    populateChapters = true,
   }: {
     page?: number;
     limit?: number;
@@ -36,6 +37,7 @@ export class TitlesService {
     status?: TitleStatus;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    populateChapters?: boolean;
   }) {
     const skip = (page - 1) * limit;
     const query: any = {};
@@ -59,17 +61,19 @@ export class TitlesService {
     const sortOptions: any = {};
     sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
+    // Build the find query
+    let findQuery = this.titleModel.find(query);
+
+    // Conditionally populate chapters
+    if (populateChapters) {
+      findQuery = findQuery.populate({
+        path: 'chapters',
+        select: '-pages',
+      });
+    }
+
     const [titles, total] = await Promise.all([
-      this.titleModel
-        .find(query)
-        .populate({
-          path: 'chapters',
-          select: '-pages',
-        })
-        .sort(sortOptions)
-        .skip(skip)
-        .limit(limit)
-        .exec(),
+      findQuery.sort(sortOptions).skip(skip).limit(limit).exec(),
       this.titleModel.countDocuments(query),
     ]);
 
@@ -115,19 +119,26 @@ export class TitlesService {
     };
   }
 
-  async findById(id: string): Promise<TitleDocument> {
+  async findById(
+    id: string,
+    populateChapters: boolean = true,
+  ): Promise<TitleDocument> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid title ID');
     }
 
-    const title = await this.titleModel
-      .findById(id)
-      .populate({
+    let query = this.titleModel.findById(id);
+
+    // Conditionally populate chapters
+    if (populateChapters) {
+      query = query.populate({
         path: 'chapters',
         select: '-pages',
         options: { sort: { chapterNumber: 1 } },
-      })
-      .exec();
+      });
+    }
+
+    const title = await query.exec();
 
     if (!title) {
       throw new NotFoundException('Title not found');

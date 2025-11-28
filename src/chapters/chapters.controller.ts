@@ -249,13 +249,18 @@ export class ChaptersController {
   @Header('Expires', '0')
   async getChaptersByTitle(
     @Param('titleId') titleId: string,
+    @Query('page') page: number = 1,
+    @Query('limit') limit: number = 10,
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'asc',
   ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.chaptersService.getChaptersByTitle(
+      const data = await this.chaptersService.findAll({
+        page: Number(page),
+        limit: Number(limit),
         titleId,
+        sortBy: 'chapterNumber',
         sortOrder,
-      );
+      });
 
       return {
         success: true,

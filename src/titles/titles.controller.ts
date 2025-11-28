@@ -483,9 +483,16 @@ export class TitlesController {
   }
 
   @Get('titles/:id')
-  async findOne(@Param('id') id: string): Promise<ApiResponseDto<any>> {
+  async findOne(
+    @Param('id') id: string,
+    @Query('populateChapters') populateChapters: string = 'true',
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.titlesService.findById(id);
+      const shouldPopulateChapters = populateChapters === 'true';
+      const data = await this.titlesService.findById(
+        id,
+        shouldPopulateChapters,
+      );
 
       return {
         success: true,
