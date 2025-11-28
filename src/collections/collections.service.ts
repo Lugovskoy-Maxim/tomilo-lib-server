@@ -35,13 +35,15 @@ export class CollectionsService {
 
     if (search) {
       query.$or = [
-        { cover: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: 'i' } },
         { description: { $regex: search, $options: 'i' } },
       ];
     }
 
     const sortOptions: any = {};
-    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    if (sortBy) {
+      sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    }
 
     const [collections, total] = await Promise.all([
       this.collectionModel
@@ -84,25 +86,21 @@ export class CollectionsService {
 
   async findByName(name: string): Promise<CollectionDocument | null> {
     return this.collectionModel
-      .findOne({ cover: { $regex: new RegExp(`^${name}$`, 'i') } })
-      .exec();
-  }
-
-  async findByCover(cover: string): Promise<CollectionDocument | null> {
-    return this.collectionModel
-      .findOne({ cover: { $regex: new RegExp(`^${cover}$`, 'i') } })
+      .findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } })
       .exec();
   }
 
   async create(
     createCollectionDto: CreateCollectionDto,
   ): Promise<CollectionDocument> {
-    const { cover } = createCollectionDto;
+    const { name } = createCollectionDto;
 
     // Проверка на существующую коллекцию
-    const existingCollection = await this.findByCover(cover);
-    if (existingCollection) {
-      throw new ConflictException('Collection with this cover already exists');
+    if (name) {
+      const existingCollection = await this.findByName(name);
+      if (existingCollection) {
+        throw new ConflictException('Collection with this name already exists');
+      }
     }
 
     const collection = new this.collectionModel(createCollectionDto);

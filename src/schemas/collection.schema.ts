@@ -7,7 +7,7 @@ export type CollectionDocument = Collection & Document;
 export class Collection {
   _id: Types.ObjectId;
 
-  @Prop({ required: true, unique: true })
+  @Prop()
   cover: string;
 
   @Prop({ required: true })
@@ -28,5 +28,5 @@ export class Collection {
 
 export const CollectionSchema = SchemaFactory.createForClass(Collection);
 
-CollectionSchema.index({ cover: 'text', description: 'text' });
+CollectionSchema.index({ name: 'text', description: 'text' });
 CollectionSchema.index({ views: -1 });

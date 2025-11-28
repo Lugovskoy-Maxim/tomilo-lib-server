@@ -1,8 +1,9 @@
 import { IsString, IsOptional, IsArray, IsMongoId } from 'class-validator';
 
 export class CreateCollectionDto {
+  @IsOptional()
   @IsString()
-  cover: string;
+  cover?: string;
 
   @IsOptional()
   @IsString()

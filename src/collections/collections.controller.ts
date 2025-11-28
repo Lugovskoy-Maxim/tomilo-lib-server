@@ -9,7 +9,13 @@ import {
   Query,
   HttpStatus,
   HttpCode,
+  BadRequestException,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 import { CollectionsService } from './collections.service';
 import { CreateCollectionDto } from './dto/create-collection.dto';
 import { UpdateCollectionDto } from './dto/update-collection.dto';
@@ -50,17 +56,75 @@ export class CollectionsController {
   }
 
   @Post()
+  @UseInterceptors(
+    FileInterceptor('cover', {
+      storage: diskStorage({
+        destination: './uploads/collections',
+        filename: (req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, uniqueSuffix + extname(file.originalname));
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
+          return cb(
+            new BadRequestException('Only image files are allowed'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+      },
+    }),
+  )
   @HttpCode(HttpStatus.CREATED)
-  async create(@Body() createCollectionDto: CreateCollectionDto) {
+  async create(
+    @Body() createCollectionDto: CreateCollectionDto,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (file) {
+      createCollectionDto.cover = `/uploads/collections/${file.filename}`;
+    }
     return this.collectionsService.create(createCollectionDto);
   }
 
   @Put(':id')
+  @UseInterceptors(
+    FileInterceptor('cover', {
+      storage: diskStorage({
+        destination: './uploads/collections',
+        filename: (req, file, cb) => {
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, uniqueSuffix + extname(file.originalname));
+        },
+      }),
+      fileFilter: (req, file, cb) => {
+        if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
+          return cb(
+            new BadRequestException('Only image files are allowed'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+      limits: {
+        fileSize: 5 * 1024 * 1024, // 5MB limit
+      },
+    }),
+  )
   @HttpCode(HttpStatus.OK)
   async update(
     @Param('id') id: string,
     @Body() updateCollectionDto: UpdateCollectionDto,
+    @UploadedFile() file?: Express.Multer.File,
   ) {
+    if (file) {
+      updateCollectionDto.cover = `/uploads/collections/${file.filename}`;
+    }
     return this.collectionsService.update(id, updateCollectionDto);
   }
 
