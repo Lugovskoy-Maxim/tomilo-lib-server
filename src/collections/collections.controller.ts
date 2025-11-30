@@ -113,7 +113,7 @@ export class CollectionsController {
     }),
   )
   @HttpCode(HttpStatus.OK)
-  async update(
+  update(
     @Param('id') id: string,
     @Body() updateCollectionDto: UpdateCollectionDto,
     @UploadedFile() file?: Express.Multer.File,
@@ -121,31 +121,59 @@ export class CollectionsController {
     if (file) {
       updateCollectionDto.cover = `/uploads/collections/${file.filename}`;
     }
-    return this.collectionsService.update(id, updateCollectionDto);
+    return {
+      success: true,
+      data: this.collectionsService.update(id, updateCollectionDto),
+      message: ' Collection updated successfully',
+      timestamp: new Date().toISOString(),
+      path: 'uploads/collections',
+      method: 'POST',
+    };
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  async delete(@Param('id') id: string) {
-    return this.collectionsService.delete(id);
+  delete(@Param('id') id: string) {
+    return {
+      success: true,
+      data: this.collectionsService.delete(id),
+      message: ' Collection deleted successfully',
+      timestamp: new Date().toISOString(),
+      path: 'id',
+      method: 'DELETE',
+    };
   }
 
   @Post(':id/views')
   @HttpCode(HttpStatus.OK)
-  async incrementViews(@Param('id') id: string) {
-    return this.collectionsService.incrementViews(id);
+  incrementViews(@Param('id') id: string) {
+    return {
+      success: true,
+      data: this.collectionsService.incrementViews(id),
+      message: ' Collection views incremented successfully',
+      timestamp: new Date().toISOString(),
+      path: 'id/views',
+      method: 'POST',
+    };
   }
 
   @Post(':id/titles/:titleId')
   @HttpCode(HttpStatus.OK)
-  async addTitle(
+  addTitle(
     @Param('id') collectionId: string,
     @Param('titleId') titleId: string,
   ) {
-    return this.collectionsService.addTitle(
-      collectionId,
-      new Types.ObjectId(titleId),
-    );
+    return {
+      success: true,
+      data: this.collectionsService.addTitle(
+        collectionId,
+        new Types.ObjectId(titleId),
+      ),
+      message: ' Collection title added successfully',
+      timestamp: new Date().toISOString(),
+      path: 'id/titles/:titleId',
+      method: 'POST',
+    };
   }
 
   @Delete(':id/titles/:titleId')
@@ -154,10 +182,17 @@ export class CollectionsController {
     @Param('id') collectionId: string,
     @Param('titleId') titleId: string,
   ) {
-    return this.collectionsService.removeTitle(
-      collectionId,
-      new Types.ObjectId(titleId),
-    );
+    return {
+      success: true,
+      data: await this.collectionsService.removeTitle(
+        collectionId,
+        new Types.ObjectId(titleId),
+      ),
+      message: ' Collection title removed successfully',
+      timestamp: new Date().toISOString(),
+      path: 'id/titles/:titleId',
+      method: 'DELETE',
+    };
   }
 
   @Post(':id/comments')
@@ -166,7 +201,14 @@ export class CollectionsController {
     @Param('id') collectionId: string,
     @Body('comment') comment: string,
   ) {
-    return this.collectionsService.addComment(collectionId, comment);
+    return {
+      success: true,
+      data: await this.collectionsService.addComment(collectionId, comment),
+      message: ' Collection comment added successfully',
+      timestamp: new Date().toISOString(),
+      path: 'id/comments',
+      method: 'POST',
+    };
   }
 
   @Delete(':id/comments/:index')
@@ -175,6 +217,16 @@ export class CollectionsController {
     @Param('id') collectionId: string,
     @Param('index') commentIndex: number,
   ) {
-    return this.collectionsService.removeComment(collectionId, commentIndex);
+    return {
+      success: true,
+      data: await this.collectionsService.removeComment(
+        collectionId,
+        commentIndex,
+      ),
+      message: ' Collection comment removed successfully',
+      timestamp: new Date().toISOString(),
+      path: 'id/comments/:index',
+      method: 'DELETE',
+    };
   }
 }
