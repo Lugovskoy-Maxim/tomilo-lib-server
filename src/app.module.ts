@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ScheduleModule } from '@nestjs/schedule';
 import { UsersModule } from './users/users.module';
 import { TitlesModule } from './titles/titles.module';
 import { ChaptersModule } from './chapters/chapters.module';
@@ -32,6 +33,7 @@ import { AutoParsingModule } from './auto-parsing/auto-parsing.module';
       useFactory: getMongoConfig,
     }),
     ConfigModule.forRoot(),
+    ScheduleModule.forRoot(),
     MongooseModule.forFeature([
       { name: Title.name, schema: TitleSchema },
       { name: Chapter.name, schema: ChapterSchema },
