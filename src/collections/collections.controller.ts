@@ -41,14 +41,28 @@ export class CollectionsController {
 
   @Get('top')
   @HttpCode(HttpStatus.OK)
-  async getTopCollections() {
-    return this.collectionsService.getTopCollections(10);
+  getTopCollections() {
+    return {
+      success: true,
+      data: this.collectionsService.getTopCollections(10),
+      message: ' Top collections found successfully',
+      timestamp: new Date().toISOString(),
+      path: 'top',
+      method: 'GET',
+    };
   }
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  async findById(@Param('id') id: string) {
-    return this.collectionsService.findById(id);
+  findById(@Param('id') id: string) {
+    return {
+      success: true,
+      data: this.collectionsService.findById(id),
+      message: ' Collection found successfully',
+      timestamp: new Date().toISOString(),
+      path: 'id',
+      method: 'GET',
+    };
   }
 
   @Post()
@@ -77,14 +91,21 @@ export class CollectionsController {
     }),
   )
   @HttpCode(HttpStatus.CREATED)
-  async create(
+  create(
     @Body() createCollectionDto: CreateCollectionDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (file) {
       createCollectionDto.cover = `/uploads/collections/${file.filename}`;
     }
-    return this.collectionsService.create(createCollectionDto);
+    return {
+      success: true,
+      data: this.collectionsService.create(createCollectionDto),
+      message: ' Collection created successfully',
+      timestamp: new Date().toISOString(),
+      path: 'uploads/collections',
+      method: 'POST',
+    };
   }
 
   @Put(':id')
