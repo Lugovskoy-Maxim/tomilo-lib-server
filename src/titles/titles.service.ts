@@ -292,7 +292,9 @@ export class TitlesService {
     title.totalRatings = title.ratings.length;
 
     // Calculate average rating
-    title.averageRating = title.ratings.reduce((sum, rating) => sum + rating, 0) / title.ratings.length;
+    title.averageRating =
+      title.ratings.reduce((sum, rating) => sum + rating, 0) /
+      title.ratings.length;
 
     await title.save();
 
