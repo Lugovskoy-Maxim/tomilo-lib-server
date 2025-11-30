@@ -281,6 +281,21 @@ export class CommentsService {
     return comment.save();
   }
 
+  async getReactionsCount(
+    id: string,
+  ): Promise<{ likes: number; dislikes: number }> {
+    const comment = await this.commentModel.findById(id);
+
+    if (!comment) {
+      throw new NotFoundException('Comment not found');
+    }
+
+    return {
+      likes: comment.likes,
+      dislikes: comment.dislikes,
+    };
+  }
+
   private async validateEntity(
     entityType: CommentEntityType,
     entityId: string,

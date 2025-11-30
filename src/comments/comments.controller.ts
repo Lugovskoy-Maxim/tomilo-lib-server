@@ -242,4 +242,28 @@ export class CommentsController {
       };
     }
   }
+
+  @Get(':id/reactions/count')
+  async getReactionsCount(
+    @Param('id') id: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.commentsService.getReactionsCount(id);
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `comments/${id}/reactions/count`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch reactions count',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `comments/${id}/reactions/count`,
+      };
+    }
+  }
 }

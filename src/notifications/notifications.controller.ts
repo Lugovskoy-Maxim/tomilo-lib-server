@@ -59,39 +59,14 @@ export class NotificationsController {
   }
 
   @Get('unread-count')
-  async getUnreadCount(
-    @Request() req,
-    @Query('timeout') timeout: string = '30000',
-  ): Promise<ApiResponseDto<any>> {
+  async getUnreadCount(@Request() req): Promise<ApiResponseDto<any>> {
     try {
       const userId = req.user.userId;
-      const timeoutMs = parseInt(timeout, 10) || 30000;
-      const pollInterval = 1000; // Poll every 1 second
+      const data = await this.notificationsService.getUnreadCount(userId);
 
-      const initialData =
-        await this.notificationsService.getUnreadCount(userId);
-      const initialCount = initialData.count;
-
-      const startTime = Date.now();
-
-      while (Date.now() - startTime < timeoutMs) {
-        const currentData =
-          await this.notificationsService.getUnreadCount(userId);
-        if (currentData.count !== initialCount) {
-          return {
-            success: true,
-            data: currentData,
-            timestamp: new Date().toISOString(),
-            path: 'notifications/unread-count',
-          };
-        }
-        await new Promise((resolve) => setTimeout(resolve, pollInterval));
-      }
-
-      // Timeout reached, return current count
       return {
         success: true,
-        data: initialData,
+        data,
         timestamp: new Date().toISOString(),
         path: 'notifications/unread-count',
       };
