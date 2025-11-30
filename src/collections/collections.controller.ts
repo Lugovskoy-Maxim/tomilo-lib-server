@@ -54,11 +54,11 @@ export class CollectionsController {
 
   @Get(':id')
   @HttpCode(HttpStatus.OK)
-  findById(@Param('id') id: string) {
+  async findById(@Param('id') id: string) {
     return {
       success: true,
-      data: this.collectionsService.findById(id),
-      message: ' Collection found successfully',
+      data: await this.collectionsService.findById(id),
+      message: 'Collection found successfully',
       timestamp: new Date().toISOString(),
       path: 'id',
       method: 'GET',
@@ -91,7 +91,7 @@ export class CollectionsController {
     }),
   )
   @HttpCode(HttpStatus.CREATED)
-  create(
+  async create(
     @Body() createCollectionDto: CreateCollectionDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
@@ -100,7 +100,7 @@ export class CollectionsController {
     }
     return {
       success: true,
-      data: this.collectionsService.create(createCollectionDto),
+      data: await this.collectionsService.create(createCollectionDto),
       message: ' Collection created successfully',
       timestamp: new Date().toISOString(),
       path: 'uploads/collections',
@@ -134,7 +134,7 @@ export class CollectionsController {
     }),
   )
   @HttpCode(HttpStatus.OK)
-  update(
+  async update(
     @Param('id') id: string,
     @Body() updateCollectionDto: UpdateCollectionDto,
     @UploadedFile() file?: Express.Multer.File,
@@ -144,7 +144,7 @@ export class CollectionsController {
     }
     return {
       success: true,
-      data: this.collectionsService.update(id, updateCollectionDto),
+      data: await this.collectionsService.update(id, updateCollectionDto),
       message: ' Collection updated successfully',
       timestamp: new Date().toISOString(),
       path: 'uploads/collections',
@@ -154,10 +154,10 @@ export class CollectionsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
-  delete(@Param('id') id: string) {
+  async delete(@Param('id') id: string) {
     return {
       success: true,
-      data: this.collectionsService.delete(id),
+      data: await this.collectionsService.delete(id),
       message: ' Collection deleted successfully',
       timestamp: new Date().toISOString(),
       path: 'id',
@@ -167,10 +167,10 @@ export class CollectionsController {
 
   @Post(':id/views')
   @HttpCode(HttpStatus.OK)
-  incrementViews(@Param('id') id: string) {
+  async incrementViews(@Param('id') id: string) {
     return {
       success: true,
-      data: this.collectionsService.incrementViews(id),
+      data: await this.collectionsService.incrementViews(id),
       message: ' Collection views incremented successfully',
       timestamp: new Date().toISOString(),
       path: 'id/views',
@@ -180,13 +180,13 @@ export class CollectionsController {
 
   @Post(':id/titles/:titleId')
   @HttpCode(HttpStatus.OK)
-  addTitle(
+  async addTitle(
     @Param('id') collectionId: string,
     @Param('titleId') titleId: string,
   ) {
     return {
       success: true,
-      data: this.collectionsService.addTitle(
+      data: await this.collectionsService.addTitle(
         collectionId,
         new Types.ObjectId(titleId),
       ),
