@@ -138,7 +138,7 @@ export class AutoParsingService {
     }
   }
 
-  @Cron('0 */6 * * *') // Run every 6 hours
+  @Cron(CronExpression.EVERY_10_MINUTES)
   async handleDailyJobs() {
     await this.processJobsByFrequency(ParsingFrequency.DAILY);
   }
