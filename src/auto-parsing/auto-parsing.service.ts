@@ -88,6 +88,12 @@ export class AutoParsingService {
       return [];
     }
 
+    if (!job.titleId) {
+      throw new BadRequestException('Title not found for this job');
+    }
+
+    const titleId = job.titleId._id.toString();
+
     try {
       // Parse chapters info from the URL
       const parsedData = await this.mangaParserService.parseChaptersInfo({
@@ -95,9 +101,11 @@ export class AutoParsingService {
       });
 
       // Get existing chapters for the title
-      const title = await this.titlesService.findById(job.titleId.toString());
+      const title = await this.titlesService.findById(
+        job.titleId._id.toString(),
+      );
       const existingChapters = await this.chaptersService.getChaptersByTitle(
-        job.titleId.toString(),
+        job.titleId._id.toString(),
       );
       const existingChapterNumbers = existingChapters.map(
         (ch) => ch.chapterNumber,
@@ -119,7 +127,7 @@ export class AutoParsingService {
       const importedChapters =
         await this.mangaParserService.parseAndImportChapters({
           url: job.url,
-          titleId: job.titleId.toString(),
+          titleId: titleId,
           chapterNumbers: newChapters.map((ch) => ch.number!.toString()),
         });
 
