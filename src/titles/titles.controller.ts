@@ -31,6 +31,10 @@ class TitleResponseDto {
   title: string;
   cover: string;
   description?: string;
+  rating?: number;
+  type?: string;
+  releaseYear?: number;
+  isAdult?: boolean;
 }
 
 class CollectionResponseDto {
@@ -61,6 +65,7 @@ class LatestUpdateResponseDto {
   chapter: string;
   chapterNumber: number;
   timeAgo: string;
+  isAdult: boolean;
 }
 
 @Controller()
@@ -84,7 +89,7 @@ export class TitlesController {
   @Get('titles/popular')
   async getPopularTitles(
     @Query('limit') limit = 10,
-  ): Promise<ApiResponseDto<TitleResponseDto[]>> {
+  ): Promise<ApiResponseDto<any>> {
     try {
       const titles = await this.titlesService.getPopularTitles(Number(limit));
       const data = titles.map((title) => ({
@@ -95,6 +100,7 @@ export class TitlesController {
         type: title.type,
         releaseYear: title.releaseYear,
         description: title.description,
+        isAdult: title.ageLimit >= 18,
       }));
 
       return {
@@ -240,6 +246,7 @@ export class TitlesController {
           chapter: `Глава ${item.latestChapter.chapterNumber}`,
           chapterNumber: item.latestChapter.chapterNumber,
           timeAgo: timeAgo,
+          isAdult: item.ageLimit >= 18,
         };
       });
 
@@ -264,7 +271,7 @@ export class TitlesController {
   async searchTitles(
     @Query('q') query: string,
     @Query('limit') limit = 10,
-  ): Promise<ApiResponseDto<TitleResponseDto[]>> {
+  ): Promise<ApiResponseDto<any>> {
     try {
       const result = await this.titlesService.findAll({
         search: query,
@@ -276,6 +283,7 @@ export class TitlesController {
         title: title.name,
         cover: title.coverImage,
         description: title.description,
+        isAdult: title.ageLimit >= 18,
       }));
 
       return {
@@ -418,7 +426,7 @@ export class TitlesController {
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
   ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.titlesService.findAll({
+      const result = await this.titlesService.findAll({
         page: Number(page),
         limit: Number(limit),
         search,
@@ -427,6 +435,14 @@ export class TitlesController {
         sortBy,
         sortOrder,
       });
+
+      const data = {
+        ...result,
+        titles: result.titles.map((title) => ({
+          ...title.toObject(),
+          isAdult: title.ageLimit >= 18,
+        })),
+      };
 
       return {
         success: true,
@@ -474,10 +490,14 @@ export class TitlesController {
   ): Promise<ApiResponseDto<any>> {
     try {
       const shouldPopulateChapters = populateChapters === 'true';
-      const data = await this.titlesService.findById(
+      const title = await this.titlesService.findById(
         id,
         shouldPopulateChapters,
       );
+      const data = {
+        ...JSON.parse(JSON.stringify(title)),
+        isAdult: title.ageLimit >= 18,
+      };
 
       return {
         success: true,
@@ -615,6 +635,7 @@ export class TitlesController {
         type: title.type,
         releaseYear: title.releaseYear,
         description: title.description,
+        isAdult: title.ageLimit >= 18,
       }));
 
       return {
@@ -637,7 +658,7 @@ export class TitlesController {
   @Get('titles/top/week')
   async getTopTitlesWeek(
     @Query('limit') limit = 10,
-  ): Promise<ApiResponseDto<TitleResponseDto[]>> {
+  ): Promise<ApiResponseDto<any>> {
     try {
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'week',
@@ -651,6 +672,7 @@ export class TitlesController {
         type: title.type,
         releaseYear: title.releaseYear,
         description: title.description,
+        isAdult: title.ageLimit >= 18,
       }));
 
       return {
@@ -673,7 +695,7 @@ export class TitlesController {
   @Get('titles/top/month')
   async getTopTitlesMonth(
     @Query('limit') limit = 10,
-  ): Promise<ApiResponseDto<TitleResponseDto[]>> {
+  ): Promise<ApiResponseDto<any>> {
     try {
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'month',
@@ -687,6 +709,7 @@ export class TitlesController {
         type: title.type,
         releaseYear: title.releaseYear,
         description: title.description,
+        isAdult: title.ageLimit >= 18,
       }));
 
       return {
