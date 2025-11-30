@@ -14,10 +14,12 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { CommentEntityType } from '../schemas/comment.schema';
 
@@ -151,7 +153,8 @@ export class CommentsController {
   }
 
   @Delete(':id')
-  @UseGuards(JwtAuthGuard)
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @HttpCode(HttpStatus.OK)
   async remove(
     @Param('id') id: string,

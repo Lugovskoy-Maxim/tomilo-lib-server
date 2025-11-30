@@ -15,7 +15,11 @@ import {
   UsePipes,
   ValidationPipe,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { ChaptersService } from './chapters.service';
 import { CreateChapterDto } from './dto/create-chapter.dto';
 import { UpdateChapterDto } from './dto/update-chapter.dto';
@@ -27,6 +31,8 @@ export class ChaptersController {
   constructor(private readonly chaptersService: ChaptersService) {}
 
   @Post()
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   async create(
     @Body() createChapterDto: CreateChapterDto,
   ): Promise<ApiResponseDto<any>> {
@@ -338,6 +344,8 @@ export class ChaptersController {
   }
 
   @Patch(':id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   async update(
     @Param('id') id: string,
     @Body() updateChapterDto: UpdateChapterDto,
@@ -458,6 +466,8 @@ export class ChaptersController {
   }
 
   @Post('bulk-delete')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @HttpCode(HttpStatus.OK)
   async bulkDelete(@Body('ids') ids: string[]): Promise<ApiResponseDto<any>> {
     try {

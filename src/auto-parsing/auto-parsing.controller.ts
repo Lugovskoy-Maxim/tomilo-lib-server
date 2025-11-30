@@ -9,7 +9,11 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { AutoParsingService } from './auto-parsing.service';
 import { CreateAutoParsingJobDto } from './dto/create-auto-parsing-job.dto';
 import { UpdateAutoParsingJobDto } from './dto/update-auto-parsing-job.dto';
@@ -44,6 +48,8 @@ export class AutoParsingController {
   }
 
   @Get()
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   async findAll() {
     try {
       this.logger.log('Fetching all auto-parsing jobs');
@@ -80,6 +86,8 @@ export class AutoParsingController {
   }
 
   @Patch(':id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   async update(
     @Param('id') id: string,
     @Body() updateAutoParsingJobDto: UpdateAutoParsingJobDto,
@@ -122,6 +130,8 @@ export class AutoParsingController {
   }
 
   @Post(':id/check')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   async checkForNewChapters(@Param('id') id: string) {
     try {
       this.logger.log(`Checking for new chapters for job: ${id}`);

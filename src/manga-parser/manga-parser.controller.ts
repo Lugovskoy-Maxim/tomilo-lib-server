@@ -6,7 +6,11 @@ import {
   HttpException,
   HttpStatus,
   Logger,
+  UseGuards,
 } from '@nestjs/common';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { MangaParserService } from './manga-parser.service';
 import { ParseTitleDto } from './dto/parse-title.dto';
 import { ParseChapterDto } from './dto/parse-chapter.dto';
@@ -40,6 +44,8 @@ export class MangaParserController {
   }
 
   @Post('parse-chapters')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   async parseAndImportChapters(
     @Body() parseChapterDto: ParseChapterDto,
   ): Promise<any[]> {

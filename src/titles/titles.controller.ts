@@ -15,7 +15,11 @@ import {
   UsePipes,
   ValidationPipe,
   ParseFloatPipe,
+  UseGuards,
 } from '@nestjs/common';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { TitlesService } from './titles.service';
@@ -304,6 +308,8 @@ export class TitlesController {
   }
 
   @Post('titles')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @UseInterceptors(
     FileInterceptor('coverImage', {
       storage: diskStorage({
@@ -517,6 +523,8 @@ export class TitlesController {
   }
 
   @Delete('titles/:id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   async remove(@Param('id') id: string): Promise<ApiResponseDto<void>> {
     try {

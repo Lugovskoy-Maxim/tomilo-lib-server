@@ -12,7 +12,11 @@ import {
   BadRequestException,
   UploadedFile,
   UseInterceptors,
+  UseGuards,
 } from '@nestjs/common';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
@@ -66,6 +70,8 @@ export class CollectionsController {
   }
 
   @Post()
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @UseInterceptors(
     FileInterceptor('cover', {
       storage: diskStorage({
@@ -153,6 +159,8 @@ export class CollectionsController {
   }
 
   @Delete(':id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
   async delete(@Param('id') id: string) {
     return {
