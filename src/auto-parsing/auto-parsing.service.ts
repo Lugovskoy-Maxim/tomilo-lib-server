@@ -140,7 +140,9 @@ export class AutoParsingService {
 
   @Cron(CronExpression.EVERY_10_MINUTES)
   async handleDailyJobs() {
+    this.logger.log('Starting daily auto-parsing jobs (every 10 minutes)');
     await this.processJobsByFrequency(ParsingFrequency.DAILY);
+    this.logger.log('Completed daily auto-parsing jobs');
   }
 
   @Cron(CronExpression.EVERY_WEEK)
