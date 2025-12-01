@@ -290,7 +290,7 @@ export class SenkuroParser implements MangaParser {
         chapters.push({
           name,
           slug: node.slug,
-          number: parseInt(node.number, 10),
+          number: parseFloat(node.number),
         });
       }
 
