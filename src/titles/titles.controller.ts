@@ -428,6 +428,8 @@ export class TitlesController {
     @Query('search') search?: string,
     @Query('genre') genre?: string,
     @Query('status') status?: string,
+    @Query('releaseYear') releaseYear?: number,
+    @Query('type') type?: string,
     @Query('sortBy') sortBy = 'createdAt',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
   ): Promise<ApiResponseDto<any>> {
@@ -438,6 +440,8 @@ export class TitlesController {
         search,
         genre,
         status: status as any,
+        releaseYear,
+        type: type as any,
         sortBy,
         sortOrder,
       });
