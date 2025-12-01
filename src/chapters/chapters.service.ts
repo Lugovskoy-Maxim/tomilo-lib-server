@@ -380,11 +380,26 @@ export class ChaptersService {
       { titleId: titleId as unknown as Types.ObjectId },
     ];
 
-    return this.chapterModel
+    const chapters = await this.chapterModel
       .find(query)
       .sort({ chapterNumber: sortOrder === 'asc' ? 1 : -1 })
       .populate('titleId')
       .exec();
+
+    // Убедимся, что все номера глав являются числами
+    const chaptersWithNumbers = chapters.map((ch) => {
+      if (typeof ch.chapterNumber === 'string') {
+        // Преобразуем строку в число
+        const num = parseFloat(ch.chapterNumber);
+        return {
+          ...ch.toObject(),
+          chapterNumber: isNaN(num) ? ch.chapterNumber : num,
+        };
+      }
+      return ch;
+    }) as ChapterDocument[];
+
+    return chaptersWithNumbers;
   }
 
   async createWithPages(
@@ -420,7 +435,7 @@ export class ChaptersService {
 
     try {
       // Сохраняем файлы и получаем пути
-      // TODO: проверить ошибку savedChapter._id.toString()
+      // Using savedChapter.id (virtual getter) instead of savedChapter._id.toString()
       const pagePaths = await this.filesService.saveChapterPages(
         files,
         savedChapter.id.toString(),

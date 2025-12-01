@@ -107,14 +107,29 @@ export class AutoParsingService {
       const existingChapters = await this.chaptersService.getChaptersByTitle(
         job.titleId._id.toString(),
       );
-      const existingChapterNumbers = existingChapters.map(
-        (ch) => ch.chapterNumber,
-      );
+      const existingChapterNumbers = existingChapters.map((ch) => {
+        // Убедимся, что номер главы является числом
+        if (typeof ch.chapterNumber === 'string') {
+          const num = parseFloat(ch.chapterNumber);
+          return isNaN(num) ? ch.chapterNumber : num;
+        }
+        return ch.chapterNumber;
+      });
 
       // Find new chapters
+      this.logger.log(
+        `Existing chapter numbers: ${JSON.stringify(existingChapterNumbers)} (types: ${existingChapterNumbers.map((n) => typeof n).join(', ')})`,
+      );
+      this.logger.log(
+        `Parsed chapter numbers: ${JSON.stringify(parsedData.chapters.map((ch) => ch.number))} (types: ${parsedData.chapters.map((ch) => typeof ch.number).join(', ')})`,
+      );
+
       const newChapters = parsedData.chapters.filter((ch) => {
         // Проверяем, что номер главы существует и является числом
         if (ch.number === undefined || ch.number === null || isNaN(ch.number)) {
+          this.logger.log(
+            `Skipping chapter with invalid number: ${JSON.stringify(ch)}`,
+          );
           return false;
         }
 
@@ -122,12 +137,64 @@ export class AutoParsingService {
         const chapterNumber = Number(ch.number);
 
         // Проверяем, что глава еще не существует
-        return !existingChapterNumbers.includes(chapterNumber);
+        const exists = existingChapterNumbers.some((existing) => {
+          // Преобразуем оба значения к числам для сравнения
+          const existingNum =
+            typeof existing === 'string' ? parseFloat(existing) : existing;
+          const chapterNum =
+            typeof chapterNumber === 'string'
+              ? parseFloat(chapterNumber)
+              : chapterNumber;
+
+          // Проверяем, являются ли оба значения корректными числами
+          if (isNaN(existingNum) || isNaN(chapterNum)) {
+            // Если одно из значений не является числом, сравниваем как строки
+            const result = String(existing) === String(chapterNumber);
+            this.logger.log(
+              `Comparing as strings: ${existing} with ${chapterNumber}: ${result}`,
+            );
+            return result;
+          }
+
+          // Для целых чисел используем строгое сравнение
+          if (Number.isInteger(existingNum) && Number.isInteger(chapterNum)) {
+            const result = existingNum === chapterNum;
+            this.logger.log(
+              `Comparing integers ${existingNum} with ${chapterNum}: ${result}`,
+            );
+            return result;
+          }
+
+          // Для чисел с плавающей точкой используем сравнение с допустимой погрешностью
+          const result = Math.abs(existingNum - chapterNum) < 0.001;
+          this.logger.log(
+            `Comparing floats ${existingNum} with ${chapterNum}: ${result}`,
+          );
+          return result;
+        });
+
+        this.logger.log(`Chapter ${chapterNumber} exists: ${exists}`);
+        return !exists;
       });
 
+      this.logger.log(`New chapters to import: ${newChapters.length}`);
+
       if (newChapters.length === 0) {
-        this.logger.log(`No new chapters found for title ${title.name}`);
-        return [];
+        // Проверим, есть ли вообще главы для импорта
+        if (parsedData.chapters.length === 0) {
+          this.logger.log(
+            `No chapters found on source website for title ${title.name}`,
+          );
+          throw new BadRequestException(
+            'No chapters found on the source website',
+          );
+        } else {
+          this.logger.log(
+            `No new chapters found for title ${title.name} (all chapters may already exist)`,
+          );
+          // Не выбрасываем исключение, просто возвращаем пустой массив
+          return [];
+        }
       }
 
       // Import new chapters
@@ -153,7 +220,7 @@ export class AutoParsingService {
     }
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_2AM)
+  @Cron(CronExpression.EVERY_6_HOURS)
   async handleDailyJobs() {
     this.logger.log('Starting daily auto-parsing jobs');
     await this.processJobsByFrequency(ParsingFrequency.DAILY);
