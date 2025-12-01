@@ -27,11 +27,16 @@ export class HttpExceptionFilter implements ExceptionFilter {
         ? exception.getResponse()
         : 'Internal server error';
 
-    // Логирование ошибки
+    // Дополнительная информация для отладки проблем с токенами
+    const authHeader = request.headers.authorization;
+    const userAgent = request.headers['user-agent'];
+    const ip = request.ip;
+
+    // Логирование ошибки с дополнительной информацией
     this.logger.error(
       `HTTP Exception: ${status} - ${JSON.stringify(message)} - URL: ${
         request.url
-      } - Method: ${request.method}`,
+      } - Method: ${request.method} - IP: ${ip} - User-Agent: ${userAgent} - Auth Header: ${authHeader}`,
       exception instanceof Error ? exception.stack : undefined,
     );
 
