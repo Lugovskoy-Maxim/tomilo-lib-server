@@ -126,14 +126,22 @@ export class MangaShiParser implements MangaParser {
           let number: number | undefined;
 
           // Try to extract from name (e.g., "Глава 274")
-          const nameMatch = name.match(/(?:Глава|Chapter)\s*(\d+)/i);
+          const nameMatch = name.match(/(?:Глава|Chapter)\s*(\d+(?:\.\d+)?)/i);
           if (nameMatch) {
-            number = parseInt(nameMatch[1], 10);
+            const parsedNumber = parseFloat(nameMatch[1]);
+            if (!isNaN(parsedNumber)) {
+              number = parsedNumber;
+            }
           } else {
             // Try to extract from URL (e.g., "/glava-274/")
-            const urlMatch = link.match(/\/(?:glava|chapter)-(\d+)\//i);
+            const urlMatch = link.match(
+              /\/(?:glava|chapter)-(\d+(?:\.\d+)?)\//i,
+            );
             if (urlMatch) {
-              number = parseInt(urlMatch[1], 10);
+              const parsedNumber = parseFloat(urlMatch[1]);
+              if (!isNaN(parsedNumber)) {
+                number = parsedNumber;
+              }
             }
           }
 
@@ -189,13 +197,21 @@ export class MangaShiParser implements MangaParser {
           // Extract chapter number
           let number: number | undefined;
 
-          const nameMatch = name.match(/(?:Глава|Chapter)\s*(\d+)/i);
+          const nameMatch = name.match(/(?:Глава|Chapter)\s*(\d+(?:\.\d+)?)/i);
           if (nameMatch) {
-            number = parseInt(nameMatch[1], 10);
+            const parsedNumber = parseFloat(nameMatch[1]);
+            if (!isNaN(parsedNumber)) {
+              number = parsedNumber;
+            }
           } else {
-            const urlMatch = link.match(/\/(?:glava|chapter)-(\d+)\//i);
+            const urlMatch = link.match(
+              /\/(?:glava|chapter)-(\d+(?:\.\d+)?)\//i,
+            );
             if (urlMatch) {
-              number = parseInt(urlMatch[1], 10);
+              const parsedNumber = parseFloat(urlMatch[1]);
+              if (!isNaN(parsedNumber)) {
+                number = parsedNumber;
+              }
             }
           }
 

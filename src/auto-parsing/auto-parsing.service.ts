@@ -112,11 +112,18 @@ export class AutoParsingService {
       );
 
       // Find new chapters
-      const newChapters = parsedData.chapters.filter(
-        (ch) =>
-          ch.number !== undefined &&
-          !existingChapterNumbers.includes(ch.number),
-      );
+      const newChapters = parsedData.chapters.filter((ch) => {
+        // Проверяем, что номер главы существует и является числом
+        if (ch.number === undefined || ch.number === null || isNaN(ch.number)) {
+          return false;
+        }
+
+        // Преобразуем номер главы к числу для сравнения
+        const chapterNumber = Number(ch.number);
+
+        // Проверяем, что глава еще не существует
+        return !existingChapterNumbers.includes(chapterNumber);
+      });
 
       if (newChapters.length === 0) {
         this.logger.log(`No new chapters found for title ${title.name}`);
