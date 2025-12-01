@@ -158,7 +158,13 @@ export class ShopService {
       purchasedAt: new Date(),
     });
 
-    await this.usersService.update(userId, user);
+    // Create UpdateUserDto from user object
+    const updateUserDto = {
+      balance: user.balance,
+      ownedDecorations: user.ownedDecorations,
+    };
+
+    await this.usersService.update(userId, updateUserDto);
 
     this.logger.log(
       `User ${userId} successfully purchased ${decorationType} decoration ${decorationId}`,
@@ -200,7 +206,13 @@ export class ShopService {
 
     // Equip the decoration
     user.equippedDecorations[decorationType] = new Types.ObjectId(decorationId);
-    await this.usersService.update(userId, user);
+
+    // Create UpdateUserDto from user object
+    const updateUserDto: any = {
+      equippedDecorations: user.equippedDecorations,
+    };
+
+    await this.usersService.update(userId, updateUserDto);
 
     this.logger.log(
       `User ${userId} successfully equipped ${decorationType} decoration ${decorationId}`,
@@ -223,7 +235,13 @@ export class ShopService {
 
     // Unequip the decoration
     user.equippedDecorations[decorationType] = null;
-    await this.usersService.update(userId, user);
+
+    // Create UpdateUserDto from user object
+    const updateUserDto: any = {
+      equippedDecorations: user.equippedDecorations,
+    };
+
+    await this.usersService.update(userId, updateUserDto);
 
     this.logger.log(
       `User ${userId} successfully unequipped ${decorationType} decoration`,
