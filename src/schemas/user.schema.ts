@@ -122,6 +122,9 @@ export class User {
     provider: string;
     providerId: string;
   };
+
+  @Prop({ required: false })
+  birthDate?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
@@ -129,3 +132,4 @@ export const UserSchema = SchemaFactory.createForClass(User);
 UserSchema.index({ 'readingHistory.titleId': 1 });
 UserSchema.index({ 'readingHistory.chapters.chapterId': 1 });
 UserSchema.index({ 'readingHistory.readAt': -1 });
+UserSchema.index({ birthDate: 1 });

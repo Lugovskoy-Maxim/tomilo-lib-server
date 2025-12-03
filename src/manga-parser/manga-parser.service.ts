@@ -272,7 +272,7 @@ export class MangaParserService {
     }
 
     if (chapters.length === 0) {
-      throw new BadRequestException('No chapters found to import');
+      throw new BadRequestException('No chapters found on the source website');
     }
 
     // Create title
@@ -409,7 +409,16 @@ export class MangaParserService {
     }
 
     if (selectedChapters.length === 0) {
-      throw new BadRequestException('No chapters found to import');
+      // Проверяем, есть ли вообще главы в распаршенных данных
+      if (parsedData.chapters.length === 0) {
+        throw new BadRequestException(
+          'No chapters found on the source website',
+        );
+      } else {
+        throw new BadRequestException(
+          'No chapters found to import (all chapters may already exist)',
+        );
+      }
     }
 
     // Import chapters
@@ -495,6 +504,16 @@ export class MangaParserService {
       chapters = chapters.filter(
         (ch) => ch.number && requestedNumbers.has(ch.number),
       );
+    }
+
+    if (chapters.length === 0 && parsedData.chapters.length > 0) {
+      throw new BadRequestException(
+        'No chapters found to import (all chapters may already exist)',
+      );
+    }
+
+    if (chapters.length === 0 && parsedData.chapters.length === 0) {
+      throw new BadRequestException('No chapters found on the source website');
     }
 
     return {

@@ -13,6 +13,7 @@ import {
   UploadedFile,
   UseInterceptors,
   UseGuards,
+  Request,
 } from '@nestjs/common';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -24,10 +25,15 @@ import { CollectionsService } from './collections.service';
 import { CreateCollectionDto } from './dto/create-collection.dto';
 import { UpdateCollectionDto } from './dto/update-collection.dto';
 import { Types } from 'mongoose';
+import { LoggerService } from '../common/logger/logger.service';
 
 @Controller('collections')
 export class CollectionsController {
-  constructor(private readonly collectionsService: CollectionsService) {}
+  private readonly logger = new LoggerService();
+
+  constructor(private readonly collectionsService: CollectionsService) {
+    this.logger.setContext(CollectionsController.name);
+  }
 
   @Get()
   @HttpCode(HttpStatus.OK)
@@ -98,9 +104,17 @@ export class CollectionsController {
   )
   @HttpCode(HttpStatus.CREATED)
   async create(
+    @Request() req,
     @Body() createCollectionDto: CreateCollectionDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
+    this.logger.log(
+      `Creating collection with data: ${JSON.stringify(createCollectionDto)}`,
+    );
+    this.logger.log(
+      `User making request: ${req.user?.email} (${req.user?.userId}) with roles: ${req.user?.roles?.join(', ')}`,
+    );
+
     if (file) {
       createCollectionDto.cover = `/uploads/collections/${file.filename}`;
     }

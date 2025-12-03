@@ -9,13 +9,18 @@ import { Model, Types } from 'mongoose';
 import { Collection, CollectionDocument } from '../schemas/collection.schema';
 import { CreateCollectionDto } from './dto/create-collection.dto';
 import { UpdateCollectionDto } from './dto/update-collection.dto';
+import { LoggerService } from '../common/logger/logger.service';
 
 @Injectable()
 export class CollectionsService {
+  private readonly logger = new LoggerService();
+
   constructor(
     @InjectModel(Collection.name)
     private collectionModel: Model<CollectionDocument>,
-  ) {}
+  ) {
+    this.logger.setContext(CollectionsService.name);
+  }
 
   async findAll({
     search,
@@ -75,18 +80,26 @@ export class CollectionsService {
   async create(
     createCollectionDto: CreateCollectionDto,
   ): Promise<CollectionDocument> {
+    this.logger.log(
+      `Creating new collection with data: ${JSON.stringify(createCollectionDto)}`,
+    );
+
     const { name } = createCollectionDto;
 
     // Проверка на существующую коллекцию
     if (name) {
       const existingCollection = await this.findByName(name);
       if (existingCollection) {
+        this.logger.warn(`Collection with name "${name}" already exists`);
         throw new ConflictException('Collection with this name already exists');
       }
     }
 
     const collection = new this.collectionModel(createCollectionDto);
     const saved = await collection.save();
+    this.logger.log(
+      `Collection created successfully with ID: ${saved._id.toString()}`,
+    );
     await saved.populate('titles');
     return saved;
   }

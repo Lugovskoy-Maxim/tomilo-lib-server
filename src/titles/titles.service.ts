@@ -29,6 +29,8 @@ export class TitlesService {
     search,
     genre,
     status,
+    releaseYear,
+    type,
     sortBy = 'createdAt',
     sortOrder = 'desc',
     populateChapters = true,
@@ -37,7 +39,9 @@ export class TitlesService {
     limit?: number;
     search?: string;
     genre?: string;
+    type?: string;
     status?: TitleStatus;
+    releaseYear?: number;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
     populateChapters?: boolean;
@@ -59,6 +63,14 @@ export class TitlesService {
 
     if (status) {
       query.status = status;
+    }
+
+    if (type) {
+      query.type = type;
+    }
+
+    if (releaseYear) {
+      query.releaseYear = Number(releaseYear);
     }
 
     const sortOptions: any = {};

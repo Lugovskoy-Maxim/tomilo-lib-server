@@ -287,10 +287,20 @@ export class SenkuroParser implements MangaParser {
       for (const edge of chaptersData.edges) {
         const node = edge.node;
         const name = node.name || `Глава ${node.number}`;
+
+        // Преобразуем номер главы в число и проверяем его корректность
+        let chapterNumber: number | undefined;
+        if (node.number !== undefined && node.number !== null) {
+          const parsedNumber = parseFloat(node.number);
+          if (!isNaN(parsedNumber)) {
+            chapterNumber = parsedNumber;
+          }
+        }
+
         chapters.push({
           name,
           slug: node.slug,
-          number: parseInt(node.number, 10),
+          number: chapterNumber,
         });
       }
 
