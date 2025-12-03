@@ -330,6 +330,12 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID or title ID');
     }
 
+    // Проверка на null или undefined titleId
+    if (!titleId) {
+      this.logger.warn(`Title ID is null or undefined for user ${userId}`);
+      throw new BadRequestException('Title ID cannot be null or undefined');
+    }
+
     const titleObjectId = new Types.ObjectId(titleId);
     const titleIdStr = titleObjectId.toString();
 

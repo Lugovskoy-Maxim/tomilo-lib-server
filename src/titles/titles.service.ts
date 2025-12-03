@@ -148,7 +148,7 @@ export class TitlesService {
     if (populateChapters) {
       query = query.populate({
         path: 'chapters',
-        select: '-chapters',
+        select: '-page',
         options: { sort: { chapterNumber: 1 } },
       });
     }
