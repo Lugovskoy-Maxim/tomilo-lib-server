@@ -66,6 +66,7 @@ class LatestUpdateResponseDto {
   id: string;
   title: string;
   cover: string;
+  type: string;
   chapter: string;
   chapterNumber: number;
   timeAgo: string;
@@ -233,15 +234,8 @@ export class TitlesController {
         await this.titlesService.getTitlesWithRecentChapters(Number(limit));
       const data = titlesWithChapters.map((item) => {
         // Вычисляем время назад в часах
-        const now = new Date();
+
         const releaseDate = new Date(item.latestChapter.releaseDate);
-        const diffInHours = Math.floor(
-          (now.getTime() - releaseDate.getTime()) / (1000 * 60 * 60),
-        );
-        const timeAgo =
-          diffInHours <= 0
-            ? 'Меньше часа назад'
-            : `${diffInHours} ${this.getHoursWord(diffInHours)} назад`;
 
         // Формируем строку с диапазоном глав
         let chapterString = `Глава ${item.maxChapter}`;
@@ -253,9 +247,10 @@ export class TitlesController {
           id: item._id?.toString(),
           title: item.name,
           cover: item.coverImage,
+          type: item.type,
           chapter: chapterString,
           chapterNumber: item.maxChapter,
-          timeAgo: timeAgo,
+          timeAgo: releaseDate.toLocaleDateString(),
           isAdult: item.ageLimit >= 18,
         };
       });
