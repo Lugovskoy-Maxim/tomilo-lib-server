@@ -248,6 +248,7 @@ export class TitlesController {
           title: item.name,
           cover: item.coverImage,
           type: item.type,
+          releaseYear: item.releaseYear,
           chapter: chapterString,
           chapterNumber: item.maxChapter,
           timeAgo: releaseDate,
