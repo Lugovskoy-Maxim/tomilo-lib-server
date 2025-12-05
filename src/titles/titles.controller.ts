@@ -243,12 +243,18 @@ export class TitlesController {
             ? 'Меньше часа назад'
             : `${diffInHours} ${this.getHoursWord(diffInHours)} назад`;
 
+        // Формируем строку с диапазоном глав
+        let chapterString = `Глава ${item.maxChapter}`;
+        if (item.minChapter !== item.maxChapter) {
+          chapterString = `Главы ${item.minChapter}-${item.maxChapter}`;
+        }
+
         return {
           id: item._id?.toString(),
           title: item.name,
           cover: item.coverImage,
-          chapter: `Глава ${item.latestChapter.chapterNumber}`,
-          chapterNumber: item.latestChapter.chapterNumber,
+          chapter: chapterString,
+          chapterNumber: item.maxChapter,
           timeAgo: timeAgo,
           isAdult: item.ageLimit >= 18,
         };

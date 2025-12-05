@@ -339,31 +339,53 @@ export class TitlesService {
     const recentChapters = await this.chapterModel
       .find({ isPublished: true })
       .sort({ releaseDate: -1 })
-      .limit(limit * 10) // Получаем значительно больше глав для лучшей фильтрации
+      .limit(limit * 20) // Получаем значительно больше глав для лучшей фильтрации
       .populate('titleId')
       .exec();
 
-    // Извлекаем уникальные тайтлы из недавних глав
+    // Группируем главы по тайтлам и сохраняем информацию о диапазонах глав
     const titleMap = new Map();
     for (const chapter of recentChapters) {
-      if (chapter.titleId && !titleMap.has(chapter.titleId._id.toString())) {
-        titleMap.set(chapter.titleId._id.toString(), {
-          title: chapter.titleId,
-          latestChapter: chapter,
-        });
+      if (chapter.titleId) {
+        const titleId = chapter.titleId._id.toString();
+        if (!titleMap.has(titleId)) {
+          titleMap.set(titleId, {
+            title: chapter.titleId,
+            chapters: [chapter],
+            minChapter: chapter.chapterNumber,
+            maxChapter: chapter.chapterNumber,
+          });
+        } else {
+          const titleInfo = titleMap.get(titleId);
+          titleInfo.chapters.push(chapter);
+          titleInfo.minChapter = Math.min(
+            titleInfo.minChapter,
+            chapter.chapterNumber,
+          );
+          titleInfo.maxChapter = Math.max(
+            titleInfo.maxChapter,
+            chapter.chapterNumber,
+          );
+        }
       }
 
       // Прерываем цикл, если уже набрали нужное количество уникальных тайтлов
-      if (titleMap.size >= limit) {
+      if (titleMap.size >= limit * 2) {
         break;
       }
     }
 
-    // Преобразуем Map в массив и ограничиваем количество элементов
-    const result = Array.from(titleMap.values()).slice(0, limit);
+    // Преобразуем Map в массив и сортируем по дате последней главы
+    const titlesWithChapters = Array.from(titleMap.values())
+      .sort(
+        (a, b) =>
+          b.chapters[0].releaseDate.getTime() -
+          a.chapters[0].releaseDate.getTime(),
+      )
+      .slice(0, limit);
 
-    // Возвращаем массив с информацией о тайтлах и их последних главах
-    return result.map((item) => ({
+    // Возвращаем массив с информацией о тайтлах и диапазонах глав
+    return titlesWithChapters.map((item) => ({
       // Явно перечисляем свойства вместо использования toObject()
       _id: item.title._id,
       name: item.title.name,
@@ -385,7 +407,9 @@ export class TitlesService {
       type: item.title.type,
       createdAt: item.title.createdAt,
       updatedAt: item.title.updatedAt,
-      latestChapter: item.latestChapter,
+      latestChapter: item.chapters[0],
+      minChapter: item.minChapter,
+      maxChapter: item.maxChapter,
     }));
   }
 
