@@ -287,6 +287,7 @@ export class TitlesController {
       const data = result.titles.map((title) => ({
         id: title._id?.toString(),
         title: title.name,
+        rating: title.averageRating,
         cover: title.coverImage,
         description: title.description,
         isAdult: title.ageLimit >= 18,

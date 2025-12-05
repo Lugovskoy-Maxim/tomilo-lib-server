@@ -316,7 +316,7 @@ export class TitlesService {
   async getPopularTitles(limit = 10): Promise<TitleDocument[]> {
     return this.titleModel
       .find()
-      .sort({ views: -1, rating: -1 })
+      .sort({ weekViews: -1, rating: -1 })
       .limit(limit)
       .populate('chapters')
       .exec();
