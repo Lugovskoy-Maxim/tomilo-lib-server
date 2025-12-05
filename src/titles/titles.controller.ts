@@ -283,6 +283,7 @@ export class TitlesController {
         search: query,
         page: 1,
         limit: Number(limit),
+        populateChapters: false,
       });
       const data = result.titles.map((title) => ({
         id: title._id?.toString(),
