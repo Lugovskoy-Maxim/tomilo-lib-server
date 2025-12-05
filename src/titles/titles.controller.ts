@@ -448,6 +448,7 @@ export class TitlesController {
         type: type as any,
         sortBy,
         sortOrder,
+        populateChapters: false, // Не возвращать главы в списке тайтлов
       });
 
       const data = {
