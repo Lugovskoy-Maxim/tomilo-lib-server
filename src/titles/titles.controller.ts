@@ -69,7 +69,7 @@ class LatestUpdateResponseDto {
   type: string;
   chapter: string;
   chapterNumber: number;
-  timeAgo: string;
+  timeAgo: Date;
   isAdult: boolean;
 }
 
@@ -250,7 +250,7 @@ export class TitlesController {
           type: item.type,
           chapter: chapterString,
           chapterNumber: item.maxChapter,
-          timeAgo: releaseDate.toLocaleDateString(),
+          timeAgo: releaseDate,
           isAdult: item.ageLimit >= 18,
         };
       });
