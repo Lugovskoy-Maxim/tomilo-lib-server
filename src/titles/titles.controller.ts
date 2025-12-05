@@ -226,7 +226,7 @@ export class TitlesController {
 
   @Get('titles/latest-updates')
   async getLatestUpdates(
-    @Query('limit') limit = 10,
+    @Query('limit') limit = 15,
   ): Promise<ApiResponseDto<LatestUpdateResponseDto[]>> {
     try {
       const titlesWithChapters =

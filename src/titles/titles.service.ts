@@ -334,12 +334,12 @@ export class TitlesService {
       .exec();
   }
 
-  async getTitlesWithRecentChapters(limit = 20): Promise<any[]> {
+  async getTitlesWithRecentChapters(limit = 15): Promise<any[]> {
     // Получаем недавние главы, отсортированные по дате добавления
     const recentChapters = await this.chapterModel
       .find({ isPublished: true })
       .sort({ releaseDate: -1 })
-      .limit(limit * 2) // Получаем больше глав, чтобы потом отфильтровать по уникальным тайтлам
+      .limit(limit * 10) // Получаем значительно больше глав для лучшей фильтрации
       .populate('titleId')
       .exec();
 
@@ -351,6 +351,11 @@ export class TitlesService {
           title: chapter.titleId,
           latestChapter: chapter,
         });
+      }
+
+      // Прерываем цикл, если уже набрали нужное количество уникальных тайтлов
+      if (titleMap.size >= limit) {
+        break;
       }
     }
 
