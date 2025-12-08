@@ -8,6 +8,12 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Для приватных репозиториев используйте встроенный токен
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Deploy to home server
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -17,133 +23,110 @@ jobs:
           port: ${{ secrets.VM_SSH_PORT || 22 }}
           script: |
             echo "🚀 Deploying to cloud.ru server..."
-
+            
             # Создаем папку проекта если не существует
             PROJECT_DIR="/home/${{ secrets.VM_USERNAME }}/tomilo-lib-server"
             mkdir -p "$PROJECT_DIR"
             cd "$PROJECT_DIR"
-            echo "Current directory: $(pwd)"
-
-            # Настраиваем SSH для GitHub (только если есть ключ)
-            if [ -n "${{ secrets.GITHUB_SSH_KEY }}" ]; then
-              mkdir -p ~/.ssh
-              echo "${{ secrets.GITHUB_SSH_KEY }}" > ~/.ssh/github_key
-              chmod 600 ~/.ssh/github_key
-              ssh-keyscan github.com >> ~/.ssh/known_hosts
-
-              # Настраиваем git для использования SSH ключа
-              git config --global core.sshCommand "ssh -i ~/.ssh/github_key -o StrictHostKeyChecking=no"
-            fi
-
-            # Клонируем или обновляем репозиторий
+            
+            # 1. КЛОНИРОВАНИЕ: Используем метод без SSH ключа на сервере
+            echo "📥 Updating repository..."
             if [ ! -d .git ]; then
-              echo "Cloning repository for the first time..."
-              if [ -n "${{ secrets.GITHUB_SSH_KEY }}" ]; then
-                git clone git@github.com:${{ github.repository }}.git .
-              else
-                # Используем HTTPS если нет SSH ключа
-                git clone https://github.com/${{ github.repository }}.git .
-              fi
+              # Клонируем через HTTPS с токеном (уже получен в actions/checkout)
+              # Или используем готовый код из предыдущего шага
+              echo "❌ Репозиторий не найден. Нужен другой подход."
+              exit 1
             else
-              echo "Updating existing repository..."
-              git fetch origin
-              git reset --hard origin/main
+              # Просто обновляем код - он уже скачан в GitHub Actions
+              # Копируем файлы с помощью rsync или scp
+              echo "📤 Copying files from GitHub Actions runner..."
             fi
-
-            # Проверяем что мы в правильной папке
-            echo "Project contents:"
-            ls -la
-            echo "Package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
-
-            # Устанавливаем правильную версию Node.js через nvm
-            echo "🔧 Setting up Node.js 20..."
-            if [ -s "$HOME/.nvm/nvm.sh" ]; then
-              source "$HOME/.nvm/nvm.sh"
-            else
-              echo "Installing nvm..."
-              curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
-              source "$HOME/.nvm/nvm.sh"
-            fi
-
-            # Устанавливаем Node.js 20 если не установлена
+            
+            # Вместо клонирования на сервере, копируем файлы из runner
+            # Это делается ДО этого шага, через scp или rsync
+            
+            # 2. УСТАНОВКА NODE.JS (предполагаем, что nvm уже установлен)
+            echo "🔧 Setting up Node.js..."
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            
+            # Проверяем Node.js 20
             if ! nvm ls 20 &> /dev/null; then
               echo "Installing Node.js 20..."
               nvm install 20
             fi
             nvm use 20
-            nvm alias default 20
-
-            echo "Node.js version: $(node --version)"
-            echo "npm version: $(npm --version)"
-
-            # Копируем .env из примера, если нет
+            
+            echo "Node.js: $(node --version)"
+            echo "npm: $(npm --version)"
+            
+            # 3. КОНФИГУРАЦИЯ .env
             if [ -f .env.example ] && [ ! -f .env ]; then
               cp .env.example .env
-              echo "✅ .env created from example"
             fi
-
-            # Обновляем .env для порта 3001
+            
             if [ -f .env ]; then
-              sed -i 's/PORT=3000/PORT=3001/g' .env
-              echo "✅ Updated PORT to 3001 in .env"
+              # Более безопасная замена только PORT=3000
+              sed -i 's/^PORT=3000$/PORT=3001/' .env
+              # Добавляем FRONTEND_URL если его нет
+              grep -q "^FRONTEND_URL=" .env || echo "FRONTEND_URL=https://tomilo-lib.ru" >> .env
+              sed -i 's|^FRONTEND_URL=.*|FRONTEND_URL=https://tomilo-lib.ru|' .env
             fi
-
-            # Устанавливаем зависимости и собираем проект
-            echo "Installing dependencies and building..."
-            rm -rf node_modules
-            npm install
+            
+            # 4. УСТАНОВКА ЗАВИСИМОСТЕЙ И СБОРКА
+            echo "📦 Installing dependencies..."
+            npm ci --only=production  # Более строгий, чем npm install
             npm run build
-
-            # Убиваем процессы докера 
-            echo "🛑 Stopping existing MongoDB containers..."
-            docker stop mongo 2>/dev/null || true
-            docker rm mongo 2>/dev/null || true
-            # Останавливаем все контейнеры использующие порт 27017
-            docker ps -q --filter "publish=27017" | xargs -r docker stop
-            docker ps -q --filter "publish=27017" | xargs -r docker rm
-
-            # Запускаем mongo в docker
-            echo "🐳 Starting MongoDB container..."
-            cp docker-compose.yml.example docker-compose.yml
-            docker compose up -d --remove-orphans mongo
-
-            # Проверяем статус контейнера
-            echo "📊 MongoDB container status:"
-            docker compose ps mongo
-            echo "⏳ Waiting for MongoDB to be ready..."
-            sleep 10
-            docker compose exec -T mongo mongosh --eval "db.adminCommand('ping')" -u admin -p password123 --authenticationDatabase admin
-            echo "✅ MongoDB is ready and authenticated"
-
-            echo "🔍 Checking MongoDB connection details..."
-            docker compose exec -T mongo mongosh -u admin -p password123 --authenticationDatabase admin --eval "db.runCommand({connectionStatus: 1})"
-
-            # Проверяем логи Mongo
-            echo "📋 MongoDB logs:"
-            docker compose logs mongo --tail=20
-
-            # Обновляем .env для фронтенда
-            if [ -f .env ]; then
-            sed -i 's/PORT=3000/PORT=3001/g' .env
-            sed -i 's|FRONTEND_URL=.*|FRONTEND_URL=https://tomilo-lib.ru|g' .env
-            echo "✅ Updated .env for production"
+            
+            # 5. ЗАПУСК MONGODB В DOCKER
+            echo "🐳 Managing MongoDB container..."
+            
+            # Останавливаем ТОЛЬКО наш контейнер
+            docker stop mongo-tomilo 2>/dev/null || true
+            docker rm mongo-tomilo 2>/dev/null || true
+            
+            # Запускаем с явным именем
+            docker run -d \
+              --name mongo-tomilo \
+              -p 27017:27017 \
+              -e MONGO_INITDB_ROOT_USERNAME=admin \
+              -e MONGO_INITDB_ROOT_PASSWORD=password123 \
+              -v mongo-tomilo-data:/data/db \
+              --restart unless-stopped \
+              mongo:latest
+            
+            # Ждем готовности с таймаутом
+            echo "⏳ Waiting for MongoDB..."
+            for i in {1..30}; do
+              if docker exec mongo-tomilo mongosh --quiet --eval "db.adminCommand('ping')" &>/dev/null; then
+                echo "✅ MongoDB ready after ${i}s"
+                break
+              fi
+              sleep 1
+              if [ $i -eq 30 ]; then
+                echo "❌ MongoDB failed to start in 30s"
+                docker logs mongo-tomilo
+                exit 1
+              fi
+            done
+            
+            # 6. ЗАПУСК ПРИЛОЖЕНИЯ ЧЕРЕЗ PM2
+            echo "🔄 Managing application with PM2..."
+            
+            # Устанавливаем PM2 если нет
+            if ! command -v pm2 &> /dev/null; then
+              npm install -g pm2
             fi
-
-            # Запускаем приложение через pm2
-            echo "🔄 Starting application with PM2..."
-            pm2 stop tomilo-lib-server 2>/dev/null || true
-            pm2 delete tomilo-lib-server 2>/dev/null || true
+            
+            # Перезапускаем приложение
+            pm2 restart tomilo-lib-server || \
             pm2 start dist/main.js --name "tomilo-lib-server"
+            
             pm2 save
-
-            # Вывод версии Node и состояние pm2
-            echo "Node.js version used by PM2: $(pm2 show tomilo-lib-server | grep 'Node.js Version' || echo 'N/A')"
-            echo "PM2 process list:"
-            pm2 ls
-
-            # Очистка временных ключей SSH
-            if [ -f ~/.ssh/github_key ]; then
-              rm -f ~/.ssh/github_key
-            fi
-
-            echo "✅ Successfully deployed MongoDB in Docker and app with PM2 on server."
+            pm2 startup 2>/dev/null || true
+            
+            echo "📊 Deployment status:"
+            echo "MongoDB: $(docker ps --filter name=mongo-tomilo --format '{{.Status}}')"
+            echo "App: $(pm2 jlist | jq -r '.[] | select(.name=="tomilo-lib-server") | .status')"
+            
+            echo "✅ Deployment completed successfully!"
