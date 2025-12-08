@@ -117,24 +117,37 @@ jobs:
               echo "✅ docker-compose.yml already exists, skipping copy."
             fi
 
+            # Проверяем, какая версия docker compose доступна
+            echo "🔍 Checking Docker Compose version..."
+            if command -v docker-compose &> /dev/null; then
+              COMPOSE_CMD="docker-compose"
+              echo "Using docker-compose (legacy)"
+            elif docker compose version &> /dev/null; then
+              COMPOSE_CMD="docker compose"
+              echo "Using docker compose (plugin)"
+            else
+              echo "❌ Error: Docker Compose is not installed!"
+              exit 1
+            fi
+
             # Запускаем mongo в docker
             echo "🐳 Starting MongoDB container..."
-            docker compose up -d --remove-orphans mongo
+            $COMPOSE_CMD up -d --remove-orphans mongo
 
             # Проверяем статус контейнера
             echo "📊 MongoDB container status:"
-            docker compose ps mongo
+            $COMPOSE_CMD ps mongo
             echo "⏳ Waiting for MongoDB to be ready..."
             sleep 10
-            docker compose exec -T mongo mongosh --eval "db.adminCommand('ping')" -u admin -p password123 --authenticationDatabase admin
+            $COMPOSE_CMD exec -T mongo mongosh --eval "db.adminCommand('ping')" -u admin -p password123 --authenticationDatabase admin
             echo "✅ MongoDB is ready and authenticated"
 
             echo "🔍 Checking MongoDB connection details..."
-            docker compose exec -T mongo mongosh -u admin -p password123 --authenticationDatabase admin --eval "db.runCommand({connectionStatus: 1})"
+            $COMPOSE_CMD exec -T mongo mongosh -u admin -p password123 --authenticationDatabase admin --eval "db.runCommand({connectionStatus: 1})"
 
             # Проверяем логи Mongo
             echo "📋 MongoDB logs:"
-            docker compose logs mongo --tail=20
+            $COMPOSE_CMD logs mongo --tail=20
 
             # Обновляем .env для фронтенда
             if [ -f .env ]; then
