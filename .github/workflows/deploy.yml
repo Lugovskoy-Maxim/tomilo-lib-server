@@ -102,9 +102,23 @@ jobs:
             docker ps -q --filter "publish=27017" | xargs -r docker stop
             docker ps -q --filter "publish=27017" | xargs -r docker rm
 
+            # Проверяем наличие docker-compose.yml и копируем из шаблона если нет
+            echo "🔍 Checking for docker-compose.yml..."
+            if [ ! -f docker-compose.yml ]; then
+              if [ -f docker-compose.yml.example ]; then
+                echo "📋 docker-compose.yml not found, copying from template..."
+                cp docker-compose.yml.example docker-compose.yml
+                echo "✅ docker-compose.yml created from template"
+              else
+                echo "❌ Error: docker-compose.yml.example not found!"
+                exit 1
+              fi
+            else
+              echo "✅ docker-compose.yml already exists, skipping copy."
+            fi
+
             # Запускаем mongo в docker
             echo "🐳 Starting MongoDB container..."
-            cp docker-compose.yml.example docker-compose.yml
             docker compose up -d --remove-orphans mongo
 
             # Проверяем статус контейнера
@@ -124,9 +138,9 @@ jobs:
 
             # Обновляем .env для фронтенда
             if [ -f .env ]; then
-            sed -i 's/PORT=3000/PORT=3001/g' .env
-            sed -i 's|FRONTEND_URL=.*|FRONTEND_URL=https://tomilo-lib.ru|g' .env
-            echo "✅ Updated .env for production"
+              sed -i 's/PORT=3000/PORT=3001/g' .env
+              sed -i 's|FRONTEND_URL=.*|FRONTEND_URL=https://tomilo-lib.ru|g' .env
+              echo "✅ Updated .env for production"
             fi
 
             # Запускаем приложение через pm2
