@@ -24,11 +24,16 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   handleRequest(err: any, user: any) {
-    if (err || !user) {
+    if (err) {
+      this.logger.warn(`JWT Auth Guard failed with error: ${err.message}`);
+      throw new UnauthorizedException('Invalid token');
+    }
+
+    if (!user) {
       this.logger.warn(
-        `JWT Auth Guard failed: ${err?.message || 'User not found'}`,
+        'JWT Auth Guard failed: User not found or invalid token',
       );
-      throw err || new UnauthorizedException('Invalid token');
+      throw new UnauthorizedException('Invalid token');
     }
 
     this.logger.log(

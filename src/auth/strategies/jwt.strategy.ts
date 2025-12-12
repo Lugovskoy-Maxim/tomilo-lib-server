@@ -24,7 +24,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Проверяем наличие обязательных полей
     if (!payload.userId || !payload.email) {
       this.logger.warn(`Invalid token payload: ${JSON.stringify(payload)}`);
-      throw new Error('Invalid token payload');
+      return null; // Return null to indicate authentication failure
     }
 
     const user = {

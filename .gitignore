@@ -60,6 +60,7 @@ docker-compose.yml
 
 # MONGO DB
 mongo-data-4.4
+mongo-d*
 
 # Upload
 uploads
