@@ -24,7 +24,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   handleRequest(err: any, user: any) {
-    console.log(user);
+    this.logger.log(`JWT Auth Guard handling request with user: ${user}`);
     if (err) {
       this.logger.warn(`JWT Auth Guard failed with error: ${err.message}`);
       throw new UnauthorizedException('Invalid token');

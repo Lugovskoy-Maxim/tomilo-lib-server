@@ -98,7 +98,7 @@ export class UsersService {
     }
 
     const user = await this.userModel
-      .findById(id)
+      .findById(new Types.ObjectId(id))
       .select('-password')
       .populate('bookmarks')
       .populate('readingHistory.titleId')
@@ -119,11 +119,15 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID');
     }
 
+    this.logger.log(`Querying database for user with ID: ${id}`);
     const user = await this.userModel
-      .findById(id)
+      .findById(new Types.ObjectId(id))
       .select('-password -readingHistory')
       .populate('bookmarks');
 
+    this.logger.log(
+      `Database query result: ${user ? 'User found' : 'User not found'}`,
+    );
     if (!user) {
       this.logger.warn(`User not found with ID: ${id}`);
       throw new NotFoundException('User not found');
@@ -166,7 +170,7 @@ export class UsersService {
     }
 
     const user = await this.userModel
-      .findByIdAndUpdate(id, updateUserDto, { new: true })
+      .findByIdAndUpdate(new Types.ObjectId(id), updateUserDto, { new: true })
       .select('-password');
 
     if (!user) {
@@ -183,7 +187,7 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID');
     }
 
-    const user = await this.userModel.findById(id);
+    const user = await this.userModel.findById(new Types.ObjectId(id));
     if (!user) {
       this.logger.warn(`User not found with ID: ${id}`);
       throw new NotFoundException('User not found');
@@ -192,7 +196,9 @@ export class UsersService {
     // Удаляем файлы пользователя (аватар)
     await this.filesService.deleteUserFolder(id);
 
-    const result = await this.userModel.findByIdAndDelete(id);
+    const result = await this.userModel.findByIdAndDelete(
+      new Types.ObjectId(id),
+    );
     if (!result) {
       this.logger.warn(`User not found with ID: ${id} during deletion`);
       throw new NotFoundException('User not found');
@@ -210,7 +216,7 @@ export class UsersService {
 
     const user = await this.userModel
       .findByIdAndUpdate(
-        userId,
+        new Types.ObjectId(userId),
         { $addToSet: { bookmarks: titleId } },
         { new: true },
       )
@@ -234,7 +240,7 @@ export class UsersService {
 
     const user = await this.userModel
       .findByIdAndUpdate(
-        userId,
+        new Types.ObjectId(userId),
         { $pull: { bookmarks: titleId } },
         { new: true },
       )
@@ -253,7 +259,7 @@ export class UsersService {
     }
 
     const user = await this.userModel
-      .findById(userId)
+      .findById(new Types.ObjectId(userId))
       .populate('bookmarks')
       .select('bookmarks');
 
@@ -275,7 +281,11 @@ export class UsersService {
 
     // Обновляем пользователя с новым путем к аватару
     const user = await this.userModel
-      .findByIdAndUpdate(userId, { avatar: avatarPath }, { new: true })
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { avatar: avatarPath },
+        { new: true },
+      )
       .select('-password');
 
     if (!user) {
@@ -292,7 +302,9 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID');
     }
 
-    const user = await this.userModel.findById(userId).select('avatar');
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('avatar');
     return user?.avatar || null;
   }
 
@@ -306,7 +318,11 @@ export class UsersService {
 
     // Обновляем пользователя, убирая аватар
     const user = await this.userModel
-      .findByIdAndUpdate(userId, { $unset: { avatar: 1 } }, { new: true })
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { $unset: { avatar: 1 } },
+        { new: true },
+      )
       .select('-password');
 
     if (!user) {
@@ -375,7 +391,7 @@ export class UsersService {
     }
 
     // Находим пользователя
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
       this.logger.warn(`User not found with ID: ${userId}`);
       throw new NotFoundException('User not found');
@@ -448,7 +464,9 @@ export class UsersService {
     // Сохраняем изменения
     await user.save();
     this.logger.log(`Reading history updated successfully for user ${userId}`);
-    return (await this.userModel.findById(userId).select('-password')) as User;
+    return (await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('-password')) as User;
   }
 
   async getReadingHistory(userId: string) {
@@ -457,7 +475,7 @@ export class UsersService {
     }
 
     const user = await this.userModel
-      .findById(userId)
+      .findById(new Types.ObjectId(userId))
       .populate('readingHistory.titleId')
       .populate('readingHistory.chapters.chapterId')
       .select('readingHistory');
@@ -475,7 +493,7 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID or title ID');
     }
 
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -507,7 +525,7 @@ export class UsersService {
 
     const user = await this.userModel
       .findByIdAndUpdate(
-        userId,
+        new Types.ObjectId(userId),
         { $set: { readingHistory: [] } },
         { new: true },
       )
@@ -530,7 +548,7 @@ export class UsersService {
 
     const user = await this.userModel
       .findByIdAndUpdate(
-        userId,
+        new Types.ObjectId(userId),
         { $pull: { readingHistory: { titleId: new Types.ObjectId(titleId) } } },
         { new: true },
       )
@@ -572,7 +590,7 @@ export class UsersService {
     }
 
     // Находим пользователя
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -603,7 +621,9 @@ export class UsersService {
     }
 
     await user.save();
-    return (await this.userModel.findById(userId).select('-password')) as User;
+    return (await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('-password')) as User;
   }
 
   // 📊 Статистика пользователя
@@ -612,7 +632,7 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID');
     }
 
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -639,7 +659,7 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID');
     }
 
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -675,7 +695,11 @@ export class UsersService {
     }
 
     const user = await this.userModel
-      .findByIdAndUpdate(userId, { $inc: { balance: amount } }, { new: true })
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { $inc: { balance: amount } },
+        { new: true },
+      )
       .select('-password');
 
     if (!user) {
@@ -697,7 +721,7 @@ export class UsersService {
       throw new BadRequestException('Amount must be positive');
     }
 
-    const user = await this.userModel.findById(userId);
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
       throw new NotFoundException('User not found');
     }
