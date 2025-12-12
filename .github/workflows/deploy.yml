@@ -131,6 +131,7 @@ jobs:
             fi
 
             # Запускаем mongo в docker
+            $COMPOSE_CMD down
             echo "🐳 Starting MongoDB container..."
             $COMPOSE_CMD up -d --remove-orphans mongo
 
