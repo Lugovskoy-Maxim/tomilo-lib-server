@@ -44,11 +44,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       userId: payload.userId,
       email: payload.email,
       username: payload.username || '', // Добавляем значение по умолчанию
-      roles: payload.role ? [payload.role] : [], // Используем payload.role и преобразуем в массив
+      role: payload.role ? [payload.role] : [], // Используем payload.role и преобразуем в массив
     };
 
     this.logger.log(
-      `JWT token validated successfully for user: ${user.email} (${user.userId}) with roles: ${user.roles.join(', ')}`,
+      `JWT token validated successfully for user: ${user.email} (${user.userId}) with roles: ${user.role.join(', ')}`,
     );
     return user;
   }

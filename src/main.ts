@@ -27,6 +27,7 @@ async function bootstrap() {
       'http://localhost:3002',
       'http://127.0.0.1:3002',
       'https://tomilo-lib.ru',
+      'http://tomilo-lib.ru',
       'http://46.72.32.145',
       'https://46.72.32.145',
     ],
