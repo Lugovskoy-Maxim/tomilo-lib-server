@@ -2,12 +2,13 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
 import { LoggerService } from '../../common/logger/logger.service';
+import { UsersService } from '../../users/users.service';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   private readonly logger = new LoggerService();
 
-  constructor() {
+  constructor(private usersService: UsersService) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -16,7 +17,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     this.logger.setContext(JwtStrategy.name);
   }
 
-  validate(payload: any) {
+  async validate(payload: any) {
     this.logger.log(
       `Validating JWT token with payload: ${JSON.stringify(payload)}`,
     );
@@ -24,6 +25,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     // Проверяем наличие обязательных полей
     if (!payload.userId || !payload.email) {
       this.logger.warn(`Invalid token payload: ${JSON.stringify(payload)}`);
+      return null; // Return null to indicate authentication failure
+    }
+
+    // Проверяем, существует ли пользователь в базе данных
+    try {
+      const existingUser = await this.usersService.findById(payload.userId);
+      if (!existingUser) {
+        this.logger.warn(`User not found in database: ${payload.userId}`);
+        return null; // Return null to indicate authentication failure
+      }
+    } catch (error) {
+      this.logger.warn(`Error checking user existence: ${error.message}`);
       return null; // Return null to indicate authentication failure
     }
 
