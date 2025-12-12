@@ -20,6 +20,10 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const token = request.headers.authorization;
     this.logger.log(`JWT Auth Guard checking token: ${token}`);
 
+    // Log request details for debugging
+    this.logger.log(`Request URL: ${request.url}`);
+    this.logger.log(`Request method: ${request.method}`);
+
     return super.canActivate(context);
   }
 
@@ -27,6 +31,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     this.logger.log(`JWT Auth Guard handling request with user: ${user}`);
     if (err) {
       this.logger.warn(`JWT Auth Guard failed with error: ${err.message}`);
+      this.logger.warn(`Error details: ${JSON.stringify(err)}`);
       throw new UnauthorizedException('Invalid token');
     }
 

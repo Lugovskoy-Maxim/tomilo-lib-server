@@ -15,12 +15,26 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       secretOrKey: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
     });
     this.logger.setContext(JwtStrategy.name);
+
+    // Log the JWT secret being used (without revealing the actual secret)
+    const secretSource = process.env.JWT_SECRET
+      ? 'environment variable'
+      : 'default value';
+    this.logger.log(
+      `JWT Strategy initialized with secret from ${secretSource}`,
+    );
   }
 
   async validate(payload: any) {
     this.logger.log(
       `Validating JWT token with payload: ${JSON.stringify(payload)}`,
     );
+
+    // Check if all required fields are present
+    if (!payload.userId || !payload.email) {
+      this.logger.warn(`Invalid token payload: ${JSON.stringify(payload)}`);
+      return null; // Return null to indicate authentication failure
+    }
 
     // Проверяем наличие обязательных полей
     if (!payload.userId || !payload.email) {

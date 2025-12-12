@@ -104,6 +104,10 @@ export class UsersService {
       .populate('readingHistory.titleId')
       .populate('readingHistory.chapters.chapterId');
 
+    this.logger.log(
+      `Database query result for user ${id}: ${user ? 'found' : 'not found'}`,
+    );
+
     if (!user) {
       this.logger.warn(`User not found with ID: ${id}`);
       throw new NotFoundException('User not found');
@@ -127,6 +131,10 @@ export class UsersService {
 
     this.logger.log(
       `Database query result: ${user ? 'User found' : 'User not found'}`,
+    );
+
+    this.logger.log(
+      `Database query result for profile ${id}: ${user ? 'found' : 'not found'}`,
     );
     if (!user) {
       this.logger.warn(`User not found with ID: ${id}`);
