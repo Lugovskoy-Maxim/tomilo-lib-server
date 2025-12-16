@@ -101,18 +101,15 @@ export class MangabuffParser implements MangaParser {
       chapters.length = 0;
 
       let page = 1;
-      const perPage = 100;
+      const perPage = 1000;
       let hasMorePages = true;
-      const maxPages = 50; // Safety limit to prevent infinite loops
 
-      while (hasMorePages && page <= maxPages) {
+      while (hasMorePages) {
         try {
           const response = await session.post(
             'https://mangabuff.ru/chapters/load',
             {
               manga_id: mangaId,
-              page,
-              per_page: perPage,
             },
             {
               headers: {
@@ -182,16 +179,13 @@ export class MangabuffParser implements MangaParser {
       let page = 1;
       const perPage = 100;
       let hasMorePages = true;
-      const maxPages = 50; // Safety limit to prevent infinite loops
 
-      while (hasMorePages && page <= maxPages) {
+      while (hasMorePages) {
         try {
           const response = await session.post(
             'https://mangabuff.ru/chapters/load',
             {
               manga_id: mangaId,
-              page,
-              per_page: perPage,
             },
             {
               headers: {
