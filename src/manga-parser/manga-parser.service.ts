@@ -12,6 +12,7 @@ import { ParseChaptersInfoDto } from './dto/parse-chapters-info.dto';
 import { MangaParser, ChapterInfo } from './parsers/base.parser';
 import { SenkuroParser } from './parsers/senkuro.parser';
 import { MangaShiParser } from './parsers/manga-shi.parser';
+import { MangabuffParser } from './parsers/mangabuff.parser';
 
 @Injectable()
 export class MangaParserService {
@@ -36,6 +37,7 @@ export class MangaParserService {
     this.parsers.set('manga-shi.org', new MangaShiParser());
     this.parsers.set('senkuro.me', new SenkuroParser());
     this.parsers.set('sencuro.me', new SenkuroParser());
+    this.parsers.set('mangabuff.ru', new MangabuffParser());
   }
 
   private sanitizeFilename(name: string): string {
@@ -524,7 +526,7 @@ export class MangaParserService {
 
   getSupportedSites(): { sites: string[] } {
     return {
-      sites: ['manga-shi.org', 'senkuro.me'],
+      sites: ['manga-shi.org', 'senkuro.me', 'mangabuff.ru'],
     };
   }
 }
