@@ -241,6 +241,104 @@ export class MangaParserService {
     }
   }
 
+  /**
+   * Download chapter images for mangabuff.ru
+   * @param chapter Chapter info with url
+   * @param chapterId Chapter ID for saving images
+   * @returns Array of page paths
+   */
+  private async downloadMangabuffChapterImages(
+    chapter: ChapterInfo,
+    chapterId: string,
+  ): Promise<string[]> {
+    if (!chapter.url) {
+      throw new BadRequestException('Chapter URL is required for downloading');
+    }
+
+    try {
+      // Create a new session with mangabuff specific headers
+      const mangabuffSession = axios.create({
+        timeout: 20000,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
+          Referer: 'https://mangabuff.ru/',
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept-Encoding': 'gzip, deflate, br',
+          Connection: 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
+        },
+      });
+
+      // Get chapter page
+      const chapterResponse = await mangabuffSession.get(chapter.url);
+      const $chapter = cheerio.load(chapterResponse.data);
+
+      // Extract image URLs - try multiple selectors for mangabuff
+      const imageUrls: string[] = [];
+      const selectors = [
+        '.page-break img',
+        '.chapter-images img',
+        '.manga-images img',
+        '.reader img',
+        '.comic img',
+        'img[data-src]',
+        'img[src]',
+      ];
+
+      for (const selector of selectors) {
+        $chapter(selector).each((_, element) => {
+          const src =
+            $chapter(element).attr('data-src') || $chapter(element).attr('src');
+          if (src && !imageUrls.includes(src)) {
+            // Convert relative URLs to absolute
+            const absoluteUrl = new URL(src, chapter.url).href;
+            imageUrls.push(absoluteUrl);
+          }
+        });
+        if (imageUrls.length > 0) break; // Stop if we found images
+      }
+
+      if (imageUrls.length === 0) {
+        throw new Error('No images found in chapter');
+      }
+
+      const pagePaths: string[] = [];
+      for (let i = 0; i < imageUrls.length; i++) {
+        const imgUrl = imageUrls[i];
+        try {
+          const pagePath = await this.filesService.downloadImageFromUrl(
+            imgUrl,
+            chapterId,
+            i + 1, // Page number starts from 1
+          );
+          pagePaths.push(pagePath);
+        } catch (imageError) {
+          this.logger.error(
+            `Failed to download image ${imgUrl}: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`,
+          );
+          // Continue with other images even if one fails
+        }
+
+        // Small delay between downloads
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      if (pagePaths.length === 0) {
+        throw new Error('No images could be downloaded');
+      }
+
+      return pagePaths;
+    } catch (error) {
+      this.logger.error(
+        `Failed to download mangabuff chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      throw new BadRequestException('Failed to download chapter images');
+    }
+  }
+
   async parseAndImportTitle(
     parseTitleDto: ParseTitleDto,
   ): Promise<{ title: any; importedChapters: any[]; totalChapters: number }> {
@@ -394,7 +492,7 @@ export class MangaParserService {
     const parser = this.getParserForUrl(url);
     if (!parser) {
       throw new BadRequestException(
-        'Unsupported site. Only manga-shi.org and senkuro.me are supported for chapter import.',
+        'Unsupported site. Only manga-shi.org, senkuro.me, and mangabuff.ru are supported for chapter import.',
       );
     }
 
@@ -439,7 +537,7 @@ export class MangaParserService {
         const createdChapter =
           await this.chaptersService.create(createChapterDto);
 
-        // Download images for both senkuro.me and manga-shi.org
+        // Download images for senkuro.me, manga-shi.org, and mangabuff.ru
         if (chapter.slug || chapter.url) {
           const domain = this.extractDomain(url);
           let pagePaths: string[] = [];
@@ -451,9 +549,14 @@ export class MangaParserService {
               domain,
             );
           } catch (error) {
-            // For manga-shi.org, we need to implement a different download method
+            // For manga-shi.org and mangabuff.ru, we need to implement different download methods
             if (url.includes('manga-shi.org')) {
               pagePaths = await this.downloadMangaShiChapterImages(
+                chapter,
+                createdChapter._id.toString(),
+              );
+            } else if (url.includes('mangabuff.ru')) {
+              pagePaths = await this.downloadMangabuffChapterImages(
                 chapter,
                 createdChapter._id.toString(),
               );
