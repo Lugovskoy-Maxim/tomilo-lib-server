@@ -25,6 +25,7 @@ export class MangabuffParser implements MangaParser {
 
       // Extract title
       const title =
+        $main('h1.manga__title .name').text().trim() ||
         $main('h1.title').text().trim() ||
         $main('.manga-title').text().trim() ||
         url;
@@ -34,17 +35,20 @@ export class MangabuffParser implements MangaParser {
 
       // Extract cover URL
       const coverUrl =
+        $main('.manga__cover img').attr('data-src') ||
+        $main('.manga__cover img').attr('src') ||
         $main('.manga-cover img').attr('src') ||
         $main('.cover img').attr('src');
 
       // Extract description
       const description =
+        $main('.manga__description .text').text().trim() ||
         $main('.description').text().trim() ||
         $main('.manga-description').text().trim();
 
       // Extract genres
       const genres: string[] = [];
-      $main('.genres a, .tags a').each((_, element) => {
+      $main('.manga__genres a, .genres a, .tags a').each((_, element) => {
         const genre = $main(element).text().trim();
         if (genre) {
           genres.push(genre);
@@ -73,7 +77,7 @@ export class MangabuffParser implements MangaParser {
   private extractChapters($: cheerio.Root, baseUrl: string): ChapterInfo[] {
     const chapters: ChapterInfo[] = [];
 
-    // Try multiple selectors for chapters
+    // Try multiple selectors for chapters - specific to Mangabuff structure
     const chapterSelectors = [
       '.chapters-list a',
       '.chapter-list a',
@@ -82,10 +86,13 @@ export class MangabuffParser implements MangaParser {
       '.chapter-item a',
       '.chapter-row a',
       '.ch-item a',
+      '.chapter__item a',
+      '.chapters__item a',
       'a[href*="/chapter/"]',
       'a[href*="/glava/"]',
       '.chapter-link',
       '.chapter-title a',
+      '.chapters__item',
     ];
 
     // Try each selector
@@ -125,10 +132,15 @@ export class MangabuffParser implements MangaParser {
             }
           }
 
+          // Extract slug from URL for image downloading
+          const slugMatch = absoluteUrl.match(/\/manga\/[^/]+\/(.+?)(?:\/)?$/);
+          const slug = slugMatch ? slugMatch[1] : undefined;
+
           chapters.push({
             name,
             url: absoluteUrl,
             number,
+            slug,
           });
         }
       });
@@ -207,15 +219,15 @@ export class MangabuffParser implements MangaParser {
   private extractAlternativeTitles($: cheerio.Root): string[] {
     const alternativeTitles: string[] = [];
 
-    // Try common selectors for alternative titles
-    $('.alternative-title, .manga-alternative, .alt-title').each(
-      (_, element) => {
-        const title = $(element).text().trim();
-        if (title) {
-          alternativeTitles.push(title);
-        }
-      },
-    );
+    // Try common selectors for alternative titles based on Mangabuff structure
+    $(
+      '.manga__title .alternative, .alternative-title, .manga-alternative, .alt-title',
+    ).each((_, element) => {
+      const title = $(element).text().trim();
+      if (title) {
+        alternativeTitles.push(title);
+      }
+    });
 
     // Also try to extract from meta tags or other common places
     $(
