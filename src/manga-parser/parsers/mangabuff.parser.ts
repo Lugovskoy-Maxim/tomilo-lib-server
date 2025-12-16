@@ -112,20 +112,31 @@ export class MangabuffParser implements MangaParser {
       );
 
       const data = response.data;
-      if (data.content) {
-        const $ajax = cheerio.load(data.content);
+      let chaptersData: any[] = [];
+      if (Array.isArray(data)) {
+        chaptersData = data;
+      } else if (data.chapters && Array.isArray(data.chapters)) {
+        chaptersData = data.chapters;
+      }
 
-        // Parse chapters from the loaded HTML
-        $ajax('.chapters__item').each((_, element) => {
-          const chapter = this.parseChapterElement($ajax, element);
-          if (chapter) {
-            // Check if chapter already exists by URL
-            const exists = chapters.some((c) => c.url === chapter.url);
-            if (!exists) {
-              chapters.push(chapter);
-            }
-          }
-        });
+      for (const chap of chaptersData) {
+        const absoluteUrl = chap.url.startsWith('http')
+          ? chap.url
+          : new URL(chap.url, 'https://mangabuff.ru').href;
+
+        const chapter: ChapterInfo = {
+          name:
+            chap.name ||
+            (chap.number ? `Глава ${chap.number}` : 'Без названия'),
+          url: absoluteUrl,
+          number: chap.number ? parseFloat(chap.number) : undefined,
+        };
+
+        // Check if chapter already exists by URL
+        const exists = chapters.some((c) => c.url === chapter.url);
+        if (!exists) {
+          chapters.push(chapter);
+        }
       }
     } catch (error) {
       console.error('Error loading chapters:', error);
