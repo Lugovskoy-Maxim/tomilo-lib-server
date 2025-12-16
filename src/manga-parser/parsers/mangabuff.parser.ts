@@ -73,58 +73,93 @@ export class MangabuffParser implements MangaParser {
   private extractChapters($: cheerio.Root, baseUrl: string): ChapterInfo[] {
     const chapters: ChapterInfo[] = [];
 
-    // Target the chapters-list div
-    $('.chapters-list a').each((_, element) => {
-      const linkElement = $(element);
-      const href = linkElement.attr('href');
-      const name = linkElement.text().trim();
+    // Try multiple selectors for chapters
+    const chapterSelectors = [
+      '.chapters-list a',
+      '.chapter-list a',
+      '.manga-chapters a',
+      '.chapters a',
+      '.chapter-item a',
+      '.chapter-row a',
+      '.ch-item a',
+      'a[href*="/chapter/"]',
+      'a[href*="/glava/"]',
+      '.chapter-link',
+      '.chapter-title a',
+    ];
 
-      if (href && name) {
-        // Convert relative URL to absolute
-        const absoluteUrl = href.startsWith('http')
-          ? href
-          : new URL(href, baseUrl).href;
+    // Try each selector
+    for (const selector of chapterSelectors) {
+      $(selector).each((_, element) => {
+        const linkElement = $(element);
+        const href = linkElement.attr('href');
+        const name = linkElement.text().trim();
 
-        // Extract chapter number from name (e.g., "Глава 1080")
-        let number: number | undefined;
-        const nameMatch = name.match(/(?:Глава|Chapter)\s*(\d+(?:\.\d+)?)/i);
-        if (nameMatch) {
-          const parsedNumber = parseFloat(nameMatch[1]);
-          if (!isNaN(parsedNumber)) {
-            number = parsedNumber;
-          }
-        } else {
-          // Try to extract from URL (e.g., "/manga/title/1080")
-          const urlMatch = absoluteUrl.match(/\/(\d+(?:\.\d+)?)\/?$/);
-          if (urlMatch) {
-            const parsedNumber = parseFloat(urlMatch[1]);
+        // Skip if we already have this chapter
+        if (chapters.some((chapter) => chapter.name === name)) {
+          return;
+        }
+
+        if (href && name) {
+          // Convert relative URL to absolute
+          const absoluteUrl = href.startsWith('http')
+            ? href
+            : new URL(href, baseUrl).href;
+
+          // Extract chapter number from name (e.g., "Глава 1080")
+          let number: number | undefined;
+          const nameMatch = name.match(/(?:Глава|Chapter)\s*(\d+(?:\.\d+)?)/i);
+          if (nameMatch) {
+            const parsedNumber = parseFloat(nameMatch[1]);
             if (!isNaN(parsedNumber)) {
               number = parsedNumber;
             }
+          } else {
+            // Try to extract from URL (e.g., "/manga/title/1080")
+            const urlMatch = absoluteUrl.match(/\/(\d+(?:\.\d+)?)\/?$/);
+            if (urlMatch) {
+              const parsedNumber = parseFloat(urlMatch[1]);
+              if (!isNaN(parsedNumber)) {
+                number = parsedNumber;
+              }
+            }
           }
+
+          chapters.push({
+            name,
+            url: absoluteUrl,
+            number,
+          });
         }
+      });
 
-        chapters.push({
-          name,
-          url: absoluteUrl,
-          number,
-        });
+      // If we found chapters, break the loop
+      if (chapters.length > 0) {
+        break;
       }
-    });
+    }
 
-    // Reverse to have chapters in ascending order
-    chapters.reverse();
-
-    // Если не найдено глав, попробуем альтернативный способ
+    // If still no chapters found, try a more general approach
     if (chapters.length === 0) {
-      // Попробуем найти главы в другом формате
-      $('.chapter-item, .chapter-row, .ch-item').each((_, element) => {
-        const chapterElement = $(element);
-        const linkElement = chapterElement.find('a');
+      // Look for any links that might be chapters
+      $('a').each((_, element) => {
+        const linkElement = $(element);
         const href = linkElement.attr('href');
-        const name = linkElement.text().trim() || chapterElement.text().trim();
+        const name = linkElement.text().trim();
 
-        if (href && name) {
+        // Check if this looks like a chapter link
+        if (
+          href &&
+          name &&
+          (href.includes('/chapter/') ||
+            href.includes('/glava/') ||
+            name.match(/(?:Глава|Chapter)\s*\d+/i))
+        ) {
+          // Skip if we already have this chapter
+          if (chapters.some((chapter) => chapter.name === name)) {
+            return;
+          }
+
           // Convert relative URL to absolute
           const absoluteUrl = href.startsWith('http')
             ? href
@@ -157,6 +192,14 @@ export class MangabuffParser implements MangaParser {
         }
       });
     }
+
+    // Sort chapters by number if available, otherwise by name
+    chapters.sort((a, b) => {
+      if (a.number !== undefined && b.number !== undefined) {
+        return a.number - b.number;
+      }
+      return a.name.localeCompare(b.name);
+    });
 
     return chapters;
   }
