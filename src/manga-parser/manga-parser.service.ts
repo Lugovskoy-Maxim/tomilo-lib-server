@@ -279,6 +279,8 @@ export class MangaParserService {
       // Extract image URLs - try multiple selectors for mangabuff
       const imageUrls: string[] = [];
       const selectors = [
+        '.reader__pages .reader__item img',
+        '.reader__item img',
         '.page-break img',
         '.chapter-images img',
         '.manga-images img',
