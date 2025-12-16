@@ -55,11 +55,8 @@ export class MangabuffParser implements MangaParser {
         }
       });
 
-      // Extract manga ID
-      const urlObj = new URL(url);
-      const pathSegments = urlObj.pathname.split('/').filter(Boolean);
-      const mangaSlug = pathSegments[1];
-      const mangaId = mangaSlug.split('-')[0];
+      // Extract manga ID from HTML markup
+      const mangaId = $main('.manga').attr('data-id');
 
       // Extract chapters
       const chapters = await this.extractChapters($main, this.session, mangaId);
@@ -100,7 +97,7 @@ export class MangabuffParser implements MangaParser {
       const response = await session.post(
         'https://mangabuff.ru/chapters/load',
         {
-          manga_id: mangaId, // Only manga_id, no page or per_page
+          manga_id: mangaId, // Only manga_id
         },
         {
           headers: {
