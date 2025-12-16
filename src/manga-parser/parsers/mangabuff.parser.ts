@@ -87,92 +87,174 @@ export class MangabuffParser implements MangaParser {
   ): Promise<ChapterInfo[]> {
     const chapters: ChapterInfo[] = [];
 
-    // Always try AJAX loading to get all chapters from the beginning
-    let page = 1;
-    const perPage = 100;
-    let hasMorePages = true;
-    const maxPages = 50; // Safety limit to prevent infinite loops
+    // First, try to extract chapters from the initial HTML
+    $('.chapters__item').each((_, element) => {
+      const chapter = this.parseChapterElement($, element);
+      if (chapter) {
+        chapters.push(chapter);
+      }
+    });
 
-    while (hasMorePages && page <= maxPages) {
-      try {
-        const response = await session.post(
-          'https://mangabuff.ru/chapters/load',
-          {
-            manga_id: mangaId,
-            page,
-            per_page: perPage,
-          },
-          {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'X-Requested-With': 'XMLHttpRequest',
-              Referer: 'https://mangabuff.ru',
+    // If we have 100 chapters, there might be more - try AJAX loading
+    if (chapters.length === 100) {
+      // Clear chapters array to avoid duplicates
+      chapters.length = 0;
+
+      let page = 1;
+      const perPage = 100;
+      let hasMorePages = true;
+      const maxPages = 50; // Safety limit to prevent infinite loops
+
+      while (hasMorePages && page <= maxPages) {
+        try {
+          const response = await session.post(
+            'https://mangabuff.ru/chapters/load',
+            {
+              manga_id: mangaId,
+              page,
+              per_page: perPage,
             },
-          },
-        );
+            {
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest',
+                Referer: 'https://mangabuff.ru',
+              },
+            },
+          );
 
-        const data = response.data;
+          const data = response.data;
 
-        // If no content or empty content, stop
-        if (!data.content || data.content.trim() === '') {
-          hasMorePages = false;
-          break;
-        }
-
-        const $ajax = cheerio.load(data.content);
-        const chapterElements = $ajax('.chapters__item');
-
-        // If no chapters in this batch, stop
-        if (chapterElements.length === 0) {
-          hasMorePages = false;
-          break;
-        }
-
-        // Parse chapters from the loaded HTML
-        let foundNewChapters = false;
-        chapterElements.each((_, element) => {
-          const chapter = this.parseChapterElement($ajax, element);
-          if (chapter) {
-            // Check if chapter already exists by URL
-            const exists = chapters.some((c) => c.url === chapter.url);
-            if (!exists) {
-              chapters.push(chapter);
-              foundNewChapters = true;
-            }
+          // If no content or empty content, stop
+          if (!data.content || data.content.trim() === '') {
+            hasMorePages = false;
+            break;
           }
-        });
 
-        // If no new chapters were found, stop
-        if (!foundNewChapters) {
+          const $ajax = cheerio.load(data.content);
+          const chapterElements = $ajax('.chapters__item');
+
+          // If no chapters in this batch, stop
+          if (chapterElements.length === 0) {
+            hasMorePages = false;
+            break;
+          }
+
+          // Parse chapters from the loaded HTML
+          let foundNewChapters = false;
+          chapterElements.each((_, element) => {
+            const chapter = this.parseChapterElement($ajax, element);
+            if (chapter) {
+              // Check if chapter already exists by URL
+              const exists = chapters.some((c) => c.url === chapter.url);
+              if (!exists) {
+                chapters.push(chapter);
+                foundNewChapters = true;
+              }
+            }
+          });
+
+          // If no new chapters were found, stop
+          if (!foundNewChapters) {
+            hasMorePages = false;
+            break;
+          }
+
+          // If we got less than perPage, likely this is the last page
+          if (chapterElements.length < perPage) {
+            hasMorePages = false;
+            break;
+          }
+
+          page++;
+
+          // Add a small delay to avoid rate limiting
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        } catch (error) {
+          console.error(`Error loading page ${page}:`, error);
           hasMorePages = false;
           break;
         }
-
-        // If we got less than perPage, likely this is the last page
-        if (chapterElements.length < perPage) {
-          hasMorePages = false;
-          break;
-        }
-
-        page++;
-
-        // Add a small delay to avoid rate limiting
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      } catch (error) {
-        console.error(`Error loading page ${page}:`, error);
-        hasMorePages = false;
-        break;
       }
     }
+    // If no chapters found in initial HTML and not exactly 100, try AJAX loading anyway
+    else if (chapters.length === 0) {
+      let page = 1;
+      const perPage = 100;
+      let hasMorePages = true;
+      const maxPages = 50; // Safety limit to prevent infinite loops
 
-    // Если не нашли главы через AJAX, попробуем извлечь из основного HTML
-    if (chapters.length === 0) {
-      $('.chapters__item').each((_, element) => {
-        const chapter = this.parseChapterElement($, element);
-        if (chapter) {
-          chapters.push(chapter);
+      while (hasMorePages && page <= maxPages) {
+        try {
+          const response = await session.post(
+            'https://mangabuff.ru/chapters/load',
+            {
+              manga_id: mangaId,
+              page,
+              per_page: perPage,
+            },
+            {
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest',
+                Referer: 'https://mangabuff.ru',
+              },
+            },
+          );
+
+          const data = response.data;
+
+          // If no content or empty content, stop
+          if (!data.content || data.content.trim() === '') {
+            hasMorePages = false;
+            break;
+          }
+
+          const $ajax = cheerio.load(data.content);
+          const chapterElements = $ajax('.chapters__item');
+
+          // If no chapters in this batch, stop
+          if (chapterElements.length === 0) {
+            hasMorePages = false;
+            break;
+          }
+
+          // Parse chapters from the loaded HTML
+          let foundNewChapters = false;
+          chapterElements.each((_, element) => {
+            const chapter = this.parseChapterElement($ajax, element);
+            if (chapter) {
+              // Check if chapter already exists by URL
+              const exists = chapters.some((c) => c.url === chapter.url);
+              if (!exists) {
+                chapters.push(chapter);
+                foundNewChapters = true;
+              }
+            }
+          });
+
+          // If no new chapters were found, stop
+          if (!foundNewChapters) {
+            hasMorePages = false;
+            break;
+          }
+
+          // If we got less than perPage, likely this is the last page
+          if (chapterElements.length < perPage) {
+            hasMorePages = false;
+            break;
+          }
+
+          page++;
+
+          // Add a small delay to avoid rate limiting
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        } catch (error) {
+          console.error(`Error loading page ${page}:`, error);
+          hasMorePages = false;
+          break;
         }
-      });
+      }
     }
 
     // Если все еще нет глав, попробуем горячие главы
