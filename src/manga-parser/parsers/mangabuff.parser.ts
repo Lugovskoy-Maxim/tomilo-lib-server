@@ -62,7 +62,7 @@ export class MangabuffParser implements MangaParser {
       const mangaId = mangaSlug.split('-')[0];
 
       // Extract chapters
-      const chapters = await this.extractChapters(this.session, mangaId);
+      const chapters = await this.extractChapters($main, this.session, mangaId);
 
       return {
         title: title || url,
@@ -81,92 +81,173 @@ export class MangabuffParser implements MangaParser {
   }
 
   private async extractChapters(
+    $: cheerio.Root,
     session: AxiosInstance,
     mangaId: string,
   ): Promise<ChapterInfo[]> {
     const chapters: ChapterInfo[] = [];
-    let offset = 0;
-    const limit = 100;
 
-    while (true) {
-      try {
-        const response = await session.post(
-          'https://mangabuff.ru/chapters/load',
-          {
-            manga_id: mangaId,
-            offset,
-            limit,
-          },
-          {
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'X-Requested-With': 'XMLHttpRequest',
+    // First, try to extract chapters from the initial HTML
+    $('.chapters__item').each((_, element) => {
+      const $element = $(element);
+      const href = $element.attr('href');
+
+      if (href) {
+        // Convert relative URL to absolute
+        const absoluteUrl = href.startsWith('http')
+          ? href
+          : new URL(href, 'https://mangabuff.ru').href;
+
+        // Extract chapter number from data attribute
+        const chapterNumberStr = $element.attr('data-chapter');
+        let number: number | undefined;
+
+        if (chapterNumberStr) {
+          const parsedNumber = parseFloat(chapterNumberStr);
+          if (!isNaN(parsedNumber)) {
+            number = parsedNumber;
+          }
+        }
+
+        // Extract chapter name components
+        const chapterValue = $element.find('.chapters__value').text().trim();
+        const chapterName = $element.find('.chapters__name').text().trim();
+
+        // Build chapter name
+        let name = chapterName;
+        if (!name && chapterValue) {
+          name = chapterValue;
+        }
+        if (!name && number) {
+          name = `Глава ${number}`;
+        }
+        if (!name) {
+          name = 'Без названия';
+        }
+
+        chapters.push({
+          name,
+          url: absoluteUrl,
+          number,
+        });
+      }
+    });
+
+    // If no chapters found in initial HTML, try AJAX loading
+    if (chapters.length === 0) {
+      let offset = 0;
+      const limit = 100;
+
+      while (true) {
+        try {
+          const response = await session.post(
+            'https://mangabuff.ru/chapters/load',
+            {
+              manga_id: mangaId,
+              offset,
+              limit,
             },
-          },
-        );
+            {
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest',
+              },
+            },
+          );
 
-        const data = response.data;
-        if (!data.content) break;
+          const data = response.data;
+          if (!data.content) break;
 
-        const $ = cheerio.load(data.content);
+          const $ajax = cheerio.load(data.content);
 
-        // Parse chapters from the loaded HTML
-        $('.chapters__item').each((_, element) => {
-          const $element = $(element);
-          const href = $element.attr('href');
+          // Parse chapters from the loaded HTML
+          $ajax('.chapters__item').each((_, element) => {
+            const $element = $ajax(element);
+            const href = $element.attr('href');
 
-          if (href) {
-            // Convert relative URL to absolute
-            const absoluteUrl = href.startsWith('http')
-              ? href
-              : new URL(href, 'https://mangabuff.ru').href;
+            if (href) {
+              // Convert relative URL to absolute
+              const absoluteUrl = href.startsWith('http')
+                ? href
+                : new URL(href, 'https://mangabuff.ru').href;
 
-            // Extract chapter number from data attribute
-            const chapterNumberStr = $element.attr('data-chapter');
-            let number: number | undefined;
+              // Extract chapter number from data attribute
+              const chapterNumberStr = $element.attr('data-chapter');
+              let number: number | undefined;
 
-            if (chapterNumberStr) {
-              const parsedNumber = parseFloat(chapterNumberStr);
-              if (!isNaN(parsedNumber)) {
-                number = parsedNumber;
+              if (chapterNumberStr) {
+                const parsedNumber = parseFloat(chapterNumberStr);
+                if (!isNaN(parsedNumber)) {
+                  number = parsedNumber;
+                }
               }
-            }
 
-            // Extract chapter name components
-            const chapterValue = $element
-              .find('.chapters__value')
-              .text()
-              .trim();
-            const chapterName = $element.find('.chapters__name').text().trim();
+              // Extract chapter name components
+              const chapterValue = $element
+                .find('.chapters__value')
+                .text()
+                .trim();
+              const chapterName = $element
+                .find('.chapters__name')
+                .text()
+                .trim();
 
-            // Build chapter name
-            let name = chapterName;
-            if (!name && chapterValue) {
-              name = chapterValue;
-            }
-            if (!name && number) {
-              name = `Глава ${number}`;
-            }
-            if (!name) {
-              name = 'Без названия';
-            }
+              // Build chapter name
+              let name = chapterName;
+              if (!name && chapterValue) {
+                name = chapterValue;
+              }
+              if (!name && number) {
+                name = `Глава ${number}`;
+              }
+              if (!name) {
+                name = 'Без названия';
+              }
 
+              chapters.push({
+                name,
+                url: absoluteUrl,
+                number,
+              });
+            }
+          });
+
+          // If no chapters were added in this batch, stop
+          if ($ajax('.chapters__item').length === 0) break;
+
+          offset += limit;
+        } catch {
+          // If there's an error (e.g., no more pages), stop
+          break;
+        }
+      }
+    }
+
+    // Если не нашли главы в основном списке, попробуем горячие главы
+    if (chapters.length === 0) {
+      $('.hot-chapters__item').each((_, element) => {
+        const $element = $(element);
+        const href = $element.attr('href');
+        const chapterNumber = $element
+          .find('.hot-chapters__number')
+          .text()
+          .trim();
+
+        if (href && chapterNumber) {
+          const absoluteUrl = href.startsWith('http')
+            ? href
+            : new URL(href, 'https://mangabuff.ru').href;
+
+          const parsedNumber = parseFloat(chapterNumber);
+          if (!isNaN(parsedNumber)) {
             chapters.push({
-              name,
+              name: `Глава ${chapterNumber}`,
               url: absoluteUrl,
-              number,
+              number: parsedNumber,
             });
           }
-        });
-
-        // If no chapters were added in this batch, stop
-        if ($('.chapters__item').length === 0) break;
-
-        offset += limit;
-      } catch {
-        // If there's an error (e.g., no more pages), stop
-        break;
-      }
+        }
+      });
     }
 
     // Sort chapters by number if available
