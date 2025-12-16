@@ -59,7 +59,11 @@ export class MangabuffParser implements MangaParser {
       const mangaId = $main('.manga').attr('data-id');
 
       // Extract chapters
-      const chapters = await this.extractChapters($main, this.session, mangaId);
+      const chapters = await this.extractChapters(
+        $main,
+        this.session,
+        mangaId || '',
+      );
 
       return {
         title: title || url,
