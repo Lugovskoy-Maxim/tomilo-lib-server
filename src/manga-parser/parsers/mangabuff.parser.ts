@@ -87,16 +87,7 @@ export class MangabuffParser implements MangaParser {
   ): Promise<ChapterInfo[]> {
     const chapters: ChapterInfo[] = [];
 
-    // First, try to extract chapters from the initial HTML
-    $('.chapters__item').each((_, element) => {
-      const chapter = this.parseChapterElement($, element);
-      if (chapter) {
-        chapters.push(chapter);
-      }
-    });
-
-    // If no chapters found in initial HTML, try AJAX loading
-    // Always try AJAX loading to get all chapters
+    // Always try AJAX loading to get all chapters from the beginning
     let page = 1;
     const perPage = 100;
     let hasMorePages = true;
@@ -174,7 +165,17 @@ export class MangabuffParser implements MangaParser {
       }
     }
 
-    // Если не нашли главы в основном списке, попробуем горячие главы
+    // Если не нашли главы через AJAX, попробуем извлечь из основного HTML
+    if (chapters.length === 0) {
+      $('.chapters__item').each((_, element) => {
+        const chapter = this.parseChapterElement($, element);
+        if (chapter) {
+          chapters.push(chapter);
+        }
+      });
+    }
+
+    // Если все еще нет глав, попробуем горячие главы
     if (chapters.length === 0) {
       $('.hot-chapters__item').each((_, element) => {
         const $element = $(element);
