@@ -334,6 +334,16 @@ export class ParsingGateway {
         'downloadChapterImages'
       ].bind(this.mangaParserService);
 
+      // Override downloadMangabuffChapterImages for progress tracking
+      const originalDownloadMangabuffChapterImages = this.mangaParserService[
+        'downloadMangabuffChapterImages'
+      ].bind(this.mangaParserService);
+
+      // Override downloadMangaShiChapterImages for progress tracking
+      const originalDownloadMangaShiChapterImages = this.mangaParserService[
+        'downloadMangaShiChapterImages'
+      ].bind(this.mangaParserService);
+
       let currentChapterIndex = 0;
 
       this.mangaParserService['downloadChapterImages'] = async (
@@ -409,11 +419,157 @@ export class ParsingGateway {
         }
       };
 
+      this.mangaParserService['downloadMangabuffChapterImages'] = async (
+        chapter: any,
+        chapterId: string,
+      ) => {
+        currentChapterIndex++;
+        const chapterData: ChapterImportData = {
+          chapterNumber: chapter.number || 1,
+          chapterName: chapter.name,
+          status: 'downloading',
+        };
+
+        this.emitProgress(sessionId, {
+          type: 'chapter_import',
+          sessionId,
+          status: 'progress',
+          message: `Скачиваем главу ${chapterData.chapterNumber}: ${chapterData.chapterName}`,
+          data: chapterData,
+          progress: {
+            current: currentChapterIndex,
+            total: totalChapters,
+            percentage: Math.round((currentChapterIndex / totalChapters) * 100),
+          },
+        });
+
+        try {
+          const result = await originalDownloadMangabuffChapterImages(
+            chapter,
+            chapterId,
+          );
+
+          chapterData.status = 'completed';
+          this.emitProgress(sessionId, {
+            type: 'chapter_import',
+            sessionId,
+            status: 'progress',
+            message: `Глава ${chapterData.chapterNumber} скачана`,
+            data: chapterData,
+            progress: {
+              current: currentChapterIndex,
+              total: totalChapters,
+              percentage: Math.round(
+                (currentChapterIndex / totalChapters) * 100,
+              ),
+            },
+          });
+
+          return result;
+        } catch (error) {
+          chapterData.status = 'error';
+          chapterData.error =
+            error instanceof Error ? error.message : 'Unknown error';
+
+          this.emitProgress(sessionId, {
+            type: 'chapter_import',
+            sessionId,
+            status: 'progress',
+            message: `Ошибка при скачивании главы ${chapterData.chapterNumber}`,
+            data: chapterData,
+            progress: {
+              current: currentChapterIndex,
+              total: totalChapters,
+              percentage: Math.round(
+                (currentChapterIndex / totalChapters) * 100,
+              ),
+            },
+          });
+
+          throw error;
+        }
+      };
+
+      this.mangaParserService['downloadMangaShiChapterImages'] = async (
+        chapter: any,
+        chapterId: string,
+      ) => {
+        currentChapterIndex++;
+        const chapterData: ChapterImportData = {
+          chapterNumber: chapter.number || 1,
+          chapterName: chapter.name,
+          status: 'downloading',
+        };
+
+        this.emitProgress(sessionId, {
+          type: 'chapter_import',
+          sessionId,
+          status: 'progress',
+          message: `Скачиваем главу ${chapterData.chapterNumber}: ${chapterData.chapterName}`,
+          data: chapterData,
+          progress: {
+            current: currentChapterIndex,
+            total: totalChapters,
+            percentage: Math.round((currentChapterIndex / totalChapters) * 100),
+          },
+        });
+
+        try {
+          const result = await originalDownloadMangaShiChapterImages(
+            chapter,
+            chapterId,
+          );
+
+          chapterData.status = 'completed';
+          this.emitProgress(sessionId, {
+            type: 'chapter_import',
+            sessionId,
+            status: 'progress',
+            message: `Глава ${chapterData.chapterNumber} скачана`,
+            data: chapterData,
+            progress: {
+              current: currentChapterIndex,
+              total: totalChapters,
+              percentage: Math.round(
+                (currentChapterIndex / totalChapters) * 100,
+              ),
+            },
+          });
+
+          return result;
+        } catch (error) {
+          chapterData.status = 'error';
+          chapterData.error =
+            error instanceof Error ? error.message : 'Unknown error';
+
+          this.emitProgress(sessionId, {
+            type: 'chapter_import',
+            sessionId,
+            status: 'progress',
+            message: `Ошибка при скачивании главы ${chapterData.chapterNumber}`,
+            data: chapterData,
+            progress: {
+              current: currentChapterIndex,
+              total: totalChapters,
+              percentage: Math.round(
+                (currentChapterIndex / totalChapters) * 100,
+              ),
+            },
+          });
+
+          throw error;
+        }
+      };
+
       const result = await this.mangaParserService.parseAndImportChapters(dto);
 
-      // Restore original method
+      // Restore original methods
       this.mangaParserService['downloadChapterImages'] =
         originalDownloadChapterImages;
+      this.mangaParserService['downloadMangabuffChapterImages'] =
+        originalDownloadMangabuffChapterImages;
+      this.mangaParserService['downloadMangaShiChapterImages'] =
+        originalDownloadMangaShiChapterImages;
 
       this.emitProgress(sessionId, {
         type: 'chapter_import',
