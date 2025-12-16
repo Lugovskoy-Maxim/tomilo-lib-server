@@ -23,47 +23,47 @@ export class MangabuffParser implements MangaParser {
       const mainResponse = await this.session.get(url);
       const $main = cheerio.load(mainResponse.data);
 
-      // Extract title
-      const title =
-        $main('h1.manga__title .name').text().trim() ||
-        $main('h1.title').text().trim() ||
-        $main('.manga-title').text().trim() ||
-        url;
+      // Extract title - ПРАВИЛЬНЫЙ СЕЛЕКТОР из HTML
+      const title = $main('h1.manga__name').text().trim();
 
-      // Extract alternative titles
+      // Extract alternative titles - ПРАВИЛЬНЫЙ СЕЛЕКТОР
       const alternativeTitles = this.extractAlternativeTitles($main);
 
-      // Extract cover URL
-      const coverUrl =
-        $main('.manga__cover img').attr('data-src') ||
-        $main('.manga__cover img').attr('src') ||
-        $main('.manga-cover img').attr('src') ||
-        $main('.cover img').attr('src');
+      // Extract cover URL - ПРАВИЛЬНЫЙ СЕЛЕКТОР
+      const coverUrl = $main('.manga__img img').attr('src');
+      const absoluteCoverUrl = coverUrl
+        ? `https://mangabuff.ru${coverUrl}`
+        : undefined;
 
-      // Extract description
-      const description =
-        $main('.manga__description .text').text().trim() ||
-        $main('.description').text().trim() ||
-        $main('.manga-description').text().trim();
+      // Extract description - ПРАВИЛЬНЫЙ СЕЛЕКТОР
+      const description = $main('.manga__description').text().trim();
 
-      // Extract genres
+      // Extract genres - ПРАВИЛЬНЫЕ СЕЛЕКТОРЫ из HTML
       const genres: string[] = [];
-      $main('.manga__genres a, .genres a, .tags a').each((_, element) => {
-        const genre = $main(element).text().trim();
-        if (genre) {
+      $main('.tags__item').each((_, element) => {
+        const $element = $main(element);
+        const genre = $element.text().trim();
+        const elementClass = $element.attr('class') || '';
+
+        // Исключаем кнопку "еще теги"
+        if (
+          genre &&
+          !genre.includes('+') &&
+          !elementClass.includes('tags__item-more')
+        ) {
           genres.push(genre);
         }
       });
 
-      // Extract chapters
-      const chapters = this.extractChapters($main, url);
+      // Extract chapters - вызываем правильный метод
+      const chapters = this.extractChapters($main);
 
       return {
-        title,
+        title: title || url,
         alternativeTitles:
           alternativeTitles.length > 0 ? alternativeTitles : undefined,
         description: description || undefined,
-        coverUrl: coverUrl || undefined,
+        coverUrl: absoluteCoverUrl || undefined,
         genres: genres.length > 0 ? genres : undefined,
         chapters,
       };
@@ -74,143 +74,88 @@ export class MangabuffParser implements MangaParser {
     }
   }
 
-  private extractChapters($: cheerio.Root, baseUrl: string): ChapterInfo[] {
+  private extractChapters($: cheerio.Root): ChapterInfo[] {
     const chapters: ChapterInfo[] = [];
 
-    // Try multiple selectors for chapters - specific to Mangabuff structure
-    const chapterSelectors = [
-      '.chapters-list a',
-      '.chapter-list a',
-      '.manga-chapters a',
-      '.chapters a',
-      '.chapter-item a',
-      '.chapter-row a',
-      '.ch-item a',
-      '.chapter__item a',
-      '.chapters__item a',
-      'a[href*="/chapter/"]',
-      'a[href*="/glava/"]',
-      '.chapter-link',
-      '.chapter-title a',
-      '.chapters__item',
-    ];
+    // ПРАВИЛЬНЫЙ СЕЛЕКТОР для глав из HTML
+    $('.chapters__item').each((_, element) => {
+      const $element = $(element);
+      const href = $element.attr('href');
 
-    // Try each selector
-    for (const selector of chapterSelectors) {
-      $(selector).each((_, element) => {
-        const linkElement = $(element);
-        const href = linkElement.attr('href');
-        const name = linkElement.text().trim();
+      if (href) {
+        // Convert relative URL to absolute
+        const absoluteUrl = href.startsWith('http')
+          ? href
+          : new URL(href, 'https://mangabuff.ru').href;
 
-        // Skip if we already have this chapter
-        if (chapters.some((chapter) => chapter.name === name)) {
-          return;
-        }
+        // Extract chapter number from data attribute - ПРАВИЛЬНЫЙ АТРИБУТ
+        const chapterNumberStr = $element.attr('data-chapter');
+        let number: number | undefined;
 
-        if (href && name) {
-          // Convert relative URL to absolute
-          const absoluteUrl = href.startsWith('http')
-            ? href
-            : new URL(href, baseUrl).href;
-
-          // Extract chapter number from name (e.g., "Глава 1080")
-          let number: number | undefined;
-          const nameMatch = name.match(/(?:Глава|Chapter)\s*(\d+(?:\.\d+)?)/i);
-          if (nameMatch) {
-            const parsedNumber = parseFloat(nameMatch[1]);
-            if (!isNaN(parsedNumber)) {
-              number = parsedNumber;
-            }
-          } else {
-            // Try to extract from URL (e.g., "/manga/title/1080")
-            const urlMatch = absoluteUrl.match(/\/(\d+(?:\.\d+)?)\/?$/);
-            if (urlMatch) {
-              const parsedNumber = parseFloat(urlMatch[1]);
-              if (!isNaN(parsedNumber)) {
-                number = parsedNumber;
-              }
-            }
+        if (chapterNumberStr) {
+          const parsedNumber = parseFloat(chapterNumberStr);
+          if (!isNaN(parsedNumber)) {
+            number = parsedNumber;
           }
-
-          // Extract slug from URL for image downloading
-          const slugMatch = absoluteUrl.match(/\/manga\/[^/]+\/(.+?)(?:\/)?$/);
-          const slug = slugMatch ? slugMatch[1] : undefined;
-
-          chapters.push({
-            name,
-            url: absoluteUrl,
-            number,
-            slug,
-          });
         }
-      });
 
-      // If we found chapters, break the loop
-      if (chapters.length > 0) {
-        break;
+        // Extract chapter name components - ПРАВИЛЬНЫЕ СЕЛЕКТОРЫ
+        const chapterValue = $element.find('.chapters__value').text().trim();
+        const chapterName = $element.find('.chapters__name').text().trim();
+
+        // Build chapter name
+        let name = chapterName;
+        if (!name && chapterValue) {
+          name = chapterValue;
+        }
+        if (!name && number) {
+          name = `Глава ${number}`;
+        }
+        if (!name) {
+          name = 'Без названия';
+        }
+
+        chapters.push({
+          name,
+          url: absoluteUrl,
+          number,
+        });
       }
-    }
+    });
 
-    // If still no chapters found, try a more general approach
+    // Если не нашли главы в основном списке, попробуем горячие главы
     if (chapters.length === 0) {
-      // Look for any links that might be chapters
-      $('a').each((_, element) => {
-        const linkElement = $(element);
-        const href = linkElement.attr('href');
-        const name = linkElement.text().trim();
+      $('.hot-chapters__item').each((_, element) => {
+        const $element = $(element);
+        const href = $element.attr('href');
+        const chapterNumber = $element
+          .find('.hot-chapters__number')
+          .text()
+          .trim();
 
-        // Check if this looks like a chapter link
-        if (
-          href &&
-          name &&
-          (href.includes('/chapter/') ||
-            href.includes('/glava/') ||
-            name.match(/(?:Глава|Chapter)\s*\d+/i))
-        ) {
-          // Skip if we already have this chapter
-          if (chapters.some((chapter) => chapter.name === name)) {
-            return;
-          }
-
-          // Convert relative URL to absolute
+        if (href && chapterNumber) {
           const absoluteUrl = href.startsWith('http')
             ? href
-            : new URL(href, baseUrl).href;
+            : new URL(href, 'https://mangabuff.ru').href;
 
-          // Extract chapter number from name
-          let number: number | undefined;
-          const nameMatch = name.match(/(?:Глава|Chapter)\s*(\d+(?:\.\d+)?)/i);
-          if (nameMatch) {
-            const parsedNumber = parseFloat(nameMatch[1]);
-            if (!isNaN(parsedNumber)) {
-              number = parsedNumber;
-            }
-          } else {
-            // Try to extract from URL
-            const urlMatch = absoluteUrl.match(/\/(\d+(?:\.\d+)?)\/?$/);
-            if (urlMatch) {
-              const parsedNumber = parseFloat(urlMatch[1]);
-              if (!isNaN(parsedNumber)) {
-                number = parsedNumber;
-              }
-            }
+          const parsedNumber = parseFloat(chapterNumber);
+          if (!isNaN(parsedNumber)) {
+            chapters.push({
+              name: `Глава ${chapterNumber}`,
+              url: absoluteUrl,
+              number: parsedNumber,
+            });
           }
-
-          chapters.push({
-            name,
-            url: absoluteUrl,
-            number,
-          });
         }
       });
     }
 
-    // Sort chapters by number if available, otherwise by name
+    // Sort chapters by number if available
     chapters.sort((a, b) => {
       if (a.number !== undefined && b.number !== undefined) {
         return a.number - b.number;
       }
-      return a.name.localeCompare(b.name);
+      return 0;
     });
 
     return chapters;
@@ -219,26 +164,22 @@ export class MangabuffParser implements MangaParser {
   private extractAlternativeTitles($: cheerio.Root): string[] {
     const alternativeTitles: string[] = [];
 
-    // Try common selectors for alternative titles based on Mangabuff structure
-    $(
-      '.manga__title .alternative, .alternative-title, .manga-alternative, .alt-title',
-    ).each((_, element) => {
+    // ПРАВИЛЬНЫЙ СЕЛЕКТОР для альтернативных названий из HTML
+    $('h3.manga__name-alt span').each((_, element) => {
       const title = $(element).text().trim();
       if (title) {
         alternativeTitles.push(title);
       }
     });
 
-    // Also try to extract from meta tags or other common places
-    $(
-      'meta[name="alternative-title"], meta[property="og:alternative-title"]',
-    ).each((_, element) => {
+    // Also check meta tags
+    $('meta[property="og:title"]').each((_, element) => {
       const title = $(element).attr('content');
-      if (title) {
+      if (title && title !== $('h1.manga__name').text().trim()) {
         alternativeTitles.push(title);
       }
     });
 
-    return alternativeTitles;
+    return [...new Set(alternativeTitles)]; // Remove duplicates
   }
 }
