@@ -67,6 +67,285 @@ export class MangaParserService {
     return numbers;
   }
 
+  /**
+   * Улучшенный метод для скачивания изображений с mangabuff.ru
+   * Теперь корректно извлекает все изображения главы
+   */
+  private async downloadMangabuffChapterImages(
+    chapter: ChapterInfo,
+    chapterId: string,
+  ): Promise<string[]> {
+    if (!chapter.url) {
+      throw new BadRequestException('Chapter URL is required for downloading');
+    }
+
+    try {
+      // Создаем сессию с заголовками для mangabuff
+      const mangabuffSession = axios.create({
+        timeout: 30000,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Accept-Encoding': 'gzip, deflate, br',
+          Connection: 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
+          'Sec-Fetch-Dest': 'document',
+          'Sec-Fetch-Mode': 'navigate',
+          'Sec-Fetch-Site': 'none',
+          'Sec-Fetch-User': '?1',
+          'Cache-Control': 'max-age=0',
+        },
+      });
+
+      // Получаем страницу главы
+      const chapterResponse = await mangabuffSession.get(chapter.url, {
+        maxRedirects: 5,
+      });
+
+      const $chapter = cheerio.load(chapterResponse.data);
+
+      // Извлекаем все изображения страниц
+      const imageUrls: string[] = [];
+
+      // Ищем все элементы reader__item внутри reader__pages
+      $chapter('.reader__pages .reader__item').each((index, element) => {
+        const imgElement = $chapter(element).find('img');
+
+        if (imgElement.length > 0) {
+          // Пробуем получить URL из data-src или src
+          let imgUrl = imgElement.attr('data-src') || imgElement.attr('src');
+
+          if (imgUrl) {
+            // Если URL относительный, преобразуем в абсолютный
+            if (imgUrl.startsWith('//')) {
+              imgUrl = 'https:' + imgUrl;
+            } else if (imgUrl.startsWith('/')) {
+              imgUrl = 'https://mangabuff.ru' + imgUrl;
+            }
+
+            // Очищаем URL от лишних параметров, но оставляем timestamp
+            imgUrl = imgUrl.trim();
+            imageUrls.push(imgUrl);
+
+            this.logger.debug(`Found image ${index + 1}: ${imgUrl}`);
+          }
+        }
+      });
+
+      // Альтернативный способ: ищем все изображения с определенными атрибутами
+      if (imageUrls.length === 0) {
+        $chapter('img[data-src], img[src]').each((index, element) => {
+          const imgElement = $chapter(element);
+          // Пропускаем изображения из рекламы и других мест
+          if (
+            imgElement.parents('.rek, .ad, .advertisement, .ads').length === 0
+          ) {
+            let imgUrl = imgElement.attr('data-src') || imgElement.attr('src');
+
+            if (
+              imgUrl &&
+              (imgUrl.includes('/chapters/') || imgUrl.includes('/img/'))
+            ) {
+              if (imgUrl.startsWith('//')) {
+                imgUrl = 'https:' + imgUrl;
+              } else if (imgUrl.startsWith('/')) {
+                imgUrl = 'https://mangabuff.ru' + imgUrl;
+              }
+
+              imgUrl = imgUrl.trim();
+              if (!imageUrls.includes(imgUrl)) {
+                imageUrls.push(imgUrl);
+              }
+            }
+          }
+        });
+      }
+
+      if (imageUrls.length === 0) {
+        throw new Error(
+          'No images found in chapter. Selectors might be outdated.',
+        );
+      }
+
+      this.logger.log(
+        `Found ${imageUrls.length} images for chapter ${chapter.number || 'unknown'}`,
+      );
+
+      // Скачиваем изображения
+      const pagePaths: string[] = [];
+      for (let i = 0; i < imageUrls.length; i++) {
+        const imgUrl = imageUrls[i];
+
+        // Пропускаем явно рекламные URL
+        if (
+          imgUrl.includes('yandex.ru') ||
+          imgUrl.includes('ads') ||
+          imgUrl.includes('rek')
+        ) {
+          this.logger.debug(`Skipping ad image: ${imgUrl}`);
+          continue;
+        }
+
+        try {
+          this.logger.debug(
+            `Downloading image ${i + 1}/${imageUrls.length}: ${imgUrl}`,
+          );
+
+          const pagePath = await this.filesService.downloadImageFromUrl(
+            imgUrl,
+            chapterId,
+            i + 1,
+            {
+              // Добавляем заголовки для обхода возможных ограничений
+              headers: {
+                Referer: 'https://mangabuff.ru/',
+                Accept: 'image/webp,image/apng,image/*,*/*;q=0.8',
+                'Sec-Fetch-Dest': 'image',
+                'Sec-Fetch-Mode': 'no-cors',
+                'Sec-Fetch-Site': 'cross-site',
+              },
+            },
+          );
+
+          pagePaths.push(pagePath);
+          this.logger.debug(`Successfully downloaded image ${i + 1}`);
+        } catch (imageError) {
+          this.logger.error(
+            `Failed to download image ${imgUrl}: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`,
+          );
+
+          // Пробуем альтернативный сервер для изображений
+          if (imgUrl.includes('c3.mangabuff.ru')) {
+            const alternativeUrl = imgUrl.replace(
+              'c3.mangabuff.ru',
+              'c2.mangabuff.ru',
+            );
+            this.logger.debug(`Trying alternative server: ${alternativeUrl}`);
+
+            try {
+              const altPagePath = await this.filesService.downloadImageFromUrl(
+                alternativeUrl,
+                chapterId,
+                i + 1,
+              );
+              pagePaths.push(altPagePath);
+              this.logger.debug(
+                `Successfully downloaded from alternative server`,
+              );
+            } catch (altError) {
+              this.logger.error(
+                `Alternative server also failed: ${altError instanceof Error ? altError.message : 'Unknown error'}`,
+              );
+            }
+          }
+        }
+
+        // Пауза между загрузками, чтобы не перегружать сервер
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+
+      if (pagePaths.length === 0) {
+        throw new Error('No images could be downloaded');
+      }
+
+      this.logger.log(
+        `Successfully downloaded ${pagePaths.length} pages for chapter ${chapter.number || 'unknown'}`,
+      );
+      return pagePaths;
+    } catch (error) {
+      this.logger.error(
+        `Failed to download mangabuff chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        error.stack,
+      );
+      throw new BadRequestException(
+        `Failed to download chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  /**
+   * Download chapter images for manga-shi.org
+   */
+  private async downloadMangaShiChapterImages(
+    chapter: ChapterInfo,
+    chapterId: string,
+  ): Promise<string[]> {
+    if (!chapter.url) {
+      throw new BadRequestException('Chapter URL is required for downloading');
+    }
+
+    try {
+      const mangaShiSession = axios.create({
+        timeout: 20000,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
+          Referer: 'https://manga-shi.org/',
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept-Encoding': 'gzip, deflate, br',
+          Connection: 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
+        },
+      });
+
+      const chapterResponse = await mangaShiSession.get(chapter.url);
+      const $chapter = cheerio.load(chapterResponse.data);
+
+      const imageUrls: string[] = [];
+      $chapter('.page-break img').each((_, element) => {
+        const src =
+          $chapter(element).attr('data-src') || $chapter(element).attr('src');
+        if (src) {
+          const absoluteUrl = new URL(src, chapter.url).href;
+          imageUrls.push(absoluteUrl);
+        }
+      });
+
+      if (imageUrls.length === 0) {
+        throw new Error('No images found in chapter');
+      }
+
+      const pagePaths: string[] = [];
+      for (let i = 0; i < imageUrls.length; i++) {
+        const imgUrl = imageUrls[i];
+        try {
+          const pagePath = await this.filesService.downloadImageFromUrl(
+            imgUrl,
+            chapterId,
+            i + 1,
+            {}, // Добавляем пустой объект для опций, чтобы соответствовать сигнатуре метода
+          );
+          pagePaths.push(pagePath);
+        } catch (imageError) {
+          this.logger.error(
+            `Failed to download image ${imgUrl}: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`,
+          );
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      if (pagePaths.length === 0) {
+        throw new Error('No images could be downloaded');
+      }
+
+      return pagePaths;
+    } catch (error) {
+      this.logger.error(
+        `Failed to download manga-shi chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      throw new BadRequestException('Failed to download chapter images');
+    }
+  }
+
+  /**
+   * Download chapter images for senkuro.me (GraphQL API)
+   */
   private async downloadChapterImages(
     chapter: ChapterInfo,
     chapterId: string,
@@ -143,7 +422,6 @@ export class MangaParserService {
         );
         pagePaths.push(pagePath);
 
-        // Small delay between downloads
         await new Promise((resolve) => setTimeout(resolve, 100));
       }
 
@@ -151,191 +429,6 @@ export class MangaParserService {
     } catch (error) {
       this.logger.error(
         `Failed to download chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      );
-      throw new BadRequestException('Failed to download chapter images');
-    }
-  }
-
-  /**
-   * Download chapter images for manga-shi.org
-   * @param chapter Chapter info with slug
-   * @param chapterId Chapter ID for saving images
-   * @returns Array of page paths
-   */
-  private async downloadMangaShiChapterImages(
-    chapter: ChapterInfo,
-    chapterId: string,
-  ): Promise<string[]> {
-    if (!chapter.url) {
-      throw new BadRequestException('Chapter URL is required for downloading');
-    }
-
-    try {
-      // Create a new session with manga-shi specific headers
-      const mangaShiSession = axios.create({
-        timeout: 20000,
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
-          Referer: 'https://manga-shi.org/',
-          Accept:
-            'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Accept-Encoding': 'gzip, deflate, br',
-          Connection: 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
-        },
-      });
-
-      // Get chapter page
-      const chapterResponse = await mangaShiSession.get(chapter.url);
-      const $chapter = cheerio.load(chapterResponse.data);
-
-      // Extract image URLs
-      const imageUrls: string[] = [];
-      $chapter('.page-break img').each((_, element) => {
-        const src =
-          $chapter(element).attr('data-src') || $chapter(element).attr('src');
-        if (src) {
-          // Convert relative URLs to absolute
-          const absoluteUrl = new URL(src, chapter.url).href;
-          imageUrls.push(absoluteUrl);
-        }
-      });
-
-      if (imageUrls.length === 0) {
-        throw new Error('No images found in chapter');
-      }
-
-      const pagePaths: string[] = [];
-      for (let i = 0; i < imageUrls.length; i++) {
-        const imgUrl = imageUrls[i];
-        try {
-          const pagePath = await this.filesService.downloadImageFromUrl(
-            imgUrl,
-            chapterId,
-            i + 1, // Page number starts from 1
-          );
-          pagePaths.push(pagePath);
-        } catch (imageError) {
-          this.logger.error(
-            `Failed to download image ${imgUrl}: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`,
-          );
-          // Continue with other images even if one fails
-        }
-
-        // Small delay between downloads
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-
-      if (pagePaths.length === 0) {
-        throw new Error('No images could be downloaded');
-      }
-
-      return pagePaths;
-    } catch (error) {
-      this.logger.error(
-        `Failed to download manga-shi chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      );
-      throw new BadRequestException('Failed to download chapter images');
-    }
-  }
-
-  /**
-   * Download chapter images for mangabuff.ru
-   * @param chapter Chapter info with url
-   * @param chapterId Chapter ID for saving images
-   * @returns Array of page paths
-   */
-  private async downloadMangabuffChapterImages(
-    chapter: ChapterInfo,
-    chapterId: string,
-  ): Promise<string[]> {
-    if (!chapter.url) {
-      throw new BadRequestException('Chapter URL is required for downloading');
-    }
-
-    try {
-      // Create a new session with mangabuff specific headers
-      const mangabuffSession = axios.create({
-        timeout: 20000,
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
-          Referer: 'https://mangabuff.ru/',
-          Accept:
-            'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          'Accept-Encoding': 'gzip, deflate, br',
-          Connection: 'keep-alive',
-          'Upgrade-Insecure-Requests': '1',
-        },
-      });
-
-      // Get chapter page
-      const chapterResponse = await mangabuffSession.get(chapter.url);
-      const $chapter = cheerio.load(chapterResponse.data);
-
-      // Extract image URLs - try multiple selectors for mangabuff
-      const imageUrls: string[] = [];
-      const selectors = [
-        '.reader__pages .reader__item img',
-        '.reader__item img',
-        '.page-break img',
-        '.chapter-images img',
-        '.manga-images img',
-        '.reader img',
-        '.comic img',
-        'img[data-src]',
-        'img[src]',
-      ];
-
-      for (const selector of selectors) {
-        $chapter(selector).each((_, element) => {
-          const src =
-            $chapter(element).attr('data-src') || $chapter(element).attr('src');
-          if (src && !imageUrls.includes(src)) {
-            // Convert relative URLs to absolute
-            const absoluteUrl = new URL(src, chapter.url).href;
-            imageUrls.push(absoluteUrl);
-          }
-        });
-        if (imageUrls.length > 0) break; // Stop if we found images
-      }
-
-      if (imageUrls.length === 0) {
-        throw new Error('No images found in chapter');
-      }
-
-      const pagePaths: string[] = [];
-      for (let i = 0; i < imageUrls.length; i++) {
-        const imgUrl = imageUrls[i];
-        try {
-          const pagePath = await this.filesService.downloadImageFromUrl(
-            imgUrl,
-            chapterId,
-            i + 1, // Page number starts from 1
-          );
-          pagePaths.push(pagePath);
-        } catch (imageError) {
-          this.logger.error(
-            `Failed to download image ${imgUrl}: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`,
-          );
-          // Continue with other images even if one fails
-        }
-
-        // Small delay between downloads
-        await new Promise((resolve) => setTimeout(resolve, 100));
-      }
-
-      if (pagePaths.length === 0) {
-        throw new Error('No images could be downloaded');
-      }
-
-      return pagePaths;
-    } catch (error) {
-      this.logger.error(
-        `Failed to download mangabuff chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
       throw new BadRequestException('Failed to download chapter images');
     }
@@ -353,18 +446,15 @@ export class MangaParserService {
       customType,
     } = parseTitleDto;
 
-    // Find the appropriate parser
     const parser = this.getParserForUrl(url);
     if (!parser) {
       throw new BadRequestException(
-        'Unsupported site. Only manga-shi.org and senkuro.me are supported.',
+        'Unsupported site. Only manga-shi.org, senkuro.me, and mangabuff.ru are supported.',
       );
     }
 
-    // Parse the manga data
     const parsedData = await parser.parse(url);
 
-    // Filter chapters if specific numbers requested
     let chapters = parsedData.chapters;
     if (chapterNumbers && chapterNumbers.length > 0) {
       const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
@@ -377,7 +467,6 @@ export class MangaParserService {
       throw new BadRequestException('No chapters found on the source website');
     }
 
-    // Create title
     const createTitleDto: CreateTitleDto = {
       name: customTitle || this.sanitizeFilename(parsedData.title),
       altNames: parsedData.alternativeTitles || [],
@@ -392,7 +481,6 @@ export class MangaParserService {
     const createdTitle = await this.titlesService.create(createTitleDto);
     this.logger.log(`Created title: ${createdTitle.name}`);
 
-    // Download and save title cover image locally for both sites
     if (parsedData.coverUrl) {
       try {
         const localCoverPath = await this.filesService.downloadTitleCover(
@@ -409,15 +497,15 @@ export class MangaParserService {
             error instanceof Error ? error.message : 'Unknown error'
           }`,
         );
-        // Continue without cover - don't fail the entire import
       }
     }
 
-    // Import chapters
     const importedChapters: any[] = [];
+    const domain = this.extractDomain(url);
+
     for (const chapter of chapters) {
       try {
-        const chapterNumber = chapter.number || 1; // Fallback for manga-shi.org
+        const chapterNumber = chapter.number || 1;
 
         const createChapterDto: CreateChapterDto = {
           titleId: createdTitle._id.toString(),
@@ -429,32 +517,37 @@ export class MangaParserService {
         const createdChapter =
           await this.chaptersService.create(createChapterDto);
 
-        // Download images for both senkuro.me and manga-shi.org
         if (chapter.slug || chapter.url) {
-          const domain = this.extractDomain(url);
           let pagePaths: string[] = [];
 
-          try {
+          if (domain.includes('senkuro.me') || domain.includes('sencuro.me')) {
             pagePaths = await this.downloadChapterImages(
               chapter,
               createdChapter._id.toString(),
               domain,
             );
-          } catch (error) {
-            // For manga-shi.org, we need to implement a different download method
-            if (url.includes('manga-shi.org')) {
-              pagePaths = await this.downloadMangaShiChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-              );
-            } else {
-              throw error; // Re-throw for other domains
-            }
+          } else if (domain.includes('manga-shi.org')) {
+            pagePaths = await this.downloadMangaShiChapterImages(
+              chapter,
+              createdChapter._id.toString(),
+            );
+          } else if (domain.includes('mangabuff.ru')) {
+            pagePaths = await this.downloadMangabuffChapterImages(
+              chapter,
+              createdChapter._id.toString(),
+            );
+          } else {
+            throw new BadRequestException(`Unsupported domain: ${domain}`);
           }
 
-          await this.chaptersService.update(createdChapter._id.toString(), {
-            pages: pagePaths,
-          });
+          if (pagePaths.length > 0) {
+            await this.chaptersService.update(createdChapter._id.toString(), {
+              pages: pagePaths,
+            });
+            this.logger.log(
+              `Downloaded ${pagePaths.length} pages for chapter ${chapterNumber}`,
+            );
+          }
         }
 
         importedChapters.push(createdChapter);
@@ -473,24 +566,13 @@ export class MangaParserService {
     };
   }
 
-  getParserForUrl(url: string): MangaParser | null {
-    for (const [site, parser] of this.parsers) {
-      if (url.includes(site)) {
-        return parser;
-      }
-    }
-    return null;
-  }
-
   async parseAndImportChapters(
     parseChapterDto: ParseChapterDto,
   ): Promise<any[]> {
     const { url, titleId, chapterNumbers } = parseChapterDto;
 
-    // Verify title exists
     await this.titlesService.findById(titleId);
 
-    // Find the appropriate parser
     const parser = this.getParserForUrl(url);
     if (!parser) {
       throw new BadRequestException(
@@ -498,11 +580,9 @@ export class MangaParserService {
       );
     }
 
-    // Parse manga to get all chapters
     const parsedData = await parser.parse(url);
     let selectedChapters = parsedData.chapters;
 
-    // Filter chapters if specific numbers requested
     if (chapterNumbers && chapterNumbers.length > 0) {
       const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
       selectedChapters = parsedData.chapters.filter(
@@ -511,7 +591,6 @@ export class MangaParserService {
     }
 
     if (selectedChapters.length === 0) {
-      // Проверяем, есть ли вообще главы в распаршенных данных
       if (parsedData.chapters.length === 0) {
         throw new BadRequestException(
           'No chapters found on the source website',
@@ -523,8 +602,9 @@ export class MangaParserService {
       }
     }
 
-    // Import chapters
     const importedChapters: any[] = [];
+    const domain = this.extractDomain(url);
+
     for (const chapter of selectedChapters) {
       try {
         const chapterNumber = chapter.number || 1;
@@ -539,38 +619,39 @@ export class MangaParserService {
         const createdChapter =
           await this.chaptersService.create(createChapterDto);
 
-        // Download images for senkuro.me, manga-shi.org, and mangabuff.ru
         if (chapter.slug || chapter.url) {
-          const domain = this.extractDomain(url);
           let pagePaths: string[] = [];
 
-          try {
+          if (domain.includes('senkuro.me') || domain.includes('sencuro.me')) {
             pagePaths = await this.downloadChapterImages(
               chapter,
               createdChapter._id.toString(),
               domain,
             );
-          } catch (error) {
-            // For manga-shi.org and mangabuff.ru, we need to implement different download methods
-            if (url.includes('manga-shi.org')) {
-              pagePaths = await this.downloadMangaShiChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-              );
-            } else if (url.includes('mangabuff.ru')) {
-              pagePaths = await this.downloadMangabuffChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-              );
-            } else {
-              throw error; // Re-throw for other domains
-            }
+          } else if (domain.includes('manga-shi.org')) {
+            pagePaths = await this.downloadMangaShiChapterImages(
+              chapter,
+              createdChapter._id.toString(),
+            );
+          } else if (domain.includes('mangabuff.ru')) {
+            pagePaths = await this.downloadMangabuffChapterImages(
+              chapter,
+              createdChapter._id.toString(),
+            );
+          } else {
+            throw new BadRequestException(`Unsupported domain: ${domain}`);
           }
 
-          await this.chaptersService.update(createdChapter._id.toString(), {
-            pages: pagePaths,
-          });
+          if (pagePaths.length > 0) {
+            await this.chaptersService.update(createdChapter._id.toString(), {
+              pages: pagePaths,
+            });
+            this.logger.log(
+              `Downloaded ${pagePaths.length} pages for chapter ${chapterNumber}`,
+            );
+          }
         }
+
         importedChapters.push(createdChapter);
         this.logger.log(`Imported chapter ${chapterNumber}: ${chapter.name}`);
       } catch (error) {
@@ -583,6 +664,15 @@ export class MangaParserService {
     return importedChapters;
   }
 
+  getParserForUrl(url: string): MangaParser | null {
+    for (const [site, parser] of this.parsers) {
+      if (url.includes(site)) {
+        return parser;
+      }
+    }
+    return null;
+  }
+
   private extractDomain(url: string): string {
     const urlObj = new URL(url);
     return urlObj.hostname;
@@ -593,18 +683,15 @@ export class MangaParserService {
   ): Promise<{ title: string; chapters: ChapterInfo[] }> {
     const { url, chapterNumbers } = parseChaptersInfoDto;
 
-    // Find the appropriate parser
     const parser = this.getParserForUrl(url);
     if (!parser) {
       throw new BadRequestException(
-        'Unsupported site. Only manga-shi.org and senkuro.me are supported.',
+        'Unsupported site. Only manga-shi.org, senkuro.me, and mangabuff.ru are supported.',
       );
     }
 
-    // Parse the manga data
     const parsedData = await parser.parse(url);
 
-    // Filter chapters if specific numbers requested
     let chapters = parsedData.chapters;
     if (chapterNumbers && chapterNumbers.length > 0) {
       const requestedNumbers = this.parseChapterNumbers(chapterNumbers);

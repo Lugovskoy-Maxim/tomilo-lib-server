@@ -198,6 +198,15 @@ export class FilesService {
     imageUrl: string,
     chapterId: string,
     pageNumber: number,
+    options?: {
+      headers?: {
+        Referer?: string;
+        Accept?: string;
+        'Sec-Fetch-Dest'?: string;
+        'Sec-Fetch-Mode'?: string;
+        'Sec-Fetch-Site'?: string;
+      };
+    },
   ): Promise<string> {
     try {
       const response = await axios.get(imageUrl, {
@@ -206,6 +215,7 @@ export class FilesService {
         headers: {
           'User-Agent':
             'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
+          ...options?.headers,
         },
       });
 
