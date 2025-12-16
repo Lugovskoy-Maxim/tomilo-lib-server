@@ -88,7 +88,7 @@ export class MangabuffParser implements MangaParser {
   ): Promise<ChapterInfo[]> {
     const chapters: ChapterInfo[] = [];
 
-    // First, try to extract chapters from the initial HTML
+    // Сначала парсим главы с основной страницы
     $('.chapters__item').each((_, element) => {
       const chapter = this.parseChapterElement($, element);
       if (chapter) {
@@ -96,10 +96,12 @@ export class MangabuffParser implements MangaParser {
       }
     });
 
-    // Try to load ALL chapters in ONE request without pagination
-    // Only proceed if mangaId is valid
+    // Если есть mangaId, загружаем дополнительные главы
     if (mangaId) {
       try {
+        // Получаем CSRF-токен из meta-тега
+        const csrfToken = $('meta[name="csrf-token"]').attr('content');
+
         const response = await session.post(
           'https://mangabuff.ru/chapters/load',
           new URLSearchParams({
@@ -110,46 +112,40 @@ export class MangabuffParser implements MangaParser {
               'Content-Type':
                 'application/x-www-form-urlencoded; charset=UTF-8',
               'X-Requested-With': 'XMLHttpRequest',
+              'X-CSRF-TOKEN': csrfToken || '',
               Referer: 'https://mangabuff.ru',
               Origin: 'https://mangabuff.ru',
             },
           },
         );
 
-        const data = response.data;
-        let chaptersData: any[] = [];
-        if (Array.isArray(data)) {
-          chaptersData = data;
-        } else if (data.chapters && Array.isArray(data.chapters)) {
-          chaptersData = data.chapters;
-        }
+        // Парсим HTML из ответа
+        if (response.data && typeof response.data === 'object') {
+          // Ответ может быть объектом с полем content
+          const htmlContent = response.data.content || response.data;
 
-        for (const chap of chaptersData) {
-          const absoluteUrl = chap.url.startsWith('http')
-            ? chap.url
-            : new URL(chap.url, 'https://mangabuff.ru').href;
+          if (typeof htmlContent === 'string') {
+            const $chapters = cheerio.load(htmlContent);
 
-          const chapter: ChapterInfo = {
-            name:
-              chap.name ||
-              (chap.number ? `Глава ${chap.number}` : 'Без названия'),
-            url: absoluteUrl,
-            number: chap.number ? parseFloat(chap.number) : undefined,
-          };
-
-          // Check if chapter already exists by URL
-          const exists = chapters.some((c) => c.url === chapter.url);
-          if (!exists) {
-            chapters.push(chapter);
+            $chapters('.chapters__item').each((_, element) => {
+              const chapter = this.parseChapterElement($chapters, element);
+              if (chapter) {
+                // Проверяем, нет ли уже такой главы
+                const exists = chapters.some((c) => c.url === chapter.url);
+                if (!exists) {
+                  chapters.push(chapter);
+                }
+              }
+            });
           }
         }
       } catch (error) {
-        console.error('Error loading chapters:', error);
-        // If there's an error, fall back to the chapters we already have
+        console.error('Error loading additional chapters:', error);
+        // Продолжаем работу с главами, которые уже есть
       }
     }
 
-    // Если не нашли главы в основном списке, попробуем горячие главы
+    // Если не нашли главы в основном списке, пробуем горячие главы
     if (chapters.length === 0) {
       $('.hot-chapters__item').each((_, element) => {
         const $element = $(element);
@@ -176,7 +172,7 @@ export class MangabuffParser implements MangaParser {
       });
     }
 
-    // Sort chapters by number if available (ascending order - oldest to newest)
+    // Сортируем главы по номеру (от старых к новым)
     chapters.sort((a, b) => {
       if (a.number !== undefined && b.number !== undefined) {
         return a.number - b.number;
@@ -186,7 +182,6 @@ export class MangabuffParser implements MangaParser {
 
     return chapters;
   }
-
   // Вспомогательный метод для парсинга элемента главы
   private parseChapterElement(
     $: cheerio.Root,
