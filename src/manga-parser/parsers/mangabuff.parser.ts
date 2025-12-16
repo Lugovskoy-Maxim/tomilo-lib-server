@@ -89,138 +89,88 @@ export class MangabuffParser implements MangaParser {
 
     // First, try to extract chapters from the initial HTML
     $('.chapters__item').each((_, element) => {
-      const $element = $(element);
-      const href = $element.attr('href');
-
-      if (href) {
-        // Convert relative URL to absolute
-        const absoluteUrl = href.startsWith('http')
-          ? href
-          : new URL(href, 'https://mangabuff.ru').href;
-
-        // Extract chapter number from data attribute
-        const chapterNumberStr = $element.attr('data-chapter');
-        let number: number | undefined;
-
-        if (chapterNumberStr) {
-          const parsedNumber = parseFloat(chapterNumberStr);
-          if (!isNaN(parsedNumber)) {
-            number = parsedNumber;
-          }
-        }
-
-        // Extract chapter name components
-        const chapterValue = $element.find('.chapters__value').text().trim();
-        const chapterName = $element.find('.chapters__name').text().trim();
-
-        // Build chapter name
-        let name = chapterName;
-        if (!name && chapterValue) {
-          name = chapterValue;
-        }
-        if (!name && number) {
-          name = `Глава ${number}`;
-        }
-        if (!name) {
-          name = 'Без названия';
-        }
-
-        chapters.push({
-          name,
-          url: absoluteUrl,
-          number,
-        });
+      const chapter = this.parseChapterElement($, element);
+      if (chapter) {
+        chapters.push(chapter);
       }
     });
 
     // If no chapters found in initial HTML, try AJAX loading
-    if (chapters.length === 0) {
-      let page = 1;
-      const perPage = 100;
+    // Always try AJAX loading to get all chapters
+    let page = 1;
+    const perPage = 100;
+    let hasMorePages = true;
+    const maxPages = 50; // Safety limit to prevent infinite loops
 
-      while (true) {
-        try {
-          const response = await session.post(
-            'https://mangabuff.ru/chapters/load',
-            {
-              manga_id: mangaId,
-              page,
-              per_page: perPage,
+    while (hasMorePages && page <= maxPages) {
+      try {
+        const response = await session.post(
+          'https://mangabuff.ru/chapters/load',
+          {
+            manga_id: mangaId,
+            page,
+            per_page: perPage,
+          },
+          {
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'X-Requested-With': 'XMLHttpRequest',
+              Referer: 'https://mangabuff.ru',
             },
-            {
-              headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest',
-                Referer: 'https://mangabuff.ru',
-              },
-            },
-          );
+          },
+        );
 
-          const data = response.data;
-          if (!data.content) break;
+        const data = response.data;
 
-          const $ajax = cheerio.load(data.content);
-
-          // Parse chapters from the loaded HTML
-          $ajax('.chapters__item').each((_, element) => {
-            const $element = $ajax(element);
-            const href = $element.attr('href');
-
-            if (href) {
-              // Convert relative URL to absolute
-              const absoluteUrl = href.startsWith('http')
-                ? href
-                : new URL(href, 'https://mangabuff.ru').href;
-
-              // Extract chapter number from data attribute
-              const chapterNumberStr = $element.attr('data-chapter');
-              let number: number | undefined;
-
-              if (chapterNumberStr) {
-                const parsedNumber = parseFloat(chapterNumberStr);
-                if (!isNaN(parsedNumber)) {
-                  number = parsedNumber;
-                }
-              }
-
-              // Extract chapter name components
-              const chapterValue = $element
-                .find('.chapters__value')
-                .text()
-                .trim();
-              const chapterName = $element
-                .find('.chapters__name')
-                .text()
-                .trim();
-
-              // Build chapter name
-              let name = chapterName;
-              if (!name && chapterValue) {
-                name = chapterValue;
-              }
-              if (!name && number) {
-                name = `Глава ${number}`;
-              }
-              if (!name) {
-                name = 'Без названия';
-              }
-
-              chapters.push({
-                name,
-                url: absoluteUrl,
-                number,
-              });
-            }
-          });
-
-          // If no chapters were added in this batch, stop
-          if ($ajax('.chapters__item').length === 0) break;
-
-          page++;
-        } catch {
-          // If there's an error (e.g., no more pages), stop
+        // If no content or empty content, stop
+        if (!data.content || data.content.trim() === '') {
+          hasMorePages = false;
           break;
         }
+
+        const $ajax = cheerio.load(data.content);
+        const chapterElements = $ajax('.chapters__item');
+
+        // If no chapters in this batch, stop
+        if (chapterElements.length === 0) {
+          hasMorePages = false;
+          break;
+        }
+
+        // Parse chapters from the loaded HTML
+        let foundNewChapters = false;
+        chapterElements.each((_, element) => {
+          const chapter = this.parseChapterElement($ajax, element);
+          if (chapter) {
+            // Check if chapter already exists by URL
+            const exists = chapters.some((c) => c.url === chapter.url);
+            if (!exists) {
+              chapters.push(chapter);
+              foundNewChapters = true;
+            }
+          }
+        });
+
+        // If no new chapters were found, stop
+        if (!foundNewChapters) {
+          hasMorePages = false;
+          break;
+        }
+
+        // If we got less than perPage, likely this is the last page
+        if (chapterElements.length < perPage) {
+          hasMorePages = false;
+          break;
+        }
+
+        page++;
+
+        // Add a small delay to avoid rate limiting
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`Error loading page ${page}:`, error);
+        hasMorePages = false;
+        break;
       }
     }
 
@@ -251,7 +201,7 @@ export class MangabuffParser implements MangaParser {
       });
     }
 
-    // Sort chapters by number if available
+    // Sort chapters by number if available (ascending order - oldest to newest)
     chapters.sort((a, b) => {
       if (a.number !== undefined && b.number !== undefined) {
         return a.number - b.number;
@@ -260,6 +210,57 @@ export class MangabuffParser implements MangaParser {
     });
 
     return chapters;
+  }
+
+  // Новый вспомогательный метод для парсинга элемента главы
+  private parseChapterElement(
+    $: cheerio.Root,
+    element: cheerio.Element,
+  ): ChapterInfo | null {
+    const $element = $(element);
+    const href = $element.attr('href');
+
+    if (!href) {
+      return null;
+    }
+
+    // Convert relative URL to absolute
+    const absoluteUrl = href.startsWith('http')
+      ? href
+      : new URL(href, 'https://mangabuff.ru').href;
+
+    // Extract chapter number from data attribute
+    const chapterNumberStr = $element.attr('data-chapter');
+    let number: number | undefined;
+
+    if (chapterNumberStr) {
+      const parsedNumber = parseFloat(chapterNumberStr);
+      if (!isNaN(parsedNumber)) {
+        number = parsedNumber;
+      }
+    }
+
+    // Extract chapter name components
+    const chapterValue = $element.find('.chapters__value').text().trim();
+    const chapterName = $element.find('.chapters__name').text().trim();
+
+    // Build chapter name
+    let name = chapterName;
+    if (!name && chapterValue) {
+      name = chapterValue;
+    }
+    if (!name && number) {
+      name = `Глава ${number}`;
+    }
+    if (!name) {
+      name = 'Без названия';
+    }
+
+    return {
+      name,
+      url: absoluteUrl,
+      number,
+    };
   }
 
   private extractAlternativeTitles($: cheerio.Root): string[] {
