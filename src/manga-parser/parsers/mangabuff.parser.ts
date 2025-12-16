@@ -97,51 +97,56 @@ export class MangabuffParser implements MangaParser {
     });
 
     // Try to load ALL chapters in ONE request without pagination
-    try {
-      const response = await session.post(
-        'https://mangabuff.ru/chapters/load',
-        {
-          manga_id: mangaId, // Only manga_id
-        },
-        {
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'X-Requested-With': 'XMLHttpRequest',
-            Referer: 'https://mangabuff.ru',
+    // Only proceed if mangaId is valid
+    if (mangaId) {
+      try {
+        const response = await session.post(
+          'https://mangabuff.ru/chapters/load',
+          new URLSearchParams({
+            manga_id: mangaId,
+          }),
+          {
+            headers: {
+              'Content-Type':
+                'application/x-www-form-urlencoded; charset=UTF-8',
+              'X-Requested-With': 'XMLHttpRequest',
+              Referer: 'https://mangabuff.ru',
+              Origin: 'https://mangabuff.ru',
+            },
           },
-        },
-      );
+        );
 
-      const data = response.data;
-      let chaptersData: any[] = [];
-      if (Array.isArray(data)) {
-        chaptersData = data;
-      } else if (data.chapters && Array.isArray(data.chapters)) {
-        chaptersData = data.chapters;
-      }
-
-      for (const chap of chaptersData) {
-        const absoluteUrl = chap.url.startsWith('http')
-          ? chap.url
-          : new URL(chap.url, 'https://mangabuff.ru').href;
-
-        const chapter: ChapterInfo = {
-          name:
-            chap.name ||
-            (chap.number ? `Глава ${chap.number}` : 'Без названия'),
-          url: absoluteUrl,
-          number: chap.number ? parseFloat(chap.number) : undefined,
-        };
-
-        // Check if chapter already exists by URL
-        const exists = chapters.some((c) => c.url === chapter.url);
-        if (!exists) {
-          chapters.push(chapter);
+        const data = response.data;
+        let chaptersData: any[] = [];
+        if (Array.isArray(data)) {
+          chaptersData = data;
+        } else if (data.chapters && Array.isArray(data.chapters)) {
+          chaptersData = data.chapters;
         }
+
+        for (const chap of chaptersData) {
+          const absoluteUrl = chap.url.startsWith('http')
+            ? chap.url
+            : new URL(chap.url, 'https://mangabuff.ru').href;
+
+          const chapter: ChapterInfo = {
+            name:
+              chap.name ||
+              (chap.number ? `Глава ${chap.number}` : 'Без названия'),
+            url: absoluteUrl,
+            number: chap.number ? parseFloat(chap.number) : undefined,
+          };
+
+          // Check if chapter already exists by URL
+          const exists = chapters.some((c) => c.url === chapter.url);
+          if (!exists) {
+            chapters.push(chapter);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading chapters:', error);
+        // If there's an error, fall back to the chapters we already have
       }
-    } catch (error) {
-      console.error('Error loading chapters:', error);
-      // If there's an error, fall back to the chapters we already have
     }
 
     // Если не нашли главы в основном списке, попробуем горячие главы
