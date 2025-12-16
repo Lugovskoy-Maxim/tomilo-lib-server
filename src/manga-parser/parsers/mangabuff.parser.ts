@@ -135,8 +135,8 @@ export class MangabuffParser implements MangaParser {
 
     // If no chapters found in initial HTML, try AJAX loading
     if (chapters.length === 0) {
-      let offset = 0;
-      const limit = 100;
+      let page = 1;
+      const perPage = 100;
 
       while (true) {
         try {
@@ -144,13 +144,14 @@ export class MangabuffParser implements MangaParser {
             'https://mangabuff.ru/chapters/load',
             {
               manga_id: mangaId,
-              offset,
-              limit,
+              page,
+              per_page: perPage,
             },
             {
               headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'X-Requested-With': 'XMLHttpRequest',
+                Referer: 'https://mangabuff.ru',
               },
             },
           );
@@ -215,7 +216,7 @@ export class MangabuffParser implements MangaParser {
           // If no chapters were added in this batch, stop
           if ($ajax('.chapters__item').length === 0) break;
 
-          offset += limit;
+          page++;
         } catch {
           // If there's an error (e.g., no more pages), stop
           break;
