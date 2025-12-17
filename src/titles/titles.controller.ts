@@ -745,4 +745,38 @@ export class TitlesController {
       };
     }
   }
+
+  @Get('titles/random')
+  async getRandomTitles(
+    @Query('limit') limit = 10,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const titles = await this.titlesService.getRandomTitles(Number(limit));
+      const data = titles.map((title) => ({
+        id: title._id?.toString(),
+        title: title.name,
+        cover: title.coverImage,
+        rating: title.averageRating,
+        type: title.type,
+        releaseYear: title.releaseYear,
+        description: title.description,
+        isAdult: title.ageLimit >= 18,
+      }));
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'titles/random',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch random titles',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'titles/random',
+      };
+    }
+  }
 }

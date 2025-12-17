@@ -486,4 +486,40 @@ export class TitlesService {
   async getCollections(limit = 10): Promise<CollectionDocument[]> {
     return this.collectionModel.find().limit(limit).exec();
   }
+
+  async getRandomTitles(limit = 10): Promise<TitleDocument[]> {
+    // Получаем общее количество тайтлов
+    const totalTitles = await this.titleModel.countDocuments();
+
+    // Генерируем случайные смещения
+    const randomOffsets: number[] = [];
+    const maxAttempts = Math.min(limit * 3, totalTitles); // Ограничиваем количество попыток
+
+    // Генерируем уникальные случайные смещения
+    while (randomOffsets.length < Math.min(limit, totalTitles)) {
+      const randomOffset = Math.floor(Math.random() * totalTitles);
+      if (!randomOffsets.includes(randomOffset)) {
+        randomOffsets.push(randomOffset);
+      }
+
+      // Защита от бесконечного цикла
+      if (randomOffsets.length >= maxAttempts) {
+        break;
+      }
+    }
+
+    // Получаем тайтлы по случайным смещениям
+    const promises = randomOffsets.map((offset) =>
+      this.titleModel.findOne().skip(offset).exec(),
+    );
+
+    const titles = await Promise.all(promises);
+
+    // Фильтруем null значения и ограничиваем количество результатов
+    // Преобразуем результаты в правильный тип
+    const validTitles = titles.filter(
+      (title): title is NonNullable<typeof title> => title !== null,
+    );
+    return validTitles.slice(0, limit);
+  }
 }
