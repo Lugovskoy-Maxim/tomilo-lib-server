@@ -498,39 +498,6 @@ export class TitlesController {
     }
   }
 
-  @Get('titles/:id')
-  async findOne(
-    @Param('id') id: string,
-    @Query('populateChapters') populateChapters: string = 'true',
-  ): Promise<ApiResponseDto<any>> {
-    try {
-      const shouldPopulateChapters = populateChapters === 'true';
-      const title = await this.titlesService.findById(
-        id,
-        shouldPopulateChapters,
-      );
-      const data = {
-        ...JSON.parse(JSON.stringify(title)),
-        isAdult: title.ageLimit >= 18,
-      };
-
-      return {
-        success: true,
-        data,
-        timestamp: new Date().toISOString(),
-        path: `titles/${id}`,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to fetch title',
-        errors: [error.message],
-        timestamp: new Date().toISOString(),
-        path: `titles/${id}`,
-      };
-    }
-  }
-
   @Get('titles/random')
   async getRandomTitles(
     @Query('limit') limit = 10,
@@ -561,6 +528,39 @@ export class TitlesController {
         errors: [error.message],
         timestamp: new Date().toISOString(),
         path: 'titles/random',
+      };
+    }
+  }
+
+  @Get('titles/:id')
+  async findOne(
+    @Param('id') id: string,
+    @Query('populateChapters') populateChapters: string = 'true',
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const shouldPopulateChapters = populateChapters === 'true';
+      const title = await this.titlesService.findById(
+        id,
+        shouldPopulateChapters,
+      );
+      const data = {
+        ...JSON.parse(JSON.stringify(title)),
+        isAdult: title.ageLimit >= 18,
+      };
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch title',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}`,
       };
     }
   }
