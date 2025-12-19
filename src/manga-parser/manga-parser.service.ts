@@ -45,6 +45,69 @@ export class MangaParserService {
     return name.replace(/[\\/*?:"<>|]/g, '_').trim();
   }
 
+  private generateSlug(name: string): string {
+    if (!name) return 'unknown-title';
+
+    // Транслитерация кириллических символов
+    const translitMap: { [key: string]: string } = {
+      а: 'a',
+      б: 'b',
+      в: 'v',
+      г: 'g',
+      д: 'd',
+      е: 'e',
+      ё: 'e',
+      ж: 'zh',
+      з: 'z',
+      и: 'i',
+      й: 'y',
+      к: 'k',
+      л: 'l',
+      м: 'm',
+      н: 'n',
+      о: 'o',
+      п: 'p',
+      р: 'r',
+      с: 's',
+      т: 't',
+      у: 'u',
+      ф: 'f',
+      х: 'h',
+      ц: 'ts',
+      ч: 'ch',
+      ш: 'sh',
+      щ: 'sch',
+      ъ: '',
+      ы: 'y',
+      ь: '',
+      э: 'e',
+      ю: 'yu',
+      я: 'ya',
+    };
+
+    let result = '';
+    for (let i = 0; i < name.length; i++) {
+      const char = name[i].toLowerCase();
+      if (translitMap[char]) {
+        result += translitMap[char];
+      } else if (/[a-z0-9]/.test(char)) {
+        result += char;
+      } else if (/[а-яё]/.test(char)) {
+        result += translitMap[char] || char;
+      } else if (/\s/.test(char)) {
+        result += '-';
+      }
+    }
+
+    // Убираем повторяющиеся дефисы и обрезаем по краям
+    return (
+      result
+        .replace(/-+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .substring(0, 50) || 'unknown-title'
+    ); // Ограничиваем длину
+  }
+
   private parseChapterNumbers(chapterNumbers: string[]): Set<number> {
     const numbers = new Set<number>();
     for (const item of chapterNumbers) {
@@ -469,6 +532,7 @@ export class MangaParserService {
 
     const createTitleDto: CreateTitleDto = {
       name: customTitle || this.sanitizeFilename(parsedData.title),
+      slug: this.generateSlug(customTitle || parsedData.title),
       altNames: parsedData.alternativeTitles || [],
       description:
         customDescription || parsedData.description || `Imported from ${url}`,

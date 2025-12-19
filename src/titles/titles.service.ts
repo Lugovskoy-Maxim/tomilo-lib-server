@@ -162,6 +162,24 @@ export class TitlesService {
     return title;
   }
 
+  async findBySlug(
+    slug: string,
+    populateChapters: boolean = true,
+  ): Promise<TitleDocument | null> {
+    let query = this.titleModel.findOne({ slug });
+
+    // Conditionally populate chapters
+    if (populateChapters) {
+      query = query.populate({
+        path: 'chapters',
+        select: '-chapters',
+        options: { sort: { chapterNumber: 1 } },
+      });
+    }
+
+    return query.exec();
+  }
+
   async findByName(name: string): Promise<TitleDocument | null> {
     return this.titleModel
       .findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } })
@@ -169,12 +187,18 @@ export class TitlesService {
   }
 
   async create(createTitleDto: CreateTitleDto): Promise<TitleDocument> {
-    const { name } = createTitleDto;
+    const { name, slug } = createTitleDto;
 
-    // Проверка на существующий тайтл
+    // Проверка на существующий тайтл по имени
     const existingTitle = await this.findByName(name);
     if (existingTitle) {
       throw new ConflictException('Title with this name already exists');
+    }
+
+    // Проверка на существующий тайтл по slug
+    const existingTitleBySlug = await this.findBySlug(slug);
+    if (existingTitleBySlug) {
+      throw new ConflictException('Title with this slug already exists');
     }
 
     const title = new this.titleModel(createTitleDto);

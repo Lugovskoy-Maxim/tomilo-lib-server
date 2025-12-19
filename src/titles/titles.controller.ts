@@ -291,7 +291,7 @@ export class TitlesController {
         rating: title.averageRating,
         cover: title.coverImage,
         description: title.description,
-        isAdult: title.ageLimit >= 18,
+        isAdult: title?.ageLimit >= 18,
       }));
 
       return {
@@ -455,7 +455,7 @@ export class TitlesController {
         ...result,
         titles: result.titles.map((title) => ({
           ...title.toObject(),
-          isAdult: title.ageLimit >= 18,
+          isAdult: title?.ageLimit >= 18,
         })),
       };
 
@@ -512,7 +512,7 @@ export class TitlesController {
         type: title.type,
         releaseYear: title.releaseYear,
         description: title.description,
-        isAdult: title.ageLimit >= 18,
+        isAdult: title?.ageLimit >= 18,
       }));
 
       return {
@@ -545,7 +545,7 @@ export class TitlesController {
       );
       const data = {
         ...JSON.parse(JSON.stringify(title)),
-        isAdult: title.ageLimit >= 18,
+        isAdult: title?.ageLimit >= 18,
       };
 
       return {
@@ -561,6 +561,50 @@ export class TitlesController {
         errors: [error.message],
         timestamp: new Date().toISOString(),
         path: `titles/${id}`,
+      };
+    }
+  }
+
+  @Get('titles/slug/:slug')
+  async findBySlug(
+    @Param('slug') slug: string,
+    @Query('populateChapters') populateChapters: string = 'true',
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const shouldPopulateChapters = populateChapters === 'true';
+      const title = await this.titlesService.findBySlug(
+        slug,
+        shouldPopulateChapters,
+      );
+
+      if (!title) {
+        return {
+          success: false,
+          message: 'Title not found',
+          errors: ['Title with provided slug does not exist'],
+          timestamp: new Date().toISOString(),
+          path: `titles/slug/${slug}`,
+        };
+      }
+
+      const data = {
+        ...JSON.parse(JSON.stringify(title)),
+        isAdult: title?.ageLimit >= 18,
+      };
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `titles/slug/${slug}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch title by slug',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `titles/slug/${slug}`,
       };
     }
   }
@@ -686,7 +730,7 @@ export class TitlesController {
         type: title.type,
         releaseYear: title.releaseYear,
         description: title.description,
-        isAdult: title.ageLimit >= 18,
+        isAdult: title?.ageLimit >= 18,
       }));
 
       return {
@@ -723,7 +767,7 @@ export class TitlesController {
         type: title.type,
         releaseYear: title.releaseYear,
         description: title.description,
-        isAdult: title.ageLimit >= 18,
+        isAdult: title?.ageLimit >= 18,
       }));
 
       return {
@@ -760,7 +804,7 @@ export class TitlesController {
         type: title.type,
         releaseYear: title.releaseYear,
         description: title.description,
-        isAdult: title.ageLimit >= 18,
+        isAdult: title?.ageLimit >= 18,
       }));
 
       return {

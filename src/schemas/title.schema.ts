@@ -17,6 +17,9 @@ export class Title {
   @Prop({ required: true, unique: true })
   name: string;
 
+  @Prop({ required: true, unique: true })
+  slug: string;
+
   @Prop()
   altNames: string[];
 
@@ -93,6 +96,7 @@ export class Title {
 export const TitleSchema = SchemaFactory.createForClass(Title);
 
 TitleSchema.index({ name: 'text', altNames: 'text', description: 'text' });
+TitleSchema.index({ slug: 1 });
 TitleSchema.index({ genres: 1 });
 TitleSchema.index({ status: 1 });
 TitleSchema.index({ rating: -1 });

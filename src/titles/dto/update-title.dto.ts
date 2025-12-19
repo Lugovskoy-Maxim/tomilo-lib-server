@@ -18,6 +18,10 @@ export class UpdateTitleDto extends PartialType(CreateTitleDto) {
   name?: string;
 
   @IsOptional()
+  @IsString()
+  slug?: string;
+
+  @IsOptional()
   @IsArray()
   altNames?: string[];
 

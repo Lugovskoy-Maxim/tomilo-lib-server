@@ -16,6 +16,10 @@ export class CreateTitleDto {
   @IsNotEmpty()
   name: string;
 
+  @IsString()
+  @IsNotEmpty()
+  slug: string;
+
   @IsArray()
   @IsOptional()
   @IsString({ each: true })
