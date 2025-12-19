@@ -32,6 +32,7 @@ export class SearchController {
       const data = titles.map((title) => ({
         id: title._id?.toString(),
         title: title.name,
+        slug: title.slug,
         cover: title.coverImage,
         description: title.description,
         totalChapters: title.chapters.length,

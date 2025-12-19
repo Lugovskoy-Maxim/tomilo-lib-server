@@ -33,6 +33,7 @@ import { ApiResponseDto } from '../common/dto/api-response.dto';
 class TitleResponseDto {
   id: string;
   title: string;
+  slug: string;
   cover: string;
   description?: string;
   rating?: number;
@@ -56,6 +57,7 @@ class CollectionResponseDto {
 class ReadingProgressResponseDto {
   id: string;
   title: string;
+  slug: string;
   cover: string;
   currentChapter: string;
   chapterNumber: number;
@@ -65,6 +67,7 @@ class ReadingProgressResponseDto {
 class LatestUpdateResponseDto {
   id: string;
   title: string;
+  slug: string;
   cover: string;
   type: string;
   chapter: string;
@@ -97,9 +100,11 @@ export class TitlesController {
   ): Promise<ApiResponseDto<any>> {
     try {
       const titles = await this.titlesService.getPopularTitles(Number(limit));
+
       const data = titles.map((title) => ({
         id: title._id?.toString(),
         title: title.name,
+        slug: title.slug,
         cover: title.coverImage,
         rating: title.averageRating,
         type: title.type,
@@ -199,9 +204,11 @@ export class TitlesController {
       const popularTitles = await this.titlesService.getPopularTitles(
         Number(limit),
       );
+
       const data = popularTitles.map((title, index) => ({
         id: title._id?.toString(),
         title: title.name,
+        slug: title.slug,
         cover: title.coverImage,
         currentChapter: `Глава ${index + 1}`,
         chapterNumber: index + 1,
@@ -233,12 +240,10 @@ export class TitlesController {
       const titlesWithChapters =
         await this.titlesService.getTitlesWithRecentChapters(Number(limit));
       const data = titlesWithChapters.map((item) => {
-        // Вычисляем время назад в часах
-
         const releaseDate = new Date(item.latestChapter.releaseDate);
 
-        // Формируем строку с диапазоном глав
         let chapterString = `Глава ${item.maxChapter}`;
+
         if (item.minChapter !== item.maxChapter) {
           chapterString = `Главы ${item.minChapter}-${item.maxChapter}`;
         }
@@ -246,6 +251,7 @@ export class TitlesController {
         return {
           id: item._id?.toString(),
           title: item.name,
+          slug: item.slug,
           cover: item.coverImage,
           type: item.type,
           releaseYear: item.releaseYear,
@@ -285,9 +291,11 @@ export class TitlesController {
         limit: Number(limit),
         populateChapters: false,
       });
+
       const data = result.titles.map((title) => ({
         id: title._id?.toString(),
         title: title.name,
+        slug: title.slug,
         rating: title.averageRating,
         cover: title.coverImage,
         description: title.description,
@@ -507,6 +515,7 @@ export class TitlesController {
       const data = titles.map((title) => ({
         id: title._id?.toString(),
         title: title.name,
+        slug: title.slug,
         cover: title.coverImage,
         rating: title.averageRating,
         type: title.type,
@@ -725,6 +734,7 @@ export class TitlesController {
       const data = titles.map((title) => ({
         id: title._id?.toString(),
         title: title.name,
+        slug: title.slug,
         cover: title.coverImage,
         rating: title.averageRating,
         type: title.type,
@@ -762,6 +772,7 @@ export class TitlesController {
       const data = titles.map((title) => ({
         id: title._id?.toString(),
         title: title.name,
+        slug: title.slug,
         cover: title.coverImage,
         rating: title.averageRating,
         type: title.type,
@@ -799,6 +810,7 @@ export class TitlesController {
       const data = titles.map((title) => ({
         id: title._id?.toString(),
         title: title.name,
+        slug: title.slug,
         cover: title.coverImage,
         rating: title.averageRating,
         type: title.type,
