@@ -363,7 +363,7 @@ export class TitlesService {
     const recentChapters = await this.chapterModel
       .find({ isPublished: true })
       .sort({ releaseDate: -1 })
-      .limit(limit * 20) // Получаем значительно больше глав для лучшей фильтрации
+      .limit(limit * 40) // Получаем значительно больше глав для лучшей фильтрации
       .populate('titleId')
       .exec();
 
@@ -413,6 +413,7 @@ export class TitlesService {
       // Явно перечисляем свойства вместо использования toObject()
       _id: item.title._id,
       name: item.title.name,
+      slug: item.title.slug,
       altNames: item.title.altNames,
       description: item.title.description,
       genres: item.title.genres,
