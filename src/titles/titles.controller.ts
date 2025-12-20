@@ -287,12 +287,27 @@ export class TitlesController {
   async searchTitles(
     @Query('q') query: string,
     @Query('limit') limit = 10,
+    @Query('page') page = 1,
+    @Query('genre') genre?: string,
+    @Query('status') status?: string,
+    @Query('releaseYear') releaseYear?: number,
+    @Query('type') type?: string,
+    @Query('ageLimit') ageLimit?: number,
+    @Query('sortBy') sortBy = 'createdAt',
+    @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
   ): Promise<ApiResponseDto<any>> {
     try {
       const result = await this.titlesService.findAll({
         search: query,
-        page: 1,
+        page: Number(page),
         limit: Number(limit),
+        genre,
+        status: status as any,
+        releaseYear,
+        type: type as any,
+        ageLimit,
+        sortBy,
+        sortOrder,
         populateChapters: false,
       });
 
@@ -303,6 +318,12 @@ export class TitlesController {
         rating: title.averageRating,
         cover: title.coverImage,
         description: title.description,
+        type: title.type,
+        releaseYear: title.releaseYear,
+        genres: title.genres,
+        tags: title.tags,
+        status: title.status,
+        ageLimit: title.ageLimit,
         isAdult: title?.ageLimit >= 18,
       }));
 

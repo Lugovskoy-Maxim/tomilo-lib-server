@@ -31,6 +31,7 @@ export class TitlesService {
     status,
     releaseYear,
     type,
+    ageLimit,
     sortBy = 'createdAt',
     sortOrder = 'desc',
     populateChapters = true,
@@ -42,6 +43,7 @@ export class TitlesService {
     type?: string;
     status?: TitleStatus;
     releaseYear?: number;
+    ageLimit?: number;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
     populateChapters?: boolean;
@@ -71,6 +73,10 @@ export class TitlesService {
 
     if (releaseYear) {
       query.releaseYear = Number(releaseYear);
+    }
+
+    if (ageLimit !== undefined) {
+      query.ageLimit = ageLimit;
     }
 
     const sortOptions: any = {};
