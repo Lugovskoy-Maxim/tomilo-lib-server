@@ -173,8 +173,12 @@ export class TitlesController {
       const filterOptions = await this.titlesService.getFilterOptions();
       const data: FilterOptionsResponseDto = {
         genres: filterOptions.genres,
-        // types: filterOptions.types,
+        types: filterOptions.types,
         status: filterOptions.status,
+        tags: filterOptions.tags,
+        releaseYears: filterOptions.releaseYears,
+        ageLimits: filterOptions.ageLimits,
+        sortByOptions: filterOptions.sortByOptions,
       };
 
       return {

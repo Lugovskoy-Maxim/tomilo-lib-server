@@ -108,8 +108,11 @@ export class TitlesService {
     const titles = await this.titleModel.find().exec();
 
     const genres = new Set<string>();
-    // const types = new Set<string>();
+    const types = new Set<string>();
     const status = new Set<string>();
+    const tags = new Set<string>();
+    const releaseYears = new Set<number>();
+    const ageLimits = new Set<number>();
 
     titles.forEach((title) => {
       // Добавляем жанры
@@ -117,20 +120,51 @@ export class TitlesService {
         title.genres.forEach((genre) => genres.add(genre));
       }
 
-      // // Добавляем тип
-      // if (title.type) {
-      //   types.add(title.type);
-      // }
+      // Добавляем тип
+      if (title.type) {
+        types.add(title.type);
+      }
 
       // Добавляем статус
       if (title.status) {
         status.add(title.status);
       }
+
+      // Добавляем теги
+      if (title.tags && Array.isArray(title.tags)) {
+        title.tags.forEach((tag) => tags.add(tag));
+      }
+
+      // Добавляем года выпуска
+      if (title.releaseYear) {
+        releaseYears.add(title.releaseYear);
+      }
+
+      // Добавляем возрастные ограничения
+      if (title.ageLimit !== undefined && title.ageLimit !== null) {
+        ageLimits.add(title.ageLimit);
+      }
     });
+
     return {
       genres: Array.from(genres).sort(),
-      // types: Array.from(types).sort(),
+      types: Array.from(types).sort(),
       status: Array.from(status).sort(),
+      tags: Array.from(tags).sort(),
+      releaseYears: Array.from(releaseYears).sort((a, b) => b - a), // Сортируем по убыванию (новые года сначала)
+      ageLimits: Array.from(ageLimits).sort((a, b) => a - b),
+      sortByOptions: [
+        'createdAt',
+        'updatedAt',
+        'name',
+        'views',
+        'weekViews',
+        'dayViews',
+        'monthViews',
+        'averageRating',
+        'totalChapters',
+        'releaseYear',
+      ],
     };
   }
 
