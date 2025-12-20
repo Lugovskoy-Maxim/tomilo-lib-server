@@ -27,11 +27,11 @@ export class TitlesService {
     page = 1,
     limit = 10,
     search,
-    genre,
+    genres,
+    types,
     status,
-    releaseYear,
-    type,
-    ageLimit,
+    releaseYears,
+    ageLimits,
     sortBy = 'createdAt',
     sortOrder = 'desc',
     populateChapters = true,
@@ -39,11 +39,11 @@ export class TitlesService {
     page?: number;
     limit?: number;
     search?: string;
-    genre?: string;
-    type?: string;
+    genres?: string[];
+    types?: string[];
     status?: TitleStatus;
-    releaseYear?: number;
-    ageLimit?: number;
+    releaseYears?: number[];
+    ageLimits?: number[];
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
     populateChapters?: boolean;
@@ -59,24 +59,24 @@ export class TitlesService {
       ];
     }
 
-    if (genre) {
-      query.genres = genre;
+    if (genres && genres.length > 0) {
+      query.genres = { $in: genres };
     }
 
     if (status) {
       query.status = status;
     }
 
-    if (type) {
-      query.type = type;
+    if (types && types.length > 0) {
+      query.type = { $in: types };
     }
 
-    if (releaseYear) {
-      query.releaseYear = Number(releaseYear);
+    if (releaseYears && releaseYears.length > 0) {
+      query.releaseYear = { $in: releaseYears };
     }
 
-    if (ageLimit !== undefined) {
-      query.ageLimit = ageLimit;
+    if (ageLimits && ageLimits.length > 0) {
+      query.ageLimit = { $in: ageLimits };
     }
 
     const sortOptions: any = {};

@@ -278,6 +278,7 @@ export class TitlesController {
         message: 'Failed to fetch latest updates',
         errors: [error.message],
         timestamp: new Date().toISOString(),
+
         path: 'titles/latest-updates',
       };
     }
@@ -288,11 +289,11 @@ export class TitlesController {
     @Query('q') query: string,
     @Query('limit') limit = 10,
     @Query('page') page = 1,
-    @Query('genre') genre?: string,
+    @Query('genres') genres?: string,
     @Query('status') status?: string,
-    @Query('releaseYear') releaseYear?: number,
-    @Query('type') type?: string,
-    @Query('ageLimit') ageLimit?: number,
+    @Query('types') types?: string,
+    @Query('releaseYears') releaseYears?: string,
+    @Query('ageLimits') ageLimits?: string,
     @Query('sortBy') sortBy = 'createdAt',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
   ): Promise<ApiResponseDto<any>> {
@@ -301,11 +302,11 @@ export class TitlesController {
         search: query,
         page: Number(page),
         limit: Number(limit),
-        genre,
+        genres: this.parseCommaSeparatedValues(genres),
         status: status as any,
-        releaseYear,
-        type: type as any,
-        ageLimit,
+        types: this.parseCommaSeparatedValues(types),
+        releaseYears: this.parseNumberArray(releaseYears),
+        ageLimits: this.parseNumberArray(ageLimits),
         sortBy,
         sortOrder,
         populateChapters: false,
@@ -458,15 +459,32 @@ export class TitlesController {
     }
   }
 
+  private parseCommaSeparatedValues(param: string | undefined): string[] {
+    if (!param) return [];
+    return param
+      .split(',')
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+  }
+
+  private parseNumberArray(param: string | undefined): number[] {
+    if (!param) return [];
+    return param
+      .split(',')
+      .map((value) => parseInt(value.trim(), 10))
+      .filter((value) => !isNaN(value));
+  }
+
   @Get('titles')
   async findAll(
     @Query('page') page = 1,
     @Query('limit') limit = 10,
     @Query('search') search?: string,
-    @Query('genre') genre?: string,
+    @Query('genres') genres?: string,
+    @Query('types') types?: string,
     @Query('status') status?: string,
-    @Query('releaseYear') releaseYear?: number,
-    @Query('type') type?: string,
+    @Query('releaseYears') releaseYears?: string,
+    @Query('ageLimits') ageLimits?: string,
     @Query('sortBy') sortBy = 'createdAt',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
   ): Promise<ApiResponseDto<any>> {
@@ -475,10 +493,11 @@ export class TitlesController {
         page: Number(page),
         limit: Number(limit),
         search,
-        genre,
+        genres: this.parseCommaSeparatedValues(genres),
+        types: this.parseCommaSeparatedValues(types),
         status: status as any,
-        releaseYear,
-        type: type as any,
+        releaseYears: this.parseNumberArray(releaseYears),
+        ageLimits: this.parseNumberArray(ageLimits),
         sortBy,
         sortOrder,
         populateChapters: false, // Не возвращать главы в списке тайтлов
