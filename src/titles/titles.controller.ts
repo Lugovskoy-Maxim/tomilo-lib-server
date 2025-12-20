@@ -453,6 +453,7 @@ export class TitlesController {
         message: 'Failed to update title',
         errors: [error.message],
         timestamp: new Date().toISOString(),
+
         path: `titles/${id}`,
         method: 'PUT',
       };
@@ -475,6 +476,12 @@ export class TitlesController {
       .filter((value) => !isNaN(value));
   }
 
+  private parseNumber(param: string | undefined): number | null {
+    if (!param) return null;
+    const num = parseInt(param.trim(), 10);
+    return isNaN(num) ? null : num;
+  }
+
   @Get('titles')
   async findAll(
     @Query('page') page = 1,
@@ -482,21 +489,56 @@ export class TitlesController {
     @Query('search') search?: string,
     @Query('genres') genres?: string,
     @Query('types') types?: string,
+    @Query('type') type?: string, // Добавляем поддержку одиночного типа
     @Query('status') status?: string,
     @Query('releaseYears') releaseYears?: string,
+    @Query('releaseYear') releaseYear?: string, // Добавляем поддержку одиночного года
     @Query('ageLimits') ageLimits?: string,
     @Query('sortBy') sortBy = 'createdAt',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
   ): Promise<ApiResponseDto<any>> {
     try {
+      // Определяем типы для фильтрации (поддерживаем как одиночные, так и множественные)
+      let filterTypes: string[] = [];
+      if (type && types) {
+        // Если указаны и type и types, объединяем их
+        filterTypes = [
+          ...this.parseCommaSeparatedValues(types),
+          ...this.parseCommaSeparatedValues(type),
+        ];
+      } else if (type) {
+        // Только type
+        filterTypes = [type];
+      } else if (types) {
+        // Только types
+        filterTypes = this.parseCommaSeparatedValues(types);
+      }
+
+      // Определяем года для фильтрации (поддерживаем как одиночные, так и множественные)
+      let filterReleaseYears: number[] = [];
+      if (releaseYear && releaseYears) {
+        // Если указаны и releaseYear и releaseYears, объединяем их
+        const releaseYearNum = this.parseNumber(releaseYear);
+        const releaseYearsArray = this.parseNumberArray(releaseYears);
+        if (releaseYearNum) filterReleaseYears.push(releaseYearNum);
+        filterReleaseYears = [...filterReleaseYears, ...releaseYearsArray];
+      } else if (releaseYear) {
+        // Только releaseYear
+        const releaseYearNum = this.parseNumber(releaseYear);
+        if (releaseYearNum) filterReleaseYears = [releaseYearNum];
+      } else if (releaseYears) {
+        // Только releaseYears
+        filterReleaseYears = this.parseNumberArray(releaseYears);
+      }
+
       const result = await this.titlesService.findAll({
         page: Number(page),
         limit: Number(limit),
         search,
         genres: this.parseCommaSeparatedValues(genres),
-        types: this.parseCommaSeparatedValues(types),
+        types: filterTypes,
         status: status as any,
-        releaseYears: this.parseNumberArray(releaseYears),
+        releaseYears: filterReleaseYears,
         ageLimits: this.parseNumberArray(ageLimits),
         sortBy,
         sortOrder,
