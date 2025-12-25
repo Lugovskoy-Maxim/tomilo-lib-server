@@ -104,7 +104,7 @@ export class AuthController {
     }
   }
 
-  @UseGuards(AuthGuard('yandex'))
+  @UseGuards(AuthGuard('yandex-token'))
   @Post('yandex-token')
   @HttpCode(HttpStatus.OK)
   yandexTokenLogin(@Request() req): ApiResponseDto<any> {

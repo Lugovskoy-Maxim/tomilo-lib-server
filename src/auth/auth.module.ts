@@ -8,6 +8,7 @@ import { UsersModule } from '../users/users.module';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { LocalStrategy } from './strategies/local.strategy';
 import { YandexStrategy } from './strategies/yandex.strategy';
+import { YandexTokenStrategy } from './strategies/yandex-token.strategy';
 import { VkStrategy } from './strategies/vk.strategy';
 import { User, UserSchema } from '../schemas/user.schema';
 
@@ -26,6 +27,7 @@ import { User, UserSchema } from '../schemas/user.schema';
     LocalStrategy,
     JwtStrategy,
     YandexStrategy,
+    YandexTokenStrategy,
     VkStrategy,
   ],
   controllers: [AuthController],
