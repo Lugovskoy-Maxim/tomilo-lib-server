@@ -9,7 +9,7 @@ export class MangabuffParser implements MangaParser {
 
   constructor() {
     this.session = axios.create({
-      timeout: 20000,
+      timeout: 60000, // Увеличен таймаут до 60 секунд для долгих запросов
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
@@ -98,50 +98,84 @@ export class MangabuffParser implements MangaParser {
 
     // Если есть mangaId, загружаем дополнительные главы
     if (mangaId) {
-      try {
-        // Получаем CSRF-токен из meta-тега
-        const csrfToken = $('meta[name="csrf-token"]').attr('content');
+      let page = 1;
+      let hasMoreChapters = true;
 
-        const response = await session.post(
-          'https://mangabuff.ru/chapters/load',
-          new URLSearchParams({
-            manga_id: mangaId,
-          }),
-          {
-            headers: {
-              'Content-Type':
-                'application/x-www-form-urlencoded; charset=UTF-8',
-              'X-Requested-With': 'XMLHttpRequest',
-              'X-CSRF-TOKEN': csrfToken || '',
-              Referer: 'https://mangabuff.ru',
-              Origin: 'https://mangabuff.ru',
+      while (hasMoreChapters) {
+        try {
+          // Получаем CSRF-токен из meta-тега
+          const csrfToken = $('meta[name="csrf-token"]').attr('content');
+
+          const response = await session.post(
+            'https://mangabuff.ru/chapters/load',
+            new URLSearchParams({
+              manga_id: mangaId,
+              page: page.toString(), // Добавляем параметр страницы
+            }),
+            {
+              headers: {
+                'Content-Type':
+                  'application/x-www-form-urlencoded; charset=UTF-8',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrfToken || '',
+                Referer: 'https://mangabuff.ru',
+                Origin: 'https://mangabuff.ru',
+              },
             },
-          },
-        );
+          );
 
-        // Парсим HTML из ответа
-        if (response.data && typeof response.data === 'object') {
-          // Ответ может быть объектом с полем content
-          const htmlContent = response.data.content || response.data;
+          // Парсим HTML из ответа
+          if (response.data && typeof response.data === 'object') {
+            // Ответ может быть объектом с полем content
+            const htmlContent = response.data.content || response.data;
 
-          if (typeof htmlContent === 'string') {
-            const $chapters = cheerio.load(htmlContent);
+            if (typeof htmlContent === 'string') {
+              const $chapters = cheerio.load(htmlContent);
 
-            $chapters('.chapters__item').each((_, element) => {
-              const chapter = this.parseChapterElement($chapters, element);
-              if (chapter) {
-                // Проверяем, нет ли уже такой главы
-                const exists = chapters.some((c) => c.url === chapter.url);
-                if (!exists) {
-                  chapters.push(chapter);
+              // Проверяем, есть ли еще главы для загрузки
+              // Это может быть реализовано по-разному в зависимости от структуры ответа
+              // Например, проверка наличия кнопки "Загрузить еще" или определенного класса
+              const moreChaptersButton = $chapters(
+                '.load-more-chapters, .chapters-load-more',
+              );
+              hasMoreChapters = moreChaptersButton.length > 0;
+
+              let newChaptersCount = 0;
+              $chapters('.chapters__item').each((_, element) => {
+                const chapter = this.parseChapterElement($chapters, element);
+                if (chapter) {
+                  // Проверяем, нет ли уже такой главы
+                  const exists = chapters.some((c) => c.url === chapter.url);
+                  if (!exists) {
+                    chapters.push(chapter);
+                    newChaptersCount++;
+                  }
                 }
+              });
+
+              // Если не добавили новых глав, прекращаем загрузку
+              if (newChaptersCount === 0) {
+                hasMoreChapters = false;
               }
-            });
+
+              // Переходим к следующей странице
+              page++;
+            } else {
+              // Если ответ не строка, прекращаем загрузку
+              hasMoreChapters = false;
+            }
+          } else {
+            // Если ответ пустой, прекращаем загрузку
+            hasMoreChapters = false;
           }
+        } catch (error) {
+          console.error(
+            `Error loading additional chapters (page ${page}):`,
+            error,
+          );
+          // Продолжаем работу с главами, которые уже есть
+          hasMoreChapters = false;
         }
-      } catch (error) {
-        console.error('Error loading additional chapters:', error);
-        // Продолжаем работу с главами, которые уже есть
       }
     }
 
