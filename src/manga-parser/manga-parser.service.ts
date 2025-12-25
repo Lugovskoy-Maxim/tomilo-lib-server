@@ -13,6 +13,7 @@ import { MangaParser, ChapterInfo } from './parsers/base.parser';
 import { SenkuroParser } from './parsers/senkuro.parser';
 import { MangaShiParser } from './parsers/manga-shi.parser';
 import { MangabuffParser } from './parsers/mangabuff.parser';
+import { MangahubParser } from './parsers/mangahub.parser';
 
 @Injectable()
 export class MangaParserService {
@@ -37,6 +38,7 @@ export class MangaParserService {
     this.parsers.set('manga-shi.org', new MangaShiParser());
     this.parsers.set('senkuro.me', new SenkuroParser());
     this.parsers.set('mangabuff.ru', new MangabuffParser());
+    this.parsers.set('v2.mangahub.one', new MangahubParser());
   }
 
   private sanitizeFilename(name: string): string {
