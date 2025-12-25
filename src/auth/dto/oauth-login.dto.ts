@@ -4,4 +4,7 @@ export class OAuthLoginDto {
   @IsString()
   @IsNotEmpty()
   code: string;
+
+  @IsString()
+  access_token?: string;
 }

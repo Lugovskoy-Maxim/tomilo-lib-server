@@ -104,6 +104,33 @@ export class AuthController {
     }
   }
 
+  @UseGuards(AuthGuard('yandex'))
+  @Post('yandex-token')
+  @HttpCode(HttpStatus.OK)
+  yandexTokenLogin(@Request() req): ApiResponseDto<any> {
+    try {
+      const data = this.authService.login(req.user);
+
+      return {
+        success: true,
+        data,
+        message: 'Yandex login successful',
+        timestamp: new Date().toISOString(),
+        path: 'auth/yandex-token',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Yandex login failed',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/yandex-token',
+        method: 'POST',
+      };
+    }
+  }
+
   @UseGuards(AuthGuard('vk'))
   @Post('vk')
   @HttpCode(HttpStatus.OK)
