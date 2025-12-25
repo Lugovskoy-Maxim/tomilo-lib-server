@@ -22,7 +22,7 @@ export class MangahubParser implements MangaParser {
       const slug = url.split('/manga/')[1]?.replace(/\/$/, '') || '';
       const domain = this.extractDomain(url);
 
-      const graphqlUrl = `https://api.${domain.replace('v2.', '')}/graphql`;
+      const graphqlUrl = `https://api.${domain}/graphql`;
       const headers = {
         Accept: 'application/json',
         'Content-Type': 'application/json',
