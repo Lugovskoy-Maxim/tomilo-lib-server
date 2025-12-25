@@ -35,10 +35,12 @@ export class MangaParserService {
     });
 
     this.parsers = new Map();
+
     this.parsers.set('manga-shi.org', new MangaShiParser());
     this.parsers.set('senkuro.me', new SenkuroParser());
     this.parsers.set('mangabuff.ru', new MangabuffParser());
     this.parsers.set('v2.mangahub.one', new MangahubParser());
+    this.parsers.set('mangahub.one', new MangahubParser());
   }
 
   private sanitizeFilename(name: string): string {
@@ -601,6 +603,12 @@ export class MangaParserService {
               chapter,
               createdChapter._id.toString(),
             );
+          } else if (domain.includes('mangahub.one')) {
+            // MangaHub использует JavaScript для загрузки изображений
+            // Требуется дополнительная реализация с использованием браузера
+            throw new BadRequestException(
+              'MangaHub image downloading requires additional implementation with browser automation',
+            );
           } else {
             throw new BadRequestException(`Unsupported domain: ${domain}`);
           }
@@ -703,6 +711,12 @@ export class MangaParserService {
               chapter,
               createdChapter._id.toString(),
             );
+          } else if (domain.includes('mangahub.one')) {
+            // MangaHub использует JavaScript для загрузки изображений
+            // Требуется дополнительная реализация с использованием браузера
+            throw new BadRequestException(
+              'MangaHub image downloading requires additional implementation with browser automation',
+            );
           } else {
             throw new BadRequestException(`Unsupported domain: ${domain}`);
           }
@@ -783,7 +797,13 @@ export class MangaParserService {
 
   getSupportedSites(): { sites: string[] } {
     return {
-      sites: ['manga-shi.org', 'senkuro.me', 'mangabuff.ru'],
+      sites: [
+        'manga-shi.org',
+        'senkuro.me',
+        'mangabuff.ru',
+        'v2.mangahub.one',
+        'mangahub.one',
+      ],
     };
   }
 }

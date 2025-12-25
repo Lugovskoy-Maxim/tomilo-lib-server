@@ -55,6 +55,9 @@ export class MangahubParser implements MangaParser {
       title = $('.text-line-clamp.fs-5.fw-bold').text().trim();
     }
     if (!title) {
+      title = $('.manga-title').text().trim();
+    }
+    if (!title) {
       title = $('meta[property="og:title"]').attr('content') || '';
       // Убираем лишний текст из meta-тега
       title = title
@@ -98,6 +101,9 @@ export class MangahubParser implements MangaParser {
     let coverUrl = $('img.cover-detail').attr('src');
     if (!coverUrl) {
       coverUrl = $('img.cover').attr('src');
+    }
+    if (!coverUrl) {
+      coverUrl = $('.manga-cover img').attr('src');
     }
     if (!coverUrl) {
       coverUrl = $('meta[property="og:image"]').attr('content');
@@ -151,46 +157,29 @@ export class MangahubParser implements MangaParser {
         chapters$ = cheerio.load(chaptersHtml);
       }
 
-      // Парсим главы из элементов с классом detail-chapter и других возможных селекторов
-      const chapterElements = chapters$(
-        '.detail-chapter, .chapter-item, .chapter-row, [data-chapter]',
-      );
+      // Парсим главы из элементов с классом detail-chapter - обновленная структура
+      const chapterElements = chapters$('.detail-chapter');
 
       if (chapterElements.length > 0) {
         chapterElements.each((i, chapterElement) => {
           const chapter$ = chapters$(chapterElement);
 
-          // Извлекаем ссылку на чтение главы из различных возможных селекторов
-          const chapterLink = chapter$.find(
-            'a[href*="/read/"], a[href*="/chapter/"], a.chapter-link',
-          );
+          // Извлекаем ссылку на чтение главы
+          const chapterLink = chapter$.find('a[href*="/read/"]');
           const chapterHref = chapterLink.attr('href');
 
           if (chapterHref) {
             // Извлекаем текст главы
-            const fullText =
-              chapterLink.text().trim() || chapter$.text().trim();
+            const fullText = chapterLink.text().trim();
             // Убираем лишние пробелы и переносы строк
             const cleanText = fullText.replace(/\s+/g, ' ').trim();
 
-            // Пытаемся извлечь номер главы несколькими способами
+            // Извлекаем номер главы из атрибута item-number (приоритетный способ)
             let chapterNumber: number | undefined;
 
-            // 1. Из атрибута data-number или item-number
-            const dataNumber =
-              chapter$.attr('data-number') || chapter$.attr('item-number');
-            if (dataNumber) {
-              const parsed = parseFloat(dataNumber);
-              if (!isNaN(parsed)) {
-                chapterNumber = parsed;
-              }
-            }
-
-            // 2. Из атрибута bookmark-progress
-            if (!chapterNumber) {
-              const itemNumber = chapter$
-                .find('bookmark-progress')
-                .attr('item-number');
+            const bookmarkProgress = chapter$.find('bookmark-progress');
+            if (bookmarkProgress.length > 0) {
+              const itemNumber = bookmarkProgress.attr('item-number');
               if (itemNumber) {
                 const parsed = parseFloat(itemNumber);
                 if (!isNaN(parsed)) {
@@ -199,60 +188,42 @@ export class MangahubParser implements MangaParser {
               }
             }
 
-            // 3. Из текста главы (ищем паттерны типа "Глава 27" или "Chapter 27")
+            // Если не удалось извлечь из item-number, ищем в тексте
             if (!chapterNumber) {
               const chapterMatch =
-                cleanText.match(
-                  /(?:Том\s*\d+\.\s*)?Глава\s*(\d+(?:\.\d+)?)/i,
-                ) ||
-                cleanText.match(/Chapter\s*(\d+(?:\.\d+)?)/i) ||
-                cleanText.match(/(\d+(?:\.\d+)?)/);
+                cleanText.match(/Глава\s*(\d+(?:\.\d+)?)/i) ||
+                cleanText.match(/Chapter\s*(\d+(?:\.\d+)?)/i);
               if (chapterMatch) {
                 chapterNumber = parseFloat(chapterMatch[1]);
               }
             }
 
-            // 4. Из slug ссылки (последний сегмент числа)
-            if (!chapterNumber) {
-              const slugParts = chapterHref.split('/');
-              for (let j = slugParts.length - 1; j >= 0; j--) {
-                const part = slugParts[j];
-                if (part && /^\d+(\.\d+)?$/.test(part)) {
-                  const parsed = parseFloat(part);
-                  if (!isNaN(parsed)) {
-                    chapterNumber = parsed;
-                    break;
-                  }
-                }
-              }
-            }
-
-            // Если не удалось извлечь номер, используем порядковый
+            // Последний резерв - порядковый номер
             if (!chapterNumber || isNaN(chapterNumber)) {
               chapterNumber = i + 1;
             }
 
-            // Извлекаем slug из ссылки
-            let slug =
-              chapterHref.split('/read/')[1] ||
-              chapterHref.split('/chapter/')[1];
+            // Извлекаем slug из ссылки /read/ID
+            const slug = chapterHref.split('/read/')[1];
+
             if (!slug) {
-              // Если не удалось извлечь slug обычным способом, используем весь href
-              slug = chapterHref.startsWith('/')
-                ? chapterHref.substring(1)
-                : chapterHref;
+              console.warn(`Не удалось извлечь slug для главы: ${chapterHref}`);
+              return;
             }
 
             chapters.push({
               name: cleanText || `Глава ${chapterNumber}`,
               slug: slug,
               number: chapterNumber,
+              url: chapterHref.startsWith('http')
+                ? chapterHref
+                : new URL(chapterHref, new URL(url).origin).href,
             });
           }
         });
       } else {
-        // Альтернативный подход: ищем главы в других возможных структурах
-        chapters$('a[href*="/read/"], a[href*="/chapter/"]').each((i, elem) => {
+        // Альтернативный подход: ищем ссылки на главы прямо на странице
+        chapters$('a[href*="/read/"]').each((i, elem) => {
           const link$ = chapters$(elem);
           const chapterHref = link$.attr('href');
           const fullText = link$.text().trim();
@@ -262,9 +233,8 @@ export class MangahubParser implements MangaParser {
             // Извлекаем номер главы из текста
             let chapterNumber: number | undefined;
             const chapterMatch =
-              cleanText.match(/(?:Том\s*\d+\.\s*)?Глава\s*(\d+(?:\.\d+)?)/i) ||
-              cleanText.match(/Chapter\s*(\d+(?:\.\d+)?)/i) ||
-              cleanText.match(/(\d+(?:\.\d+)?)/);
+              cleanText.match(/Глава\s*(\d+(?:\.\d+)?)/i) ||
+              cleanText.match(/Chapter\s*(\d+(?:\.\d+)?)/i);
 
             if (chapterMatch) {
               chapterNumber = parseFloat(chapterMatch[1]);
@@ -275,20 +245,17 @@ export class MangahubParser implements MangaParser {
             }
 
             // Извлекаем slug
-            let slug =
-              chapterHref.split('/read/')[1] ||
-              chapterHref.split('/chapter/')[1];
-            if (!slug) {
-              slug = chapterHref.startsWith('/')
-                ? chapterHref.substring(1)
-                : chapterHref;
+            const slug = chapterHref.split('/read/')[1];
+            if (slug) {
+              chapters.push({
+                name: cleanText || `Глава ${chapterNumber}`,
+                slug: slug,
+                number: chapterNumber,
+                url: chapterHref.startsWith('http')
+                  ? chapterHref
+                  : new URL(chapterHref, new URL(url).origin).href,
+              });
             }
-
-            chapters.push({
-              name: cleanText || `Глава ${chapterNumber}`,
-              slug: slug,
-              number: chapterNumber,
-            });
           }
         });
       }
@@ -296,76 +263,55 @@ export class MangahubParser implements MangaParser {
       console.warn('Не удалось загрузить отдельную страницу глав:', error);
 
       // Альтернатива: ищем главы прямо на текущей странице (если они есть)
-      $('.detail-chapter, .chapter-item, .chapter-row, [data-chapter]').each(
-        (i, chapterElement) => {
-          const chapter$ = $(chapterElement);
-          const chapterLink = chapter$.find(
-            'a[href*="/read/"], a[href*="/chapter/"], a.chapter-link',
-          );
-          const chapterHref = chapterLink.attr('href');
+      $('.detail-chapter').each((i, chapterElement) => {
+        const chapter$ = $(chapterElement);
+        const chapterLink = chapter$.find('a[href*="/read/"]');
+        const chapterHref = chapterLink.attr('href');
 
-          if (chapterHref) {
-            const fullText =
-              chapterLink.text().trim() || chapter$.text().trim();
-            const cleanText = fullText.replace(/\s+/g, ' ').trim();
+        if (chapterHref) {
+          const fullText = chapterLink.text().trim();
+          const cleanText = fullText.replace(/\s+/g, ' ').trim();
 
-            let chapterNumber: number | undefined;
+          let chapterNumber: number | undefined;
 
-            // Пытаемся извлечь номер главы
-            const dataNumber =
-              chapter$.attr('data-number') || chapter$.attr('item-number');
-            if (dataNumber) {
-              const parsed = parseFloat(dataNumber);
+          // Пытаемся извлечь номер главы из bookmark-progress
+          const bookmarkProgress = chapter$.find('bookmark-progress');
+          if (bookmarkProgress.length > 0) {
+            const itemNumber = bookmarkProgress.attr('item-number');
+            if (itemNumber) {
+              const parsed = parseFloat(itemNumber);
               if (!isNaN(parsed)) {
                 chapterNumber = parsed;
               }
             }
+          }
 
-            if (!chapterNumber) {
-              const itemNumber = chapter$
-                .find('bookmark-progress')
-                .attr('item-number');
-              if (itemNumber) {
-                const parsed = parseFloat(itemNumber);
-                if (!isNaN(parsed)) {
-                  chapterNumber = parsed;
-                }
-              }
+          if (!chapterNumber) {
+            const chapterMatch =
+              cleanText.match(/Глава\s*(\d+(?:\.\d+)?)/i) ||
+              cleanText.match(/Chapter\s*(\d+(?:\.\d+)?)/i);
+            if (chapterMatch) {
+              chapterNumber = parseFloat(chapterMatch[1]);
             }
+          }
 
-            if (!chapterNumber) {
-              const chapterMatch =
-                cleanText.match(
-                  /(?:Том\s*\d+\.\s*)?Глава\s*(\d+(?:\.\d+)?)/i,
-                ) ||
-                cleanText.match(/Chapter\s*(\d+(?:\.\d+)?)/i) ||
-                cleanText.match(/(\d+(?:\.\d+)?)/);
-              if (chapterMatch) {
-                chapterNumber = parseFloat(chapterMatch[1]);
-              }
-            }
+          if (!chapterNumber || isNaN(chapterNumber)) {
+            chapterNumber = i + 1;
+          }
 
-            if (!chapterNumber || isNaN(chapterNumber)) {
-              chapterNumber = i + 1;
-            }
-
-            let slug =
-              chapterHref.split('/read/')[1] ||
-              chapterHref.split('/chapter/')[1];
-            if (!slug) {
-              slug = chapterHref.startsWith('/')
-                ? chapterHref.substring(1)
-                : chapterHref;
-            }
-
+          const slug = chapterHref.split('/read/')[1];
+          if (slug) {
             chapters.push({
               name: cleanText || `Глава ${chapterNumber}`,
               slug: slug,
               number: chapterNumber,
+              url: chapterHref.startsWith('http')
+                ? chapterHref
+                : new URL(chapterHref, new URL(url).origin).href,
             });
           }
-        },
-      );
+        }
+      });
     }
 
     // Сортируем по номеру главы (в порядке возрастания)
