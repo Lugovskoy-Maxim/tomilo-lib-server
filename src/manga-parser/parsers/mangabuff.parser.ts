@@ -132,14 +132,8 @@ export class MangabuffParser implements MangaParser {
             if (typeof htmlContent === 'string') {
               const $chapters = cheerio.load(htmlContent);
 
-              // Проверяем, есть ли еще главы для загрузки
-              // Это может быть реализовано по-разному в зависимости от структуры ответа
-              // Например, проверка наличия кнопки "Загрузить еще" или определенного класса
-              const moreChaptersButton = $chapters(
-                '.load-more-chapters, .chapters-load-more',
-              );
-              hasMoreChapters = moreChaptersButton.length > 0;
-
+              // Всегда продолжаем загрузку, так как нет кнопки "Загрузить еще"
+              // Просто проверяем, были ли добавлены новые главы
               let newChaptersCount = 0;
               $chapters('.chapters__item').each((_, element) => {
                 const chapter = this.parseChapterElement($chapters, element);
@@ -156,10 +150,12 @@ export class MangabuffParser implements MangaParser {
               // Если не добавили новых глав, прекращаем загрузку
               if (newChaptersCount === 0) {
                 hasMoreChapters = false;
+              } else {
+                // Переходим к следующей странице
+                page++;
               }
 
               // Переходим к следующей странице
-              page++;
             } else {
               // Если ответ не строка, прекращаем загрузку
               hasMoreChapters = false;
