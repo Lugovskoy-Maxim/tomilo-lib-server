@@ -1,6 +1,6 @@
-/* eslint-disable @typescript-eslint/no-unsafe-return */
 import { Injectable, BadRequestException } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
+import * as cheerio from 'cheerio';
 import { MangaParser, ParsedMangaData, ChapterInfo } from './base.parser';
 
 @Injectable()
@@ -12,269 +12,257 @@ export class MangahubParser implements MangaParser {
       timeout: 20000,
       headers: {
         'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       },
     });
   }
 
   async parse(url: string): Promise<ParsedMangaData> {
     try {
-      const slug = url.split('/manga/')[1]?.replace(/\/$/, '') || '';
-      const domain = this.extractDomain(url);
+      // Загружаем основную страницу
+      const { data: html } = await this.session.get(url);
+      const $ = cheerio.load(html);
 
-      const graphqlUrl = `https://api.${domain}/graphql`;
-      const headers = {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Origin: `https://${domain}`,
-        Referer: `https://${domain}/`,
-      };
+      // Извлекаем данные из HTML
+      const title = this.extractTitle($);
+      const alternativeTitles = this.extractAlternativeTitles($);
+      const description = this.extractDescription($);
+      const coverUrl = this.extractCoverUrl($);
+      const genres = this.extractGenres($);
 
-      // Get full manga data
-      const mangaQuery = `
-        query Manga($slug: String!) {
-          manga(slug: $slug) {
-            id
-            originalName {
-              content
-              lang
-            }
-            titles {
-              content
-              lang
-            }
-
-            labels {
-              titles {
-                content
-                lang
-              }
-            }
-            branches {
-              id
-              primaryBranch
-            }
-            cover {
-              original {
-                url
-              }
-            }
-          }
-        }
-      `;
-
-      const mangaResponse = await this.session.post(
-        graphqlUrl,
-        {
-          query: mangaQuery,
-          variables: { slug },
-        },
-        { headers },
-      );
-
-      // Debug logging
-      console.log('GraphQL URL:', graphqlUrl);
-      console.log('Slug:', slug);
-      console.log('Response status:', mangaResponse.status);
-      console.log(
-        'Response data:',
-        JSON.stringify(mangaResponse.data, null, 2),
-      );
-
-      if (mangaResponse.data.errors) {
-        console.log('GraphQL errors:', mangaResponse.data.errors);
-        throw new Error(
-          `GraphQL errors: ${JSON.stringify(mangaResponse.data.errors)}`,
-        );
-      }
-
-      const mangaData = mangaResponse.data.data?.manga;
-      if (!mangaData) {
-        throw new Error('No manga data found');
-      }
-
-      // Extract title
-      const title = this.extractTitle(mangaData);
-
-      // Extract alternative titles
-      const alternativeTitles = this.extractAlternativeTitles(mangaData);
-
-      // Extract cover URL
-      const coverUrl = this.extractCoverUrl(mangaData);
-
-      // Extract genres
-      const genres = this.extractGenres(mangaData);
-
-      // Get chapters
-      const chapters = await this.getChapters(mangaData, graphqlUrl, headers);
+      // Получаем главы
+      const chapters = await this.getChapters(url, $);
 
       return {
         title,
         alternativeTitles,
-        description: undefined,
+        description,
         coverUrl,
         genres,
         chapters,
       };
     } catch (error) {
-      const errorDomain = this.extractDomain(url);
       throw new BadRequestException(
-        `Failed to parse ${errorDomain}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to parse MangaHub: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
     }
   }
 
-  private extractTitle(mangaData: any): string {
-    // Priority: RU title > EN title > originalName > first available title
-    const ruTitle = mangaData.titles?.find(
-      (t: any) => t.lang === 'RU',
-    )?.content;
-    if (ruTitle) return ruTitle;
-
-    const enTitle = mangaData.titles?.find(
-      (t: any) => t.lang === 'EN',
-    )?.content;
-    if (enTitle) return enTitle;
-
-    const originalName = mangaData.originalName?.content;
-    if (originalName) return originalName;
-
-    const firstTitle = mangaData.titles?.[0]?.content;
-    if (firstTitle) return firstTitle;
-
-    return mangaData.slug || 'Unknown Title';
+  private extractTitle($: cheerio.Root): string {
+    // Пытаемся получить название из нескольких мест
+    let title = $('h1').text().trim();
+    if (!title) {
+      title = $('.text-line-clamp.fs-5.fw-bold').text().trim();
+    }
+    if (!title) {
+      title = $('meta[property="og:title"]').attr('content') || '';
+      // Убираем лишний текст из meta-тега
+      title = title
+        .replace('Читать', '')
+        .replace('Манга онлайн', '')
+        .replace('..', '')
+        .trim();
+    }
+    return title || 'Неизвестное название';
   }
 
-  private extractAlternativeTitles(mangaData: any): string[] {
-    const alternativeTitles: string[] = [];
+  private extractAlternativeTitles($: cheerio.Root): string[] {
+    const alternatives: string[] = [];
 
-    // Add all titles except RU (since RU is now main)
-    const titles = mangaData.titles || [];
-    for (const title of titles) {
-      if (title.lang !== 'RU' && title.content) {
-        alternativeTitles.push(title.content);
+    // Ищем в offcanvas с alternative names
+    $('#another-names .offcanvas-body div.mt-1').each((i, elem) => {
+      if (i > 1) {
+        // Пропускаем первые два (русское и английское)
+        alternatives.push($(elem).text().trim());
       }
+    });
+
+    // Также проверяем meta-теги
+    const altFromMeta = $('meta[name="description"]').attr('content');
+    if (altFromMeta && altFromMeta.includes('(')) {
+      const match = altFromMeta.match(/\(([^)]+)\)/);
+      if (match) alternatives.push(match[1]);
     }
 
-    // Add original name if different from main title
-    const mainTitle = this.extractTitle(mangaData);
-    const originalName = mangaData.originalName?.content;
-    if (originalName && originalName !== mainTitle) {
-      alternativeTitles.push(originalName);
+    return alternatives.filter(Boolean);
+  }
+
+  private extractDescription($: cheerio.Root): string | undefined {
+    const description = $('.markdown-style.text-expandable-content')
+      .text()
+      .trim();
+    return description || undefined;
+  }
+
+  private extractCoverUrl($: cheerio.Root): string | undefined {
+    let coverUrl = $('img.cover-detail').attr('src');
+    if (!coverUrl) {
+      coverUrl = $('img.cover').attr('src');
     }
-
-    return alternativeTitles;
+    if (!coverUrl) {
+      coverUrl = $('meta[property="og:image"]').attr('content');
+    }
+    return coverUrl || undefined;
   }
 
-  private extractCoverUrl(mangaData: any): string | undefined {
-    return mangaData.cover?.original?.url;
-  }
-
-  private extractGenres(mangaData: any): string[] {
-    const labels = mangaData.labels || [];
+  private extractGenres($: cheerio.Root): string[] {
     const genres: string[] = [];
 
-    for (const label of labels) {
-      const enTitle = label.titles?.find((t: any) => t.lang === 'EN')?.content;
-      if (enTitle) {
-        genres.push(enTitle);
-      } else if (label.titles?.[0]?.content) {
-        genres.push(label.titles[0].content);
+    // Жанры из tags
+    $('collapse-multiple.tags a.tag').each((i, elem) => {
+      genres.push($(elem).text().trim());
+    });
+
+    // Жанры из атрибутов
+    $('.detail-attrs .attr').each((i, elem) => {
+      const attrName = $(elem).find('.attr-name').text().trim();
+      if (attrName.includes('Жанр') || attrName.includes('Жанры')) {
+        $(elem)
+          .find('.attr-value a')
+          .each((j, genreElem) => {
+            genres.push($(genreElem).text().trim());
+          });
       }
-    }
+    });
 
-    return genres.length > 0 ? genres : ['Unknown'];
-  }
-
-  private extractDomain(url: string): string {
-    const urlObj = new URL(url);
-    return urlObj.hostname;
+    return [...new Set(genres)]; // Убираем дубликаты
   }
 
   private async getChapters(
-    mangaData: any,
-    graphqlUrl: string,
-    headers: any,
+    url: string,
+    $: cheerio.Root,
   ): Promise<ChapterInfo[]> {
-    const branches = mangaData.branches || [];
-    console.log('Branches:', JSON.stringify(branches, null, 2));
-    let branchId = branches.find((b: any) => b.primaryBranch)?.id;
-    if (!branchId && branches.length > 0) {
-      branchId = branches[0].id;
-    }
-
-    console.log('Selected branchId:', branchId);
-    if (!branchId) {
-      throw new Error('No branch ID found');
-    }
-
-    // Get chapters
-    const chaptersQuery = `
-      query ChaptersByBranch($branchId: ID!, $first: Int!, $after: String) {
-        mangaChapters(branchId: $branchId, first: $first, after: $after) {
-          edges {
-            node {
-              id
-              slug
-              name
-              number
-              createdAt
-            }
-          }
-          pageInfo {
-            hasNextPage
-            endCursor
-          }
-        }
-      }
-    `;
-
     const chapters: ChapterInfo[] = [];
-    let hasNextPage = true;
-    let after: string | undefined;
 
-    while (hasNextPage) {
-      const chaptersResponse = await this.session.post(
-        graphqlUrl,
-        {
-          query: chaptersQuery,
-          variables: { branchId, first: 100, after },
-        },
-        { headers },
-      );
+    try {
+      // Пытаемся получить ссылку на страницу с главами
+      const chaptersHref = $('a[href*="/chapters"]').attr('href');
+      let chaptersUrl = chaptersHref;
 
-      const chaptersData = chaptersResponse.data.data?.mangaChapters;
-      if (!chaptersData) break;
+      if (chaptersHref && !chaptersHref.startsWith('http')) {
+        const baseUrl = new URL(url).origin;
+        chaptersUrl = baseUrl + chaptersHref;
+      }
 
-      for (const edge of chaptersData.edges) {
-        const node = edge.node;
-        const name = node.name || `Глава ${node.number}`;
+      if (chaptersUrl) {
+        const { data: chaptersHtml } = await this.session.get(chaptersUrl);
+        const chapters$ = cheerio.load(chaptersHtml);
 
-        // Преобразуем номер главы в число и проверяем его корректность
-        let chapterNumber: number | undefined;
-        if (node.number !== undefined && node.number !== null) {
-          const parsedNumber = parseFloat(node.number);
-          if (!isNaN(parsedNumber)) {
-            chapterNumber = parsedNumber;
+        // Парсим главы из элементов с классом detail-chapter
+        chapters$('.detail-chapter').each((i, chapterElement) => {
+          const chapter$ = chapters$(chapterElement);
+
+          // Извлекаем ссылку на чтение главы
+          const chapterLink = chapter$.find('a[href*="/read/"]');
+          const chapterHref = chapterLink.attr('href');
+
+          if (chapterHref) {
+            // Извлекаем текст главы
+            const fullText = chapterLink.text().trim();
+            // Убираем лишние пробелы и переносы строк
+            const cleanText = fullText.replace(/\s+/g, ' ').trim();
+
+            // Пытаемся извлечь номер главы несколькими способами
+            let chapterNumber: number | undefined;
+
+            // 1. Из атрибута item-number у bookmark-progress
+            const itemNumber = chapter$
+              .find('bookmark-progress')
+              .attr('item-number');
+            if (itemNumber) {
+              const parsed = parseFloat(itemNumber);
+              if (!isNaN(parsed)) {
+                chapterNumber = parsed;
+              }
+            }
+
+            // 2. Из текста главы (ищем паттерны типа "Глава 27" или "Chapter 27")
+            if (!chapterNumber) {
+              const chapterMatch =
+                cleanText.match(
+                  /(?:Том\s*\d+\.\s*)?Глава\s*(\d+(?:\.\d+)?)/i,
+                ) || cleanText.match(/Chapter\s*(\d+(?:\.\d+)?)/i);
+              if (chapterMatch) {
+                chapterNumber = parseFloat(chapterMatch[1]);
+              }
+            }
+
+            // 3. Из slug ссылки (последний сегмент числа)
+            if (!chapterNumber) {
+              const slug = chapterHref.split('/read/')[1];
+              const slugNum = parseInt(slug);
+              if (!isNaN(slugNum)) {
+                chapterNumber = slugNum;
+              }
+            }
+
+            // Если не удалось извлечь номер, используем порядковый
+            if (!chapterNumber || isNaN(chapterNumber)) {
+              chapterNumber = i + 1;
+            }
+
+            // Извлекаем slug из ссылки
+            const slug = chapterHref.split('/read/')[1];
+
+            chapters.push({
+              name: cleanText,
+              slug: slug,
+              number: chapterNumber,
+            });
           }
-        }
-
-        chapters.push({
-          name,
-          slug: node.slug,
-          number: chapterNumber,
         });
       }
+    } catch (error) {
+      console.warn('Не удалось загрузить отдельную страницу глав:', error);
 
-      hasNextPage = chaptersData.pageInfo.hasNextPage;
-      after = chaptersData.pageInfo.endCursor;
+      // Альтернатива: ищем главы прямо на текущей странице (если они есть)
+      $('.detail-chapter').each((i, chapterElement) => {
+        const chapter$ = $(chapterElement);
+        const chapterLink = chapter$.find('a[href*="/read/"]');
+        const chapterHref = chapterLink.attr('href');
 
-      if (hasNextPage) {
-        await new Promise((resolve) => setTimeout(resolve, 200));
-      }
+        if (chapterHref) {
+          const fullText = chapterLink.text().trim();
+          const cleanText = fullText.replace(/\s+/g, ' ').trim();
+
+          let chapterNumber: number | undefined;
+
+          // Пытаемся извлечь номер главы
+          const itemNumber = chapter$
+            .find('bookmark-progress')
+            .attr('item-number');
+          if (itemNumber) {
+            const parsed = parseFloat(itemNumber);
+            if (!isNaN(parsed)) {
+              chapterNumber = parsed;
+            }
+          }
+
+          if (!chapterNumber) {
+            const chapterMatch = cleanText.match(
+              /(?:Том\s*\d+\.\s*)?Глава\s*(\d+(?:\.\d+)?)/i,
+            );
+            if (chapterMatch) {
+              chapterNumber = parseFloat(chapterMatch[1]);
+            }
+          }
+
+          if (!chapterNumber) {
+            chapterNumber = i + 1;
+          }
+
+          const slug = chapterHref.split('/read/')[1];
+
+          chapters.push({
+            name: cleanText,
+            slug: slug,
+            number: chapterNumber,
+          });
+        }
+      });
     }
 
-    chapters.reverse();
-    return chapters;
+    // Сортируем по номеру главы (в порядке возрастания)
+    return chapters.sort((a, b) => (a.number || 0) - (b.number || 0));
   }
 }
