@@ -11,7 +11,13 @@ export class YandexStrategy extends PassportStrategy(Strategy, 'yandex') {
   }
 
   async validate(req: any): Promise<any> {
-    const { code, access_token } = req.body;
+    // Для GET запросов (callback) извлекаем код из query параметров
+    let { code, access_token } = req.body || {};
+
+    // Если это GET запрос (callback), код будет в query параметрах
+    if (req.method === 'GET' && req.query && req.query.code) {
+      code = req.query.code;
+    }
 
     let accessToken = access_token;
 

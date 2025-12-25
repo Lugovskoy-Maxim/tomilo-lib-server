@@ -44,6 +44,11 @@ async function bootstrap() {
     prefix: '/uploads/',
   });
 
+  // Раздача статических файлов из папки public
+  app.useStaticAssets(join(__dirname, '..', 'public'), {
+    prefix: '/public/',
+  });
+
   // Настройка глобальной валидации
   app.useGlobalPipes(new ValidationPipe());
 
