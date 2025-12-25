@@ -36,7 +36,6 @@ export class MangaParserService {
     this.parsers = new Map();
     this.parsers.set('manga-shi.org', new MangaShiParser());
     this.parsers.set('senkuro.me', new SenkuroParser());
-    this.parsers.set('sencuro.me', new SenkuroParser());
     this.parsers.set('mangabuff.ru', new MangabuffParser());
   }
 
