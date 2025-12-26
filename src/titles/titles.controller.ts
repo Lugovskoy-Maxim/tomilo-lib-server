@@ -294,6 +294,7 @@ export class TitlesController {
     @Query('types') types?: string,
     @Query('releaseYears') releaseYears?: string,
     @Query('ageLimits') ageLimits?: string,
+    @Query('tags') tags?: string,
     @Query('sortBy') sortBy = 'createdAt',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
   ): Promise<ApiResponseDto<any>> {
@@ -494,6 +495,7 @@ export class TitlesController {
     @Query('releaseYears') releaseYears?: string,
     @Query('releaseYear') releaseYear?: string, // Добавляем поддержку одиночного года
     @Query('ageLimits') ageLimits?: string,
+    @Query('tags') tags?: string,
     @Query('sortBy') sortBy = 'createdAt',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
   ): Promise<ApiResponseDto<any>> {
@@ -540,6 +542,7 @@ export class TitlesController {
         status: status as any,
         releaseYears: filterReleaseYears,
         ageLimits: this.parseNumberArray(ageLimits),
+        tags: this.parseCommaSeparatedValues(tags),
         sortBy,
         sortOrder,
         populateChapters: false, // Не возвращать главы в списке тайтлов

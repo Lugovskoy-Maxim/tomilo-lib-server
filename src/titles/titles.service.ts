@@ -32,6 +32,7 @@ export class TitlesService {
     status,
     releaseYears,
     ageLimits,
+    tags,
     sortBy = 'createdAt',
     sortOrder = 'desc',
     populateChapters = true,
@@ -44,6 +45,7 @@ export class TitlesService {
     status?: TitleStatus;
     releaseYears?: number[];
     ageLimits?: number[];
+    tags?: string[];
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
     populateChapters?: boolean;
@@ -77,6 +79,10 @@ export class TitlesService {
 
     if (ageLimits && ageLimits.length > 0) {
       query.ageLimit = { $in: ageLimits };
+    }
+
+    if (tags && tags.length > 0) {
+      query.tags = { $in: tags };
     }
 
     const sortOptions: any = {};
