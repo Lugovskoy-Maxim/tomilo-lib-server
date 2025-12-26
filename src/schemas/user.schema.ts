@@ -125,6 +125,15 @@ export class User {
 
   @Prop({ required: false })
   birthDate?: Date;
+
+  @Prop({ required: false })
+  firstName?: string;
+
+  @Prop({ required: false })
+  lastName?: string;
+
+  @Prop({ required: false })
+  gender?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

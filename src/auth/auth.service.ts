@@ -104,8 +104,21 @@ export class AuthService {
     providerId: string;
     email?: string;
     username: string;
+    firstName?: string;
+    lastName?: string;
+    birthDate?: Date;
+    gender?: string;
   }) {
-    const { provider, providerId, email, username } = oauthData;
+    const {
+      provider,
+      providerId,
+      email,
+      username,
+      firstName,
+      lastName,
+      birthDate,
+      gender,
+    } = oauthData;
     this.logger.log(
       `Validating OAuth user from provider: ${provider}, providerId: ${providerId}`,
     );
@@ -128,6 +141,13 @@ export class AuthService {
     if (user && (!user.oauth || !user.oauth.provider)) {
       this.logger.log(`User found but missing OAuth data, updating OAuth info`);
       user.oauth = { provider, providerId };
+
+      // Обновляем дополнительные поля, если они предоставлены
+      if (firstName) user.firstName = firstName;
+      if (lastName) user.lastName = lastName;
+      if (birthDate) user.birthDate = birthDate;
+      if (gender) user.gender = gender;
+
       await user.save();
     }
 
@@ -143,6 +163,10 @@ export class AuthService {
         username: username,
         password: hashedPassword,
         oauth: { provider, providerId },
+        firstName,
+        lastName,
+        birthDate,
+        gender,
       });
 
       await user.save();

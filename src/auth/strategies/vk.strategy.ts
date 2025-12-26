@@ -46,6 +46,10 @@ export class VkStrategy extends PassportStrategy(Strategy, 'vk') {
       providerId: vkUser.id.toString(),
       email: vkUser.email, // ВКонтакте может не возвращать email в зависимости от настроек
       username: `${vkUser.first_name} ${vkUser.last_name}`,
+      firstName: vkUser.first_name,
+      lastName: vkUser.last_name,
+      gender:
+        vkUser.sex === 1 ? 'female' : vkUser.sex === 2 ? 'male' : undefined,
     });
 
     if (!user) {
