@@ -1,17 +1,11 @@
-import {
-  Injectable,
-  ConflictException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Injectable, ConflictException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import * as bcrypt from 'bcrypt';
-import * as crypto from 'crypto';
 import { User, UserDocument } from '../schemas/user.schema';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { LoggerService } from '../common/logger/logger.service';
-import { EmailService } from '../common/email/email.service';
 
 @Injectable()
 export class AuthService {
@@ -20,7 +14,6 @@ export class AuthService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private jwtService: JwtService,
-    private emailService: EmailService,
   ) {
     this.logger.setContext(AuthService.name);
   }
@@ -84,9 +77,6 @@ export class AuthService {
 
       await user.save();
       this.logger.log(`User ${email} registered successfully`);
-
-      // Send email verification
-      await this.sendEmailVerification(user);
 
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password: _, ...result } = user.toObject();
@@ -177,7 +167,6 @@ export class AuthService {
         lastName,
         birthDate,
         gender,
-        isEmailVerified: !!email, // Mark as verified if email provided
       });
 
       await user.save();
@@ -187,75 +176,5 @@ export class AuthService {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password, ...result } = user.toObject();
     return result;
-  }
-
-  // Email verification methods
-  async sendEmailVerification(user: UserDocument): Promise<void> {
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-    const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-
-    user.emailVerificationToken = verificationToken;
-    user.emailVerificationExpires = verificationExpires;
-    await user.save();
-
-    await this.emailService.sendEmailVerificationEmail(
-      user.email,
-      verificationToken,
-    );
-  }
-
-  async verifyEmail(token: string): Promise<void> {
-    const user = await this.userModel.findOne({
-      emailVerificationToken: token,
-      emailVerificationExpires: { $gt: new Date() },
-    });
-
-    if (!user) {
-      throw new BadRequestException('Invalid or expired verification token');
-    }
-
-    user.isEmailVerified = true;
-    user.emailVerificationToken = undefined;
-    user.emailVerificationExpires = undefined;
-    await user.save();
-
-    this.logger.log(`Email verified for user: ${user.email}`);
-  }
-
-  // Password reset methods
-  async forgotPassword(email: string): Promise<void> {
-    const user = await this.userModel.findOne({ email });
-    if (!user) {
-      // Don't reveal if email exists or not for security
-      return;
-    }
-
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-    user.passwordResetToken = resetToken;
-    user.passwordResetExpires = resetExpires;
-    await user.save();
-
-    await this.emailService.sendPasswordResetEmail(user.email, resetToken);
-  }
-
-  async resetPassword(token: string, newPassword: string): Promise<void> {
-    const user = await this.userModel.findOne({
-      passwordResetToken: token,
-      passwordResetExpires: { $gt: new Date() },
-    });
-
-    if (!user) {
-      throw new BadRequestException('Invalid or expired reset token');
-    }
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    user.password = hashedPassword;
-    user.passwordResetToken = undefined;
-    user.passwordResetExpires = undefined;
-    await user.save();
-
-    this.logger.log(`Password reset for user: ${user.email}`);
   }
 }
