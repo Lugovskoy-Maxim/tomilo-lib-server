@@ -36,6 +36,12 @@ export class YandexTokenStrategy extends PassportStrategy(
       providerId: yandexUser.id,
       email: yandexUser.default_email || yandexUser.emails?.[0],
       username: yandexUser.login,
+      firstName: yandexUser.first_name,
+      lastName: yandexUser.last_name,
+      birthDate: yandexUser.birthday
+        ? new Date(yandexUser.birthday)
+        : undefined,
+      gender: yandexUser.sex,
     });
 
     if (!user) {
