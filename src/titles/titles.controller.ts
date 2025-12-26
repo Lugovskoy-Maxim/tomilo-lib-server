@@ -16,6 +16,7 @@ import {
   ValidationPipe,
   ParseFloatPipe,
   UseGuards,
+  Logger,
 } from '@nestjs/common';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -78,6 +79,8 @@ class LatestUpdateResponseDto {
 
 @Controller()
 export class TitlesController {
+  private readonly logger = new Logger(TitlesController.name);
+
   constructor(private readonly titlesService: TitlesService) {}
 
   private getHoursWord(hours: number): string {
@@ -278,7 +281,6 @@ export class TitlesController {
         message: 'Failed to fetch latest updates',
         errors: [error.message],
         timestamp: new Date().toISOString(),
-
         path: 'titles/latest-updates',
       };
     }
@@ -454,7 +456,6 @@ export class TitlesController {
         message: 'Failed to update title',
         errors: [error.message],
         timestamp: new Date().toISOString(),
-
         path: `titles/${id}`,
         method: 'PUT',
       };
@@ -490,48 +491,78 @@ export class TitlesController {
     @Query('search') search?: string,
     @Query('genres') genres?: string,
     @Query('types') types?: string,
-    @Query('type') type?: string, // Добавляем поддержку одиночного типа
+    @Query('type') type?: string,
     @Query('status') status?: string,
     @Query('releaseYears') releaseYears?: string,
-    @Query('releaseYear') releaseYear?: string, // Добавляем поддержку одиночного года
+    @Query('releaseYear') releaseYear?: string,
     @Query('ageLimits') ageLimits?: string,
+    @Query('ageLimit') ageLimit?: string | string[],
     @Query('tags') tags?: string,
     @Query('sortBy') sortBy = 'createdAt',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
   ): Promise<ApiResponseDto<any>> {
     try {
-      // Определяем типы для фильтрации (поддерживаем как одиночные, так и множественные)
+      this.logger.debug(
+        `Received ageLimit query param: ${JSON.stringify(ageLimit)}`,
+      );
+      this.logger.debug(`Received ageLimits query param: ${ageLimits}`);
+
+      // Определяем типы для фильтрации
       let filterTypes: string[] = [];
       if (type && types) {
-        // Если указаны и type и types, объединяем их
         filterTypes = [
           ...this.parseCommaSeparatedValues(types),
           ...this.parseCommaSeparatedValues(type),
         ];
       } else if (type) {
-        // Только type
         filterTypes = [type];
       } else if (types) {
-        // Только types
         filterTypes = this.parseCommaSeparatedValues(types);
       }
 
-      // Определяем года для фильтрации (поддерживаем как одиночные, так и множественные)
+      // Определяем года для фильтрации
       let filterReleaseYears: number[] = [];
       if (releaseYear && releaseYears) {
-        // Если указаны и releaseYear и releaseYears, объединяем их
         const releaseYearNum = this.parseNumber(releaseYear);
         const releaseYearsArray = this.parseNumberArray(releaseYears);
         if (releaseYearNum) filterReleaseYears.push(releaseYearNum);
         filterReleaseYears = [...filterReleaseYears, ...releaseYearsArray];
       } else if (releaseYear) {
-        // Только releaseYear
         const releaseYearNum = this.parseNumber(releaseYear);
         if (releaseYearNum) filterReleaseYears = [releaseYearNum];
       } else if (releaseYears) {
-        // Только releaseYears
         filterReleaseYears = this.parseNumberArray(releaseYears);
       }
+
+      // Определяем возрастные ограничения для фильтрации
+      let filterAgeLimits: number[] = [];
+
+      // 1. Обрабатываем ageLimit как массив (ageLimit[0]=12&ageLimit[1]=16)
+      if (Array.isArray(ageLimit)) {
+        filterAgeLimits = ageLimit
+          .map((al) => parseInt(al, 10))
+          .filter((al) => !isNaN(al));
+      }
+      // 2. Обрабатываем ageLimit как одиночное значение (ageLimit=12)
+      else if (ageLimit && typeof ageLimit === 'string') {
+        const ageLimitNum = this.parseNumber(ageLimit);
+        if (ageLimitNum) filterAgeLimits = [ageLimitNum];
+      }
+
+      // 3. Обрабатываем ageLimits как строку с запятыми (ageLimits=12,16,18)
+      if (ageLimits) {
+        const ageLimitsArray = this.parseNumberArray(ageLimits);
+        if (ageLimitsArray.length > 0) {
+          // Объединяем массивы, удаляем дубликаты
+          filterAgeLimits = [
+            ...new Set([...filterAgeLimits, ...ageLimitsArray]),
+          ];
+        }
+      }
+
+      this.logger.debug(
+        `Parsed age limits for filtering: ${JSON.stringify(filterAgeLimits)}`,
+      );
 
       const result = await this.titlesService.findAll({
         page: Number(page),
@@ -541,11 +572,11 @@ export class TitlesController {
         types: filterTypes,
         status: status as any,
         releaseYears: filterReleaseYears,
-        ageLimits: this.parseNumberArray(ageLimits),
+        ageLimits: filterAgeLimits,
         tags: this.parseCommaSeparatedValues(tags),
         sortBy,
         sortOrder,
-        populateChapters: false, // Не возвращать главы в списке тайтлов
+        populateChapters: false,
       });
 
       const data = {
@@ -563,6 +594,7 @@ export class TitlesController {
         path: 'titles',
       };
     } catch (error) {
+      this.logger.error(`Error fetching titles: ${error.message}`, error.stack);
       return {
         success: false,
         message: 'Failed to fetch titles',
