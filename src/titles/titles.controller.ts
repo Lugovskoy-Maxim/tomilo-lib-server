@@ -462,12 +462,26 @@ export class TitlesController {
     }
   }
 
+  private decodeParam(param: string | undefined): string | undefined {
+    if (!param) return undefined;
+    try {
+      // Пытаемся декодировать URL-параметр
+      return decodeURIComponent(param);
+    } catch (error) {
+      // Если декодирование не удалось, возвращаем исходное значение
+      this.logger.warn(`Failed to decode parameter: ${param}, error ${error}`);
+      return param;
+    }
+  }
+
   private parseCommaSeparatedValues(param: string | undefined): string[] {
     if (!param) return [];
     return param
       .split(',')
-      .map((value) => value.trim())
-      .filter((value) => value.length > 0);
+      .map((value) => this.decodeParam(value.trim()))
+      .filter(
+        (value): value is string => value !== undefined && value.length > 0,
+      );
   }
 
   private parseNumberArray(param: string | undefined): number[] {
@@ -482,6 +496,41 @@ export class TitlesController {
     if (!param) return null;
     const num = parseInt(param.trim(), 10);
     return isNaN(num) ? null : num;
+  }
+
+  private parseGenreString(param: string | undefined): string[] {
+    // Специальная обработка для жанров с поддержкой URL-кодировки
+    if (!param) return [];
+
+    try {
+      // Пытаемся декодировать как единую строку
+      const decoded = this.decodeParam(param);
+      if (decoded) {
+        // Если декодирование удалось, проверяем, есть ли запятые
+        if (decoded.includes(',')) {
+          return decoded
+            .split(',')
+            .map((genre) => genre.trim())
+            .filter((genre) => genre.length > 0);
+        } else {
+          return [decoded];
+        }
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to decode genre parameter: ${param}, error ${error}`,
+      );
+    }
+
+    // Если декодирование не удалось или нет запятых, обрабатываем как есть
+    if (param.includes(',')) {
+      return param
+        .split(',')
+        .map((genre) => genre.trim())
+        .filter((genre) => genre.length > 0);
+    } else {
+      return [param];
+    }
   }
 
   @Get('titles')
