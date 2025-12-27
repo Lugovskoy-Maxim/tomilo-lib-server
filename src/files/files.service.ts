@@ -14,15 +14,22 @@ export class FilesService {
     files: Express.Multer.File[],
     chapterId: string,
   ): Promise<string[]> {
+    this.logger.log(`=== НАЧАЛО saveChapterPages ===`);
+    this.logger.log(`Получено файлов: ${files?.length || 0}`);
+    this.logger.log(`Chapter ID: ${chapterId}`);
+
     if (!files || files.length === 0) {
+      this.logger.error('Нет файлов для загрузки - выбрасываем исключение');
       throw new BadRequestException('Нет файлов для загрузки');
     }
 
     const chapterDir = `chapters/${chapterId}`;
     const uploadPath = join('uploads', chapterDir);
+    this.logger.log(`Путь для сохранения: ${uploadPath}`);
 
     // Создаем директорию для главы
     await fs.mkdir(uploadPath, { recursive: true });
+    this.logger.log(`Директория создана: ${uploadPath}`);
 
     const pagePaths: string[] = [];
 
@@ -30,19 +37,47 @@ export class FilesService {
     const sortedFiles = files.sort((a, b) => {
       return a.originalname.localeCompare(b.originalname);
     });
+    this.logger.log(`Файлы отсортированы. Количество: ${sortedFiles.length}`);
 
     // Подготавливаем буферы изображений для обработки водяным знаком
     const imageBuffers: Buffer[] = [];
-    for (const file of sortedFiles) {
+    for (let i = 0; i < sortedFiles.length; i++) {
+      const file = sortedFiles[i];
+      this.logger.log(
+        `Обрабатываем файл ${i + 1}: ${file.originalname}, размер: ${file.size} байт`,
+      );
+
       let fileBuffer: Buffer;
       if (file.path) {
+        this.logger.log(`Читаем файл из пути: ${file.path}`);
         fileBuffer = await fs.readFile(file.path);
       } else if (file.buffer) {
+        this.logger.log(
+          `Используем buffer файла, размер: ${file.buffer.length} байт`,
+        );
         fileBuffer = file.buffer;
       } else {
+        this.logger.error(`Отсутствует содержимое файла ${file.originalname}`);
         throw new BadRequestException('Отсутствует содержимое файла');
       }
       imageBuffers.push(fileBuffer);
+      this.logger.log(
+        `Файл ${file.originalname} добавлен в буфер, размер буфера: ${fileBuffer.length} байт`,
+      );
+    }
+
+    this.logger.log(`Всего буферов подготовлено: ${imageBuffers.length}`);
+
+    // Проверяем, загружен ли водяной знак
+    this.logger.log(
+      `Водяной знак загружен: ${this.watermarkUtil.isWatermarkLoaded()}`,
+    );
+    if (!this.watermarkUtil.isWatermarkLoaded()) {
+      this.logger.warn('Водяной знак не загружен! Пытаемся перезагрузить...');
+      this.watermarkUtil.reloadWatermark();
+      this.logger.log(
+        `После перезагрузки водяной знак загружен: ${this.watermarkUtil.isWatermarkLoaded()}`,
+      );
     }
 
     // Добавляем водяной знак ко всем изображениям
@@ -56,7 +91,9 @@ export class FilesService {
         scale: 0.15, // 15% от ширины основного изображения
       },
     );
-    this.logger.log(`Водяной знак добавлен к изображениям`);
+    this.logger.log(
+      `Водяной знак добавлен к изображениям. Результат: ${watermarkedBuffers.length} изображений`,
+    );
 
     // Сохраняем обработанные файлы
     for (let i = 0; i < watermarkedBuffers.length; i++) {
@@ -65,17 +102,26 @@ export class FilesService {
       const fileName = `cover_${i + 1}.${fileExtension}`;
       const filePath = join(uploadPath, fileName);
 
+      this.logger.log(
+        `Сохраняем файл ${i + 1}: ${fileName} по пути: ${filePath}`,
+      );
+
       // Сохраняем изображение с водяным знаком
       await fs.writeFile(filePath, watermarkedBuffers[i]);
+      this.logger.log(`Файл ${fileName} сохранен успешно`);
 
       // Удаляем временный файл (если он был)
       if (file.path) {
         await fs.unlink(file.path);
+        this.logger.log(`Временный файл ${file.path} удален`);
       }
 
       pagePaths.push(`/${chapterDir}/${fileName}`);
     }
 
+    this.logger.log(
+      `=== КОНЕЦ saveChapterPages === Всего сохранено страниц: ${pagePaths.length}`,
+    );
     return pagePaths;
   }
 

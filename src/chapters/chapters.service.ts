@@ -436,9 +436,15 @@ export class ChaptersService {
     try {
       // Сохраняем файлы и получаем пути
       // Using savedChapter.id (virtual getter) instead of savedChapter._id.toString()
+      this.logger.log(
+        `Сохраняем ${files.length} страниц для главы ${savedChapter.id.toString()}`,
+      );
       const pagePaths = await this.filesService.saveChapterPages(
         files,
         savedChapter.id.toString(),
+      );
+      this.logger.log(
+        `Сохранено ${pagePaths.length} страниц для главы ${savedChapter.id.toString()}`,
       );
 
       // Обновляем главу с путями к страницам
@@ -480,9 +486,13 @@ export class ChaptersService {
   ): Promise<ChapterDocument> {
     const chapter = await this.findById(chapterId);
 
+    this.logger.log(`Добавляем ${files.length} страниц к главе ${chapterId}`);
     const pagePaths = await this.filesService.saveChapterPages(
       files,
       chapterId,
+    );
+    this.logger.log(
+      `Добавлено ${pagePaths.length} страниц к главе ${chapterId}`,
     );
 
     // Добавляем новые страницы к существующим

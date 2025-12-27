@@ -137,18 +137,37 @@ export class WatermarkUtil {
       scale?: number;
     } = {},
   ): Promise<Buffer[]> {
+    this.logger.log(`=== НАЧАЛО addWatermarkMultiple ===`);
+    this.logger.log(
+      `Получено изображений для обработки: ${imageBuffers.length}`,
+    );
+    this.logger.log(`Опции: ${JSON.stringify(options)}`);
+    this.logger.log(`Водяной знак загружен: ${this.isWatermarkLoaded()}`);
+
     const results: Buffer[] = [];
 
-    for (const imageBuffer of imageBuffers) {
+    for (let i = 0; i < imageBuffers.length; i++) {
+      this.logger.log(
+        `Обрабатываем изображение ${i + 1}/${imageBuffers.length}`,
+      );
       try {
-        const watermarkedImage = await this.addWatermark(imageBuffer, options);
+        const watermarkedImage = await this.addWatermark(
+          imageBuffers[i],
+          options,
+        );
         results.push(watermarkedImage);
+        this.logger.log(`Изображение ${i + 1} успешно обработано`);
       } catch (error: any) {
-        this.logger.error(`Ошибка обработки: ${error.message}`);
-        results.push(imageBuffer);
+        this.logger.error(
+          `Ошибка обработки изображения ${i + 1}: ${error.message}`,
+        );
+        results.push(imageBuffers[i]);
       }
     }
 
+    this.logger.log(
+      `=== КОНЕЦ addWatermarkMultiple === Результат: ${results.length} изображений`,
+    );
     return results;
   }
 
