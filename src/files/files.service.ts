@@ -278,6 +278,11 @@ export class FilesService {
       };
     },
   ): Promise<string> {
+    this.logger.log(`=== НАЧАЛО downloadImageFromUrl ===`);
+    this.logger.log(`URL: ${imageUrl}`);
+    this.logger.log(`Chapter ID: ${chapterId}`);
+    this.logger.log(`Page Number: ${pageNumber}`);
+
     try {
       const response = await axios.get(imageUrl, {
         responseType: 'arraybuffer',
@@ -294,6 +299,7 @@ export class FilesService {
 
       // Создаем директорию для главы
       await fs.mkdir(uploadPath, { recursive: true });
+      this.logger.log(`Директория создана: ${uploadPath}`);
 
       // Определяем расширение файла
       const urlPath = new URL(imageUrl).pathname;
@@ -301,9 +307,39 @@ export class FilesService {
       const fileName = `${pageNumber.toString().padStart(3, '0')}.${ext}`;
       const filePath = join(uploadPath, fileName);
 
-      // Сохраняем файл
-      await fs.writeFile(filePath, response.data);
+      this.logger.log(
+        `Загружено изображение, размер: ${response.data.length} байт`,
+      );
 
+      // Проверяем, загружен ли водяной знак
+      this.logger.log(
+        `Водяной знак загружен: ${this.watermarkUtil.isWatermarkLoaded()}`,
+      );
+      if (!this.watermarkUtil.isWatermarkLoaded()) {
+        this.logger.warn('Водяной знак не загружен! Пытаемся перезагрузить...');
+        this.watermarkUtil.reloadWatermark();
+        this.logger.log(
+          `После перезагрузки водяной знак загружен: ${this.watermarkUtil.isWatermarkLoaded()}`,
+        );
+      }
+
+      // Добавляем водяной знак к изображению
+      const imageBuffer = Buffer.from(response.data);
+      this.logger.log(`Применяем водяной знак к изображению`);
+      const watermarkedBuffer = await this.watermarkUtil.addWatermark(
+        imageBuffer,
+        {
+          position: 'bottom-right',
+          scale: 0.15,
+        },
+      );
+      this.logger.log(`Водяной знак применен успешно`);
+
+      // Сохраняем файл с водяным знаком
+      await fs.writeFile(filePath, watermarkedBuffer);
+      this.logger.log(`Файл сохранен: ${filePath}`);
+
+      this.logger.log(`=== КОНЕЦ downloadImageFromUrl ===`);
       return `/${chapterDir}/${fileName}`;
     } catch (error) {
       this.logger.error(

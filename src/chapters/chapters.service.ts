@@ -406,6 +406,10 @@ export class ChaptersService {
     createChapterDto: CreateChapterDto,
     files: Express.Multer.File[],
   ): Promise<ChapterDocument> {
+    this.logger.log(`=== НАЧАЛО createWithPages ===`);
+    this.logger.log(`CreateChapterDto: ${JSON.stringify(createChapterDto)}`);
+    this.logger.log(`Получено файлов: ${files?.length || 0}`);
+
     const { titleId, chapterNumber } = createChapterDto;
 
     if (!Types.ObjectId.isValid(titleId)) {
