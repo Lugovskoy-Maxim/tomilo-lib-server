@@ -55,6 +55,10 @@ export class WatermarkUtil {
     } = {},
   ): Promise<Buffer> {
     try {
+      this.logger.log(
+        `Попытка добавления водяного знака. Загружен: ${this.watermarkImage ? 'да' : 'нет'}`,
+      );
+
       if (!this.watermarkImage) {
         this.logger.warn('Водяной знак не загружен, возвращаем оригинал');
         return imageBuffer;
@@ -64,6 +68,10 @@ export class WatermarkUtil {
 
       const mainImage = sharp(imageBuffer);
       const metadata = await mainImage.metadata();
+
+      this.logger.log(
+        `Размеры изображения: ${metadata.width}x${metadata.height}`,
+      );
 
       if (!metadata.width || !metadata.height) {
         throw new Error('Не удалось получить размеры изображения');
@@ -80,6 +88,10 @@ export class WatermarkUtil {
       const watermarkMetadata = await sharp(watermarkBuffer).metadata();
       const watermarkHeight = Math.floor(
         (watermarkWidth * watermarkMetadata.height) / watermarkMetadata.width,
+      );
+
+      this.logger.log(
+        `Размеры водяного знака: ${watermarkWidth}x${watermarkHeight}`,
       );
 
       // Изменяем размер водяного знака

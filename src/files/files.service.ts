@@ -46,6 +46,9 @@ export class FilesService {
     }
 
     // Добавляем водяной знак ко всем изображениям
+    this.logger.log(
+      `Добавляем водяной знак к ${imageBuffers.length} изображениям`,
+    );
     const watermarkedBuffers = await this.watermarkUtil.addWatermarkMultiple(
       imageBuffers,
       {
@@ -53,6 +56,7 @@ export class FilesService {
         scale: 0.15, // 15% от ширины основного изображения
       },
     );
+    this.logger.log(`Водяной знак добавлен к изображениям`);
 
     // Сохраняем обработанные файлы
     for (let i = 0; i < watermarkedBuffers.length; i++) {
