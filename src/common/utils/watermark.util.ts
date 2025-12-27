@@ -11,6 +11,11 @@ export class WatermarkUtil {
   private watermarkImage: any = null;
   private watermarkPath = join(process.cwd(), 'watermark', 'watermark.png');
 
+  // Добавляем геттер для проверки пути
+  public getWatermarkPath(): string {
+    return this.watermarkPath;
+  }
+
   constructor() {
     this.initializeWatermark();
   }
@@ -20,6 +25,9 @@ export class WatermarkUtil {
    */
   private initializeWatermark(): void {
     try {
+      this.logger.log(
+        `Проверяем наличие водяного знака по пути: ${this.watermarkPath}`,
+      );
       if (existsSync(this.watermarkPath)) {
         this.watermarkImage = sharp(this.watermarkPath);
         this.logger.log('Водяной знак успешно загружен');
