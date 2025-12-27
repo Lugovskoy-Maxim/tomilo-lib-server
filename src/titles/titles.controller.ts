@@ -470,13 +470,18 @@ export class TitlesController {
     } catch (error) {
       // Если декодирование не удалось, возвращаем исходное значение
       this.logger.warn(`Failed to decode parameter: ${param}, error ${error}`);
+
       return param;
     }
   }
 
   private parseCommaSeparatedValues(param: string | undefined): string[] {
     if (!param) return [];
-    return param
+
+    // Заменяем + на пробелы перед декодированием для корректной обработки жанров
+    const normalizedParam = param.replace(/\+/g, ' ');
+
+    return normalizedParam
       .split(',')
       .map((value) => this.decodeParam(value.trim()))
       .filter(
