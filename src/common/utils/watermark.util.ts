@@ -1,12 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { join } from 'path';
 import { existsSync } from 'fs';
+
+// Используем default import для sharp
 import sharp from 'sharp';
 
 @Injectable()
 export class WatermarkUtil {
   private readonly logger = new Logger(WatermarkUtil.name);
-  private watermarkImage: sharp.Sharp | null = null;
+  private watermarkImage: any = null;
   private watermarkPath = join(process.cwd(), 'watermark', 'watermark.png');
 
   constructor() {
