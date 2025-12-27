@@ -64,7 +64,7 @@ export class WatermarkUtil {
         return imageBuffer;
       }
 
-      const { position = 'bottom-right', scale = 0.15 } = options;
+      const { position = 'bottom-right', scale = 1 } = options;
 
       const mainImage = sharp(imageBuffer);
       const metadata = await mainImage.metadata();
