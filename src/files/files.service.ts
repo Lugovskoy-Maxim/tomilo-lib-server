@@ -2,10 +2,14 @@ import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { promises as fs } from 'fs';
 import { join } from 'path';
 import axios from 'axios';
+import { WatermarkUtil } from '../common/utils/watermark.util';
 
 @Injectable()
 export class FilesService {
   private readonly logger = new Logger(FilesService.name);
+
+  constructor(private watermarkUtil: WatermarkUtil) {}
+
   async saveChapterPages(
     files: Express.Multer.File[],
     chapterId: string,
@@ -27,26 +31,42 @@ export class FilesService {
       return a.originalname.localeCompare(b.originalname);
     });
 
-    // Сохраняем файлы и возвращаем пути
-    for (let i = 0; i < sortedFiles.length; i++) {
+    // Подготавливаем буферы изображений для обработки водяным знаком
+    const imageBuffers: Buffer[] = [];
+    for (const file of sortedFiles) {
+      let fileBuffer: Buffer;
+      if (file.path) {
+        fileBuffer = await fs.readFile(file.path);
+      } else if (file.buffer) {
+        fileBuffer = file.buffer;
+      } else {
+        throw new BadRequestException('Отсутствует содержимое файла');
+      }
+      imageBuffers.push(fileBuffer);
+    }
+
+    // Добавляем водяной знак ко всем изображениям
+    const watermarkedBuffers = await this.watermarkUtil.addWatermarkMultiple(
+      imageBuffers,
+      {
+        position: 'bottom-right',
+        scale: 0.15, // 15% от ширины основного изображения
+      },
+    );
+
+    // Сохраняем обработанные файлы
+    for (let i = 0; i < watermarkedBuffers.length; i++) {
       const file = sortedFiles[i];
       const fileExtension = file.originalname.split('.').pop();
       const fileName = `cover_${i + 1}.${fileExtension}`;
       const filePath = join(uploadPath, fileName);
 
-      // Для diskStorage используем path вместо buffer
-      if (file.path) {
-        // Копируем файл из временного местоположения в целевую папку
-        const fileContent = await fs.readFile(file.path);
-        await fs.writeFile(filePath, fileContent);
+      // Сохраняем изображение с водяным знаком
+      await fs.writeFile(filePath, watermarkedBuffers[i]);
 
-        // Удаляем временный файл (опционально)
+      // Удаляем временный файл (если он был)
+      if (file.path) {
         await fs.unlink(file.path);
-      } else if (file.buffer) {
-        // Для memoryStorage используем buffer
-        await fs.writeFile(filePath, file.buffer);
-      } else {
-        throw new BadRequestException('Отсутствует содержимое файла');
       }
 
       pagePaths.push(`/${chapterDir}/${fileName}`);

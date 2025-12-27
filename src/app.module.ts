@@ -13,7 +13,10 @@ import { SearchModule } from './search/search.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { MangaParserModule } from './manga-parser/manga-parser.module';
 import { CollectionsModule } from './collections/collections.module';
+
 import { LoggerModule } from './common/logger/logger.module';
+import { UtilsModule } from './common/utils/utils.module';
+import { FilesModule } from './files/files.module';
 import { ShopModule } from './shop/shop.module';
 import { CommentsModule } from './comments/comments.module';
 import { Title, TitleSchema } from './schemas/title.schema';
@@ -49,7 +52,11 @@ import { AutoParsingModule } from './auto-parsing/auto-parsing.module';
     NotificationsModule,
     MangaParserModule,
     CollectionsModule,
+
     LoggerModule,
+
+    UtilsModule,
+    FilesModule,
     ShopModule,
     CommentsModule,
     AutoParsingModule,
