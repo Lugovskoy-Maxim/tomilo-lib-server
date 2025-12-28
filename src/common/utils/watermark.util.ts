@@ -102,6 +102,7 @@ export class WatermarkUtil {
           fit: 'contain',
           withoutEnlargement: true,
         })
+
         .png()
         .toBuffer();
 
@@ -113,7 +114,7 @@ export class WatermarkUtil {
             gravity: this.getGravity(position),
           },
         ])
-        .jpeg({ quality: 100 })
+        .png({ quality: 100 })
         .toBuffer();
 
       this.logger.log(`Водяной знак добавлен (позиция: ${position})`);
