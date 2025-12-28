@@ -84,11 +84,12 @@ export class FilesService {
     this.logger.log(
       `Добавляем водяной знак к ${imageBuffers.length} изображениям`,
     );
+
     const watermarkedBuffers = await this.watermarkUtil.addWatermarkMultiple(
       imageBuffers,
       {
-        position: 'bottom-right',
-        scale: 0.15, // 15% от ширины основного изображения
+        position: 'center-right',
+        scale: 0.35, // 35% от ширины основного изображения
       },
     );
     this.logger.log(
@@ -329,8 +330,8 @@ export class FilesService {
       const watermarkedBuffer = await this.watermarkUtil.addWatermark(
         imageBuffer,
         {
-          position: 'bottom-right',
-          scale: 0.15,
+          position: 'center-right',
+          scale: 0.35,
         },
       );
       this.logger.log(`Водяной знак применен успешно`);

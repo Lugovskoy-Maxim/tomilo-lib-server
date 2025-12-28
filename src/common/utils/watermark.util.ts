@@ -42,6 +42,7 @@ export class WatermarkUtil {
   /**
    * Добавляет водяной знак к изображению
    */
+
   async addWatermark(
     imageBuffer: Buffer,
     options: {
@@ -50,7 +51,8 @@ export class WatermarkUtil {
         | 'top-right'
         | 'bottom-left'
         | 'bottom-right'
-        | 'center';
+        | 'center'
+        | 'center-right';
       scale?: number;
     } = {},
   ): Promise<Buffer> {
@@ -111,7 +113,7 @@ export class WatermarkUtil {
             gravity: this.getGravity(position),
           },
         ])
-        .jpeg({ quality: 90 })
+        .jpeg({ quality: 100 })
         .toBuffer();
 
       this.logger.log(`Водяной знак добавлен (позиция: ${position})`);
@@ -125,6 +127,7 @@ export class WatermarkUtil {
   /**
    * Добавляет водяной знак к нескольким изображениям
    */
+
   async addWatermarkMultiple(
     imageBuffers: Buffer[],
     options: {
@@ -133,7 +136,8 @@ export class WatermarkUtil {
         | 'top-right'
         | 'bottom-left'
         | 'bottom-right'
-        | 'center';
+        | 'center'
+        | 'center-right';
       scale?: number;
     } = {},
   ): Promise<Buffer[]> {
@@ -174,6 +178,7 @@ export class WatermarkUtil {
   /**
    * Конвертирует позицию в gravity для sharp
    */
+
   private getGravity(position: string): string {
     switch (position) {
       case 'top-left':
@@ -186,6 +191,8 @@ export class WatermarkUtil {
         return 'southeast';
       case 'center':
         return 'center';
+      case 'center-right':
+        return 'east';
       default:
         return 'southeast';
     }
