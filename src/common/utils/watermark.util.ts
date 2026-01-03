@@ -42,7 +42,6 @@ export class WatermarkUtil {
   /**
    * Добавляет водяной знак к изображению
    */
-
   async addWatermark(
     imageBuffer: Buffer,
     options: {
@@ -54,6 +53,7 @@ export class WatermarkUtil {
         | 'center'
         | 'center-right';
       scale?: number;
+      minHeight?: number; // Минимальная высота изображения для добавления водяного знака
     } = {},
   ): Promise<Buffer> {
     try {
@@ -66,7 +66,11 @@ export class WatermarkUtil {
         return imageBuffer;
       }
 
-      const { position = 'center-right', scale = 0.35 } = options;
+      const {
+        position = 'center-right',
+        scale = 0.35,
+        minHeight = 4000,
+      } = options;
 
       const mainImage = sharp(imageBuffer);
       const metadata = await mainImage.metadata();
@@ -77,6 +81,14 @@ export class WatermarkUtil {
 
       if (!metadata.width || !metadata.height) {
         throw new Error('Не удалось получить размеры изображения');
+      }
+
+      // Проверяем минимальную высоту изображения
+      if (metadata.height < minHeight) {
+        this.logger.log(
+          `Высота изображения (${metadata.height}) меньше минимальной (${minHeight}), водяной знак не добавляется`,
+        );
+        return imageBuffer;
       }
 
       // Подготавливаем водяной знак
@@ -118,7 +130,16 @@ export class WatermarkUtil {
         .toBuffer();
 
       this.logger.log(`Водяной знак добавлен (позиция: ${position})`);
-      return compositeImage;
+      // Ensure we're returning a Buffer type
+      if (Buffer.isBuffer(compositeImage)) {
+        return compositeImage;
+      } else {
+        // If for some reason compositeImage is not a Buffer, return the original image
+        this.logger.warn(
+          'Composite image is not a Buffer, returning original image',
+        );
+        return imageBuffer;
+      }
     } catch (error: any) {
       this.logger.error(`Ошибка водяного знака: ${error.message}`);
       return imageBuffer;
@@ -127,19 +148,16 @@ export class WatermarkUtil {
 
   /**
    * Добавляет водяной знак к нескольким изображениям
+   * С учетом новых требований:
+   * - Ватермарка ставится только на четных страницах
+   * - Ватермарка ставится в разных местах
+   * - Ватермарка ставится только на изображениях шириной 4000px и более
    */
-
   async addWatermarkMultiple(
     imageBuffers: Buffer[],
     options: {
-      position?:
-        | 'top-left'
-        | 'top-right'
-        | 'bottom-left'
-        | 'bottom-right'
-        | 'center'
-        | 'center-right';
       scale?: number;
+      minHeight?: number; // Минимальная высота изображения для добавления водяного знака
     } = {},
   ): Promise<Buffer[]> {
     this.logger.log(`=== НАЧАЛО addWatermarkMultiple ===`);
@@ -149,17 +167,57 @@ export class WatermarkUtil {
     this.logger.log(`Опции: ${JSON.stringify(options)}`);
     this.logger.log(`Водяной знак загружен: ${this.isWatermarkLoaded()}`);
 
+    const { scale = 0.35, minHeight = 4000 } = options;
     const results: Buffer[] = [];
+
+    // Определяем позиции для водяных знаков
+    const positions: Array<
+      | 'top-left'
+      | 'top-right'
+      | 'bottom-left'
+      | 'bottom-right'
+      | 'center'
+      | 'center-right'
+    > = [
+      'top-left',
+      'top-right',
+      'bottom-left',
+      'bottom-right',
+      'center',
+      'center-right',
+    ];
 
     for (let i = 0; i < imageBuffers.length; i++) {
       this.logger.log(
         `Обрабатываем изображение ${i + 1}/${imageBuffers.length}`,
       );
       try {
-        const watermarkedImage = await this.addWatermark(
-          imageBuffers[i],
-          options,
+        // Проверяем, является ли страница четной (индекс четный, так как индексация с 0)
+        const isEvenPage = i % 2 === 1; // Страница четная, если индекс нечетный (1, 3, 5...)
+
+        if (!isEvenPage) {
+          this.logger.log(
+            `Страница ${i + 1} нечетная, пропускаем добавление водяного знака`,
+          );
+          results.push(imageBuffers[i]);
+          continue;
+        }
+
+        // Для четных страниц добавляем водяной знак
+        // Выбираем позицию в зависимости от номера страницы
+        const positionIndex = Math.floor(i / 2) % positions.length;
+        const position = positions[positionIndex];
+
+        this.logger.log(
+          `Страница ${i + 1} четная, добавляем водяной знак в позиции: ${position}`,
         );
+
+        const watermarkedImage = await this.addWatermark(imageBuffers[i], {
+          position,
+          scale,
+          minHeight,
+        });
+
         results.push(watermarkedImage);
         this.logger.log(`Изображение ${i + 1} успешно обработано`);
       } catch (error: any) {
@@ -179,8 +237,15 @@ export class WatermarkUtil {
   /**
    * Конвертирует позицию в gravity для sharp
    */
-
-  private getGravity(position: string): string {
+  private getGravity(
+    position:
+      | 'top-left'
+      | 'top-right'
+      | 'bottom-left'
+      | 'bottom-right'
+      | 'center'
+      | 'center-right',
+  ): string {
     switch (position) {
       case 'top-left':
         return 'northwest';

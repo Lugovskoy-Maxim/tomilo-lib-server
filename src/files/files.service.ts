@@ -88,8 +88,8 @@ export class FilesService {
     const watermarkedBuffers = await this.watermarkUtil.addWatermarkMultiple(
       imageBuffers,
       {
-        position: 'center-right',
         scale: 0.35, // 35% от ширины основного изображения
+        minHeight: 4000, // Минимальная высота изображения для добавления водяного знака
       },
     );
     this.logger.log(
@@ -332,6 +332,7 @@ export class FilesService {
         {
           position: 'center-right',
           scale: 0.35,
+          minHeight: 4000,
         },
       );
       this.logger.log(`Водяной знак применен успешно`);
