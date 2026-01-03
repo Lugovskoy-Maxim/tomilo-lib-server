@@ -6,6 +6,7 @@ import {
   Request,
   HttpCode,
   HttpStatus,
+  ConflictException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
@@ -156,6 +157,155 @@ export class AuthController {
         errors: [error.message],
         timestamp: new Date().toISOString(),
         path: 'auth/vk',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Post('verify-email')
+  @HttpCode(HttpStatus.OK)
+  async sendEmailVerification(
+    @Body() emailDto: { email: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      await this.authService.sendEmailVerification(emailDto.email);
+      return {
+        success: true,
+        message: 'Verification email sent successfully',
+        timestamp: new Date().toISOString(),
+        path: 'auth/verify-email',
+        method: 'POST',
+      };
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        return {
+          success: false,
+          message: 'User not found',
+          errors: [error.message],
+          timestamp: new Date().toISOString(),
+          path: 'auth/verify-email',
+          method: 'POST',
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to send verification email',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/verify-email',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Post('verify-email/token')
+  @HttpCode(HttpStatus.OK)
+  async verifyEmail(
+    @Body() tokenDto: { token: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.authService.verifyEmail(tokenDto.token);
+      return {
+        success: true,
+        data,
+        message: 'Email verified successfully',
+        timestamp: new Date().toISOString(),
+        path: 'auth/verify-email/token',
+        method: 'POST',
+      };
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        return {
+          success: false,
+          message: 'Invalid verification token',
+          errors: [error.message],
+          timestamp: new Date().toISOString(),
+          path: 'auth/verify-email/token',
+          method: 'POST',
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to verify email',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/verify-email/token',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  async sendPasswordReset(
+    @Body() emailDto: { email: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      await this.authService.sendPasswordReset(emailDto.email);
+      return {
+        success: true,
+        message: 'Password reset email sent successfully',
+        timestamp: new Date().toISOString(),
+        path: 'auth/forgot-password',
+        method: 'POST',
+      };
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        return {
+          success: false,
+          message: 'User not found',
+          errors: [error.message],
+          timestamp: new Date().toISOString(),
+          path: 'auth/forgot-password',
+          method: 'POST',
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to send password reset email',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/forgot-password',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  async resetPassword(
+    @Body() resetDto: { token: string; password: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.authService.resetPassword(
+        resetDto.token,
+        resetDto.password,
+      );
+      return {
+        success: true,
+        data,
+        message: 'Password reset successfully',
+        timestamp: new Date().toISOString(),
+        path: 'auth/reset-password',
+        method: 'POST',
+      };
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        return {
+          success: false,
+          message: 'Invalid or expired reset token',
+          errors: [error.message],
+          timestamp: new Date().toISOString(),
+          path: 'auth/reset-password',
+          method: 'POST',
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to reset password',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/reset-password',
         method: 'POST',
       };
     }

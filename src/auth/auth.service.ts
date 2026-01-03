@@ -6,6 +6,8 @@ import * as bcrypt from 'bcrypt';
 import { User, UserDocument } from '../schemas/user.schema';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { LoggerService } from '../common/logger/logger.service';
+import { v4 as uuidv4 } from 'uuid';
+import { EmailService } from '../email/email.service';
 
 @Injectable()
 export class AuthService {
@@ -14,6 +16,7 @@ export class AuthService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     private jwtService: JwtService,
+    private emailService: EmailService,
   ) {
     this.logger.setContext(AuthService.name);
   }
@@ -78,6 +81,17 @@ export class AuthService {
       await user.save();
       this.logger.log(`User ${email} registered successfully`);
 
+      // Send registration email
+      try {
+        await this.emailService.sendRegistrationEmail(email, username);
+        this.logger.log(`Registration email sent to ${email}`);
+      } catch (error) {
+        this.logger.error(
+          `Failed to send registration email to ${email}`,
+          error,
+        );
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password: _, ...result } = user.toObject();
       return result;
@@ -93,6 +107,87 @@ export class AuthService {
       }
       throw error;
     }
+  }
+
+  async sendEmailVerification(email: string) {
+    const user = await this.userModel.findOne({ email });
+    if (!user) {
+      throw new ConflictException('User not found');
+    }
+
+    // Generate verification token
+    const token = uuidv4();
+    user.emailVerificationToken = token;
+    await user.save();
+
+    // Send verification email
+    try {
+      await this.emailService.sendEmailVerification(email, token);
+      this.logger.log(`Verification email sent to ${email}`);
+    } catch (error) {
+      this.logger.error(`Failed to send verification email to ${email}`, error);
+      throw error;
+    }
+  }
+
+  async verifyEmail(token: string) {
+    const user = await this.userModel.findOne({
+      emailVerificationToken: token,
+    });
+    if (!user) {
+      throw new ConflictException('Invalid verification token');
+    }
+
+    user.emailVerified = true;
+    user.emailVerificationToken = undefined;
+    await user.save();
+
+    return { message: 'Email verified successfully' };
+  }
+
+  async sendPasswordReset(email: string) {
+    const user = await this.userModel.findOne({ email });
+    if (!user) {
+      throw new ConflictException('User not found');
+    }
+
+    // Generate reset token
+    const token = uuidv4();
+    user.passwordResetToken = token;
+    user.passwordResetExpires = new Date(Date.now() + 3600000); // 1 hour
+    await user.save();
+
+    // Send reset email
+    try {
+      await this.emailService.sendPasswordReset(email, token);
+      this.logger.log(`Password reset email sent to ${email}`);
+    } catch (error) {
+      this.logger.error(
+        `Failed to send password reset email to ${email}`,
+        error,
+      );
+      throw error;
+    }
+  }
+
+  async resetPassword(token: string, password: string) {
+    const user = await this.userModel.findOne({
+      passwordResetToken: token,
+      passwordResetExpires: { $gt: Date.now() },
+    });
+
+    if (!user) {
+      throw new ConflictException('Invalid or expired reset token');
+    }
+
+    // Hash new password
+    const hashedPassword = await bcrypt.hash(password, 10);
+    user.password = hashedPassword;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+
+    return { message: 'Password reset successfully' };
   }
 
   async validateToken(payload: any) {

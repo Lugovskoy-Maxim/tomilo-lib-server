@@ -134,6 +134,18 @@ export class User {
 
   @Prop({ required: false })
   gender?: string;
+
+  @Prop({ required: false })
+  emailVerificationToken?: string;
+
+  @Prop({ required: false })
+  emailVerified?: boolean;
+
+  @Prop({ required: false })
+  passwordResetToken?: string;
+
+  @Prop({ required: false })
+  passwordResetExpires?: Date;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

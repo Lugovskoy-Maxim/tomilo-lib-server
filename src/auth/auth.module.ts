@@ -11,6 +11,7 @@ import { YandexStrategy } from './strategies/yandex.strategy';
 import { YandexTokenStrategy } from './strategies/yandex-token.strategy';
 import { VkStrategy } from './strategies/vk.strategy';
 import { User, UserSchema } from '../schemas/user.schema';
+import { EmailModule } from '../email/email.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { User, UserSchema } from '../schemas/user.schema';
       signOptions: { expiresIn: '365d' },
     }),
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+    EmailModule,
   ],
   providers: [
     AuthService,

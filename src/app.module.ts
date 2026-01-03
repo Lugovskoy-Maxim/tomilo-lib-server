@@ -28,6 +28,7 @@ import {
   AutoParsingJobSchema,
 } from './schemas/auto-parsing-job.schema';
 import { AutoParsingModule } from './auto-parsing/auto-parsing.module';
+import { EmailModule } from './email/email.module';
 @Module({
   imports: [
     MongooseModule.forRootAsync({
@@ -60,6 +61,7 @@ import { AutoParsingModule } from './auto-parsing/auto-parsing.module';
     ShopModule,
     CommentsModule,
     AutoParsingModule,
+    EmailModule,
   ],
   controllers: [AppController],
   providers: [AppService],
