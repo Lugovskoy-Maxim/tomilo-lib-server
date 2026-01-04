@@ -333,6 +333,8 @@ export class FilesService {
           position: 'center-right',
           scale: 0.35,
           minHeight: 4000,
+          pageNumber: pageNumber,
+          applyEvenPageLogic: true,
         },
       );
       this.logger.log(`Водяной знак применен успешно`);

@@ -54,12 +54,29 @@ export class WatermarkUtil {
         | 'center-right';
       scale?: number;
       minHeight?: number; // Минимальная высота изображения для добавления водяного знака
+      pageNumber?: number; // Номер страницы для определения четности
+      applyEvenPageLogic?: boolean; // Применять ли логику четных/нечетных страниц
     } = {},
   ): Promise<Buffer> {
     try {
       this.logger.log(
         `Попытка добавления водяного знака. Загружен: ${this.watermarkImage ? 'да' : 'нет'}`,
       );
+
+      // Проверяем, нужно ли применять логику четных/нечетных страниц
+      const { applyEvenPageLogic = false, pageNumber } = options;
+
+      if (applyEvenPageLogic && pageNumber !== undefined) {
+        // Проверяем, является ли страница четной (страница четная, если номер четный: 2, 4, 6...)
+        const isEvenPage = pageNumber % 2 === 0;
+
+        if (!isEvenPage) {
+          this.logger.log(
+            `Страница ${pageNumber} нечетная, пропускаем добавление водяного знака`,
+          );
+          return imageBuffer;
+        }
+      }
 
       if (!this.watermarkImage) {
         this.logger.warn('Водяной знак не загружен, возвращаем оригинал');
