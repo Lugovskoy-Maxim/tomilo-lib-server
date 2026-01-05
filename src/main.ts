@@ -8,6 +8,10 @@ import { LoggerService } from './common/logger/logger.service';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Увеличиваем лимит размера тела запроса до 50MB
+  app.useBodyParser('json', { limit: '50mb' });
+  app.useBodyParser('urlencoded', { limit: '50mb', extended: true });
   const logger = new LoggerService();
 
   // Устанавливаем заголовки для правильной кодировки, кроме запросов к статическим файлам uploads

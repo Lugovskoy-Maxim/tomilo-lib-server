@@ -64,7 +64,7 @@ export class ChaptersController {
     FileUploadInterceptor.createMultiple('pages', {
       destination: './uploads/chapters',
       fileTypes: /\/(jpg|jpeg|png|webp|gif)$/,
-      fileSize: 20 * 1024 * 1024, // 20MB limit for chapter pages
+      fileSize: 50 * 1024 * 1024, // 50MB limit for chapter pages
       filenamePrefix: 'chapter-page',
       maxFiles: 50,
     }),
@@ -428,7 +428,7 @@ export class ChaptersController {
     FileUploadInterceptor.createMultiple('pages', {
       destination: './uploads/chapters',
       fileTypes: /\/(jpg|jpeg|png|webp|gif)$/,
-      fileSize: 20 * 1024 * 1024, // 20MB limit for chapter pages
+      fileSize: 50 * 1024 * 1024, // 50MB limit for chapter pages
       filenamePrefix: 'chapter-page',
       maxFiles: 100,
     }),

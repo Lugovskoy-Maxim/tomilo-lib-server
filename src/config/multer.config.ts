@@ -18,6 +18,6 @@ export const multerConfig = {
     }
   },
   limits: {
-    fileSize: 15 * 1024 * 1024, // 10 MB
+    fileSize: 50 * 1024 * 1024, // 50 MB
   },
 };
