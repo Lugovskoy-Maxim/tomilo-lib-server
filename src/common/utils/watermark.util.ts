@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { join } from 'path';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 
 // Используем default import для sharp
 import sharp from 'sharp';
@@ -8,7 +8,7 @@ import sharp from 'sharp';
 @Injectable()
 export class WatermarkUtil {
   private readonly logger = new Logger(WatermarkUtil.name);
-  private watermarkImage: any = null;
+  private watermarkBuffer: Buffer | null = null;
   private watermarkPath = join(process.cwd(), 'watermark', 'watermark.png');
 
   // Добавляем геттер для проверки пути
@@ -29,8 +29,9 @@ export class WatermarkUtil {
         `Проверяем наличие водяного знака по пути: ${this.watermarkPath}`,
       );
       if (existsSync(this.watermarkPath)) {
-        this.watermarkImage = sharp(this.watermarkPath);
-        this.logger.log('Водяной знак успешно загружен');
+        // Загружаем водяной знак в буфер вместо хранения объекта Sharp
+        this.watermarkBuffer = readFileSync(this.watermarkPath);
+        this.logger.log('Водяной знак успешно загружен в буфер');
       } else {
         this.logger.warn(`Водяной знак не найден: ${this.watermarkPath}`);
       }
@@ -60,7 +61,7 @@ export class WatermarkUtil {
   ): Promise<Buffer> {
     try {
       this.logger.log(
-        `Попытка добавления водяного знака. Загружен: ${this.watermarkImage ? 'да' : 'нет'}`,
+        `Попытка добавления водяного знака. Загружен: ${this.watermarkBuffer ? 'да' : 'нет'}`,
       );
 
       // Проверяем, нужно ли применять логику четных/нечетных страниц
@@ -78,7 +79,7 @@ export class WatermarkUtil {
         }
       }
 
-      if (!this.watermarkImage) {
+      if (!this.watermarkBuffer) {
         this.logger.warn('Водяной знак не загружен, возвращаем оригинал');
         return imageBuffer;
       }
@@ -108,15 +109,9 @@ export class WatermarkUtil {
         return imageBuffer;
       }
 
-      // Подготавливаем водяной знак
-      const watermarkBuffer = await this.watermarkImage
-        .clone()
-        .png()
-        .toBuffer();
-
-      // Рассчитываем размер
+      // Рассчитываем размер водяного знака
       const watermarkWidth = Math.floor(metadata.width * scale);
-      const watermarkMetadata = await sharp(watermarkBuffer).metadata();
+      const watermarkMetadata = await sharp(this.watermarkBuffer).metadata();
       const watermarkHeight = Math.floor(
         (watermarkWidth * watermarkMetadata.height) / watermarkMetadata.width,
       );
@@ -126,12 +121,11 @@ export class WatermarkUtil {
       );
 
       // Изменяем размер водяного знака
-      const resizedWatermark = await sharp(watermarkBuffer)
+      const resizedWatermark = await sharp(this.watermarkBuffer)
         .resize(watermarkWidth, watermarkHeight, {
           fit: 'contain',
           withoutEnlargement: true,
         })
-
         .png()
         .toBuffer();
 
@@ -285,7 +279,7 @@ export class WatermarkUtil {
    * Перезагружает водяной знак
    */
   reloadWatermark(): void {
-    this.watermarkImage = null;
+    this.watermarkBuffer = null;
     this.initializeWatermark();
   }
 
@@ -293,6 +287,6 @@ export class WatermarkUtil {
    * Проверяет, загружен ли водяной знак
    */
   isWatermarkLoaded(): boolean {
-    return this.watermarkImage !== null;
+    return this.watermarkBuffer !== null;
   }
 }
