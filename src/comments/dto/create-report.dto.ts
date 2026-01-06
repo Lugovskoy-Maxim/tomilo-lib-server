@@ -21,7 +21,7 @@ export class CreateReportDto {
 
   @IsString()
   @IsNotEmpty()
-  @MinLength(10)
+  @MinLength(1)
   @MaxLength(5000)
   content: string;
 
