@@ -75,10 +75,15 @@ export class CommentsService {
     // Всегда получаем только родительские комментарии (без ответов)
     const query: any = {
       entityType,
-      entityId: new Types.ObjectId(entityId),
       isVisible: true,
       parentId: null, // Всегда фильтруем только родительские комментарии
     };
+
+    // Если entityId равен "all", то не фильтруем по конкретному entityId
+    // Иначе фильтруем по конкретному entityId
+    if (entityId !== 'all') {
+      query.entityId = new Types.ObjectId(entityId);
+    }
 
     const [comments, total] = await Promise.all([
       this.commentModel

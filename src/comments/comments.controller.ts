@@ -13,7 +13,9 @@ import {
   ValidationPipe,
   HttpCode,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
+import { Types } from 'mongoose';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -24,7 +26,7 @@ import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { CommentEntityType } from '../schemas/comment.schema';
 
 @Controller('comments')
-@UsePipes(new ValidationPipe({ transform: true }))
+@UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 export class CommentsController {
   constructor(private readonly commentsService: CommentsService) {}
 
@@ -69,6 +71,16 @@ export class CommentsController {
     @Query('includeReplies') includeReplies: string | boolean = false,
   ): Promise<ApiResponseDto<any>> {
     try {
+      // Validate entityType
+      if (!Object.values(CommentEntityType).includes(entityType)) {
+        throw new BadRequestException('Invalid entity type');
+      }
+
+      // Validate entityId - allow "all" as a special value or valid ObjectId
+      if (entityId !== 'all' && !Types.ObjectId.isValid(entityId)) {
+        throw new BadRequestException('Invalid entity ID');
+      }
+
       const includeRepliesBool =
         includeReplies === 'true' || includeReplies === true;
       const data = await this.commentsService.findAll(
