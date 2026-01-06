@@ -19,6 +19,7 @@ import { UtilsModule } from './common/utils/utils.module';
 import { FilesModule } from './files/files.module';
 import { ShopModule } from './shop/shop.module';
 import { CommentsModule } from './comments/comments.module';
+import { ReportsModule } from './comments/reports.module';
 import { Title, TitleSchema } from './schemas/title.schema';
 import { Chapter, ChapterSchema } from './schemas/chapter.schema';
 import { User, UserSchema } from './schemas/user.schema';
@@ -60,6 +61,7 @@ import { EmailModule } from './email/email.module';
     FilesModule,
     ShopModule,
     CommentsModule,
+    ReportsModule,
     AutoParsingModule,
     EmailModule,
   ],
