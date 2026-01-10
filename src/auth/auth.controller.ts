@@ -1,7 +1,9 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
+  Query,
   UseGuards,
   Request,
   HttpCode,
@@ -231,6 +233,43 @@ export class AuthController {
         timestamp: new Date().toISOString(),
         path: 'auth/verify-email/token',
         method: 'POST',
+      };
+    }
+  }
+
+  @Get('verify-email')
+  @HttpCode(HttpStatus.OK)
+  async verifyEmailGet(
+    @Query('token') token: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.authService.verifyEmail(token);
+      return {
+        success: true,
+        data,
+        message: 'Email verified successfully',
+        timestamp: new Date().toISOString(),
+        path: 'auth/verify-email',
+        method: 'GET',
+      };
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        return {
+          success: false,
+          message: 'Invalid verification token',
+          errors: [error.message],
+          timestamp: new Date().toISOString(),
+          path: 'auth/verify-email',
+          method: 'GET',
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to verify email',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/verify-email',
+        method: 'GET',
       };
     }
   }
