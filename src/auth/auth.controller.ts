@@ -162,19 +162,40 @@ export class AuthController {
     }
   }
 
-  @Post('verify-email')
+  @Post('send-verification-email')
   @HttpCode(HttpStatus.OK)
-  sendEmailVerification(): ApiResponseDto<any> {
-    // Удален вызов authService.sendEmailVerification
-    // Функционал перенесен в email контроллер
-    return {
-      success: false,
-      message:
-        'This endpoint is deprecated. Use /email/send-verification instead.',
-      timestamp: new Date().toISOString(),
-      path: 'auth/verify-email',
-      method: 'POST',
-    };
+  async sendEmailVerification(
+    @Body() emailDto: { email: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      await this.authService.sendEmailVerification(emailDto.email);
+      return {
+        success: true,
+        message: 'Verification email sent successfully',
+        timestamp: new Date().toISOString(),
+        path: 'auth/send-verification-email',
+        method: 'POST',
+      };
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        return {
+          success: false,
+          message: 'User not found',
+          errors: [error.message],
+          timestamp: new Date().toISOString(),
+          path: 'auth/send-verification-email',
+          method: 'POST',
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to send verification email',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/send-verification-email',
+        method: 'POST',
+      };
+    }
   }
 
   @Post('verify-email/token')
