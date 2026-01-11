@@ -15,6 +15,8 @@ import {
   UploadedFile,
   BadRequestException,
   Req,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -650,6 +652,39 @@ export class UsersController {
         errors: [error.message],
         timestamp: new Date().toISOString(),
         path: `users/${id}`,
+      };
+    }
+  }
+
+  @Post('cleanup-orphaned-references')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @HttpCode(HttpStatus.OK)
+  async cleanupOrphanedReferences(): Promise<ApiResponseDto<any>> {
+    try {
+      const result = await this.usersService.cleanupOrphanedReferences();
+      const data = {
+        cleanedBookmarks: result.cleanedBookmarks,
+        cleanedReadingHistoryTitles: result.cleanedReadingHistoryTitles,
+        cleanedReadingHistoryChapters: result.cleanedReadingHistoryChapters,
+      };
+
+      return {
+        success: true,
+        data,
+        message: 'Orphaned references cleaned successfully',
+        timestamp: new Date().toISOString(),
+        path: 'users/cleanup-orphaned-references',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to cleanup orphaned references',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/cleanup-orphaned-references',
+        method: 'POST',
       };
     }
   }

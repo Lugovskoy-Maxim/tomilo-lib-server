@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
+import { Title, TitleDocument } from '../schemas/title.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { FilesService } from '../files/files.service';
@@ -40,6 +41,7 @@ export class UsersService {
 
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     private filesService: FilesService,
     private chaptersService: ChaptersService,
   ) {
@@ -745,5 +747,149 @@ export class UsersService {
       `Deducted ${amount} balance from user ${userId}. New balance: ${user.balance}`,
     );
     return user;
+  }
+
+  async cleanupOrphanedReferences(): Promise<{
+    cleanedBookmarks: number;
+    cleanedReadingHistoryTitles: number;
+    cleanedReadingHistoryChapters: number;
+  }> {
+    this.logger.log('Starting cleanup of orphaned references in user data');
+
+    let cleanedBookmarks = 0;
+    let cleanedReadingHistoryTitles = 0;
+    let cleanedReadingHistoryChapters = 0;
+
+    // Get all users
+    const users = await this.userModel.find({}).exec();
+
+    for (const user of users) {
+      let userModified = false;
+
+      // Clean bookmarks - remove references to non-existent titles
+      if (user.bookmarks && user.bookmarks.length > 0) {
+        const validBookmarks: string[] = [];
+        for (const bookmarkId of user.bookmarks) {
+          try {
+            // Check if title exists (we'll need to import Title model)
+            const titleExists = await this.checkTitleExists(bookmarkId);
+            if (titleExists) {
+              validBookmarks.push(bookmarkId);
+            } else {
+              cleanedBookmarks++;
+              this.logger.log(
+                `Removed orphaned bookmark ${bookmarkId} from user ${user._id.toString()}`,
+              );
+            }
+          } catch {
+            // If we can't check, keep the bookmark
+            validBookmarks.push(bookmarkId);
+          }
+        }
+        if (validBookmarks.length !== user.bookmarks.length) {
+          user.bookmarks = validBookmarks;
+          userModified = true;
+        }
+      }
+
+      // Clean reading history
+      if (user.readingHistory && user.readingHistory.length > 0) {
+        const validReadingHistory: typeof user.readingHistory = [];
+
+        for (const historyEntry of user.readingHistory) {
+          try {
+            // Check if title exists
+            const titleExists = await this.checkTitleExists(
+              historyEntry.titleId.toString(),
+            );
+            if (!titleExists) {
+              cleanedReadingHistoryTitles++;
+              this.logger.log(
+                `Removed orphaned reading history entry for title ${historyEntry.titleId.toString()} from user ${user._id.toString()}`,
+              );
+              continue;
+            }
+
+            // Clean chapters within this title's history
+            const validChapters: typeof historyEntry.chapters = [];
+            for (const chapterEntry of historyEntry.chapters) {
+              try {
+                const chapterExists = await this.checkChapterExists(
+                  chapterEntry.chapterId.toString(),
+                );
+                if (chapterExists) {
+                  validChapters.push(chapterEntry);
+                } else {
+                  cleanedReadingHistoryChapters++;
+                  this.logger.log(
+                    `Removed orphaned chapter ${chapterEntry.chapterId.toString()} from reading history of user ${user._id.toString()}`,
+                  );
+                }
+              } catch {
+                // If we can't check, keep the chapter
+                validChapters.push(chapterEntry);
+              }
+            }
+
+            // Only keep the title entry if it has valid chapters
+            if (validChapters.length > 0) {
+              validReadingHistory.push({
+                ...historyEntry,
+                chapters: validChapters,
+              });
+            } else {
+              cleanedReadingHistoryTitles++;
+              this.logger.log(
+                `Removed reading history entry with no valid chapters for title ${historyEntry.titleId.toString()} from user ${user._id.toString()}`,
+              );
+            }
+          } catch {
+            // If we can't check the title, keep the entry
+            validReadingHistory.push(historyEntry);
+          }
+        }
+
+        if (validReadingHistory.length !== user.readingHistory.length) {
+          user.readingHistory = validReadingHistory;
+          userModified = true;
+        }
+      }
+
+      // Save user if modified
+      if (userModified) {
+        await user.save();
+      }
+    }
+
+    this.logger.log(
+      `Cleanup completed. Removed ${cleanedBookmarks} orphaned bookmarks, ${cleanedReadingHistoryTitles} orphaned reading history titles, and ${cleanedReadingHistoryChapters} orphaned reading history chapters`,
+    );
+
+    return {
+      cleanedBookmarks,
+      cleanedReadingHistoryTitles,
+      cleanedReadingHistoryChapters,
+    };
+  }
+
+  private async checkTitleExists(titleId: string): Promise<boolean> {
+    try {
+      if (!Types.ObjectId.isValid(titleId)) {
+        return false;
+      }
+      const title = await this.titleModel.findById(titleId).exec();
+      return !!title;
+    } catch {
+      return false;
+    }
+  }
+
+  private async checkChapterExists(chapterId: string): Promise<boolean> {
+    try {
+      const chapter = await this.chaptersService.findById(chapterId);
+      return !!chapter;
+    } catch {
+      return false;
+    }
   }
 }
