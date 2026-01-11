@@ -503,4 +503,36 @@ export class ChaptersService {
     chapter.pages = [...chapter.pages, ...pagePaths];
     return chapter.save();
   }
+
+  async deleteChaptersWithoutTitleId(): Promise<{ deletedCount: number }> {
+    // Find chapters where titleId is null or doesn't exist
+    const chaptersWithoutTitleId = await this.chapterModel
+      .find({
+        $or: [{ titleId: null }, { titleId: { $exists: false } }],
+      })
+      .exec();
+
+    let deletedCount = 0;
+    for (const chapter of chaptersWithoutTitleId) {
+      try {
+        // Delete chapter files
+        await this.filesService.deleteChapterPages(chapter._id.toString());
+
+        // Delete the chapter document
+        await this.chapterModel.findByIdAndDelete(chapter._id).exec();
+
+        deletedCount++;
+        this.logger.log(
+          `Deleted chapter ${chapter._id.toString()} without titleId`,
+        );
+      } catch (error) {
+        this.logger.error(
+          `Failed to delete chapter ${chapter._id.toString()}: ${error.message}`,
+        );
+      }
+    }
+
+    this.logger.log(`Deleted ${deletedCount} chapters without titleId`);
+    return { deletedCount };
+  }
 }

@@ -493,4 +493,33 @@ export class ChaptersController {
       };
     }
   }
+
+  @Post('cleanup-orphaned')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @HttpCode(HttpStatus.OK)
+  async cleanupOrphanedChapters(): Promise<ApiResponseDto<any>> {
+    try {
+      const result = await this.chaptersService.deleteChaptersWithoutTitleId();
+      const data = { deleted: result.deletedCount };
+
+      return {
+        success: true,
+        data,
+        message: 'Orphaned chapters deleted successfully',
+        timestamp: new Date().toISOString(),
+        path: 'chapters/cleanup-orphaned',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to cleanup orphaned chapters',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'chapters/cleanup-orphaned',
+        method: 'POST',
+      };
+    }
+  }
 }
