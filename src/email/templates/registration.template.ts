@@ -39,7 +39,7 @@ export const registrationTemplate = (username: string) => `
     <div style="text-align: center; margin-top: 30px; color: #888; font-size: 12px;">
         <p>Это автоматическое сообщение, пожалуйста, не отвечайте на него.</p>
         <p style="margin: 0;">
-            © 2025-<script>document.write(new Date().getFullYear());</script> Tomilo Lib. Все права защищены.
+            © 2025-2026 Tomilo Lib. Все права защищены.
         </p>
     </div>
 </body>
