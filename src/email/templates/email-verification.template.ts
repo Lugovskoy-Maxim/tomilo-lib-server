@@ -36,6 +36,9 @@ export const emailVerificationTemplate = (verificationUrl: string) => `
         </div>
 
         <p>Если вы не запрашивали подтверждение, проигнорируйте это сообщение.</p>
+        <p style="color: #495057; font-size: 14px; margin-top: 20px;">
+            <strong>В целях безопасности:</strong> Эта ссылка будет действительна в течение 1 часа.
+        </p>
     </div>
     
     <div style="text-align: center; margin-top: 30px; color: #888; font-size: 12px;">

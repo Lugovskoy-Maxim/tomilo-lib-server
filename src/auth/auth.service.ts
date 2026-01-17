@@ -118,6 +118,7 @@ export class AuthService {
     // Generate verification token
     const token = uuidv4();
     user.emailVerificationToken = token;
+    user.emailVerificationExpires = new Date(Date.now() + 3600000); // 1 hour
     await user.save();
 
     // Send verification email

@@ -139,6 +139,9 @@ export class User {
   emailVerificationToken?: string;
 
   @Prop({ required: false })
+  emailVerificationExpires?: Date;
+
+  @Prop({ required: false })
   emailVerified?: boolean;
 
   @Prop({ required: false })
