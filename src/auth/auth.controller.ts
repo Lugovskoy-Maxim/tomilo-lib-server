@@ -16,6 +16,7 @@ import { CreateUserDto } from '../users/dto/create-user.dto';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { OAuthLoginDto } from './dto/oauth-login.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -313,7 +314,7 @@ export class AuthController {
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   async resetPassword(
-    @Body() resetDto: { token: string; password: string },
+    @Body() resetDto: ResetPasswordDto,
   ): Promise<ApiResponseDto<any>> {
     try {
       const data = await this.authService.resetPassword(

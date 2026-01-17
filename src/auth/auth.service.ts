@@ -171,6 +171,10 @@ export class AuthService {
   }
 
   async resetPassword(token: string, password: string) {
+    if (!password || password.trim() === '') {
+      throw new ConflictException('Password is required');
+    }
+
     const user = await this.userModel.findOne({
       passwordResetToken: token,
       passwordResetExpires: { $gt: Date.now() },
