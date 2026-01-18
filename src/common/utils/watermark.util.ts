@@ -87,7 +87,7 @@ export class WatermarkUtil {
       const {
         position = 'center-right',
         scale = 0.35,
-        minHeight = 4000,
+        minHeight = 3000,
       } = options;
 
       const mainImage = sharp(imageBuffer);
