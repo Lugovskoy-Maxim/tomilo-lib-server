@@ -89,7 +89,7 @@ export class FilesService {
       imageBuffers,
       {
         scale: 0.35, // 35% от ширины основного изображения
-        minHeight: 4000, // Минимальная высота изображения для добавления водяного знака
+        minHeight: 2000, // Минимальная высота изображения для добавления водяного знака
       },
     );
     this.logger.log(
@@ -332,7 +332,7 @@ export class FilesService {
         {
           position: 'center-right',
           scale: 0.35,
-          minHeight: 4000,
+          minHeight: 2000,
           pageNumber: pageNumber,
           applyEvenPageLogic: true,
         },
