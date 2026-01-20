@@ -21,6 +21,7 @@ Authorization: Bearer <jwt_token>
 - `POST /auth/register` - User registration
 - `POST /auth/yandex` - Yandex OAuth login
 - `POST /auth/vk` - VK OAuth login
+- `POST /auth/change-password` - Change user password
 
 ### Users
 - `GET /users` - Get all users (admin only, paginated)

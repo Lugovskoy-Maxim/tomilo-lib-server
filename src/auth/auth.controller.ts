@@ -12,11 +12,13 @@ import {
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { OAuthLoginDto } from './dto/oauth-login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Controller('auth')
 export class AuthController {
@@ -346,6 +348,49 @@ export class AuthController {
         errors: [error.message],
         timestamp: new Date().toISOString(),
         path: 'auth/reset-password',
+        method: 'POST',
+      };
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  async changePassword(
+    @Request() req,
+    @Body() changePasswordDto: ChangePasswordDto,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.authService.changePassword(
+        req.user.userId,
+        changePasswordDto.currentPassword,
+        changePasswordDto.newPassword,
+      );
+      return {
+        success: true,
+        data,
+        message: 'Password changed successfully',
+        timestamp: new Date().toISOString(),
+        path: 'auth/change-password',
+        method: 'POST',
+      };
+    } catch (error) {
+      if (error instanceof ConflictException) {
+        return {
+          success: false,
+          message: 'Invalid old password or user not found',
+          errors: [error.message],
+          timestamp: new Date().toISOString(),
+          path: 'auth/change-password',
+          method: 'POST',
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to change password',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/change-password',
         method: 'POST',
       };
     }

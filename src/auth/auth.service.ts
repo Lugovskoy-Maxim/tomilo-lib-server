@@ -277,4 +277,30 @@ export class AuthService {
     const { password, ...result } = user.toObject();
     return result;
   }
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ) {
+    const user = await this.userModel.findById(userId);
+    if (!user) {
+      throw new ConflictException('User not found');
+    }
+
+    // Проверяем старый пароль
+    if (
+      !user.password ||
+      !(await bcrypt.compare(currentPassword, user.password))
+    ) {
+      throw new ConflictException('Invalid currentPassword');
+    }
+
+    // Хэшируем новый пароль
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    user.password = hashedPassword;
+    await user.save();
+
+    return { message: 'Password changed successfully' };
+  }
 }
