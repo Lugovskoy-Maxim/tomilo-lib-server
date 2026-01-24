@@ -22,11 +22,15 @@ export class SearchController {
   async searchTitles(
     @Query('q') query: string,
     @Query('limit') limit = 10,
+    @Query('sortBy') sortBy = 'createdAt',
+    @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
   ): Promise<ApiResponseDto<TitleResponseDto[]>> {
     try {
       const titles = await this.searchService.searchTitles({
         search: query,
         limit: Number(limit),
+        sortBy,
+        sortOrder,
       });
 
       const data = titles.map((title) => ({
