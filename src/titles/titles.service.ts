@@ -89,6 +89,7 @@ export class TitlesService {
     const sortFieldMap: { [key: string]: string } = {
       chapters: 'totalChapters',
       year: 'releaseYear',
+      rating: 'averageRating',
     };
 
     const actualSortBy = sortFieldMap[sortBy] || sortBy;
