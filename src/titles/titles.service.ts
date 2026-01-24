@@ -85,8 +85,15 @@ export class TitlesService {
       query.tags = { $in: tags };
     }
 
+    // Map common sorting parameter names to actual field names
+    const sortFieldMap: { [key: string]: string } = {
+      chapters: 'totalChapters',
+      year: 'releaseYear',
+    };
+
+    const actualSortBy = sortFieldMap[sortBy] || sortBy;
     const sortOptions: any = {};
-    sortOptions[sortBy] = sortOrder === 'desc' ? -1 : 1;
+    sortOptions[actualSortBy] = sortOrder === 'desc' ? -1 : 1;
 
     // Build the find query
     let findQuery = this.titleModel.find(query);
