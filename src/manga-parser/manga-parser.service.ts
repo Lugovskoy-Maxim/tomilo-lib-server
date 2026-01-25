@@ -14,6 +14,7 @@ import { SenkuroParser } from './parsers/senkuro.parser';
 import { MangaShiParser } from './parsers/manga-shi.parser';
 import { MangabuffParser } from './parsers/mangabuff.parser';
 import { MangahubParser } from './parsers/mangahub.parser';
+import { MangahubCcParser } from './parsers/mangahub-cc.parser';
 
 @Injectable()
 export class MangaParserService {
@@ -41,6 +42,7 @@ export class MangaParserService {
     this.parsers.set('mangabuff.ru', new MangabuffParser());
     this.parsers.set('v2.mangahub.one', new MangahubParser());
     this.parsers.set('mangahub.one', new MangahubParser());
+    this.parsers.set('mangahub.cc', new MangahubCcParser());
   }
 
   private sanitizeFilename(name: string): string {
@@ -649,7 +651,7 @@ export class MangaParserService {
     const parser = this.getParserForUrl(url);
     if (!parser) {
       throw new BadRequestException(
-        'Unsupported site. Only manga-shi.org, senkuro.me, and mangabuff.ru are supported for chapter import.',
+        'Unsupported site. Only manga-shi.org, senkuro.me, mangabuff.ru, and mangahub.cc are supported for chapter import.',
       );
     }
 
@@ -803,6 +805,7 @@ export class MangaParserService {
         'mangabuff.ru',
         'v2.mangahub.one',
         'mangahub.one',
+        'mangahub.cc',
       ],
     };
   }
