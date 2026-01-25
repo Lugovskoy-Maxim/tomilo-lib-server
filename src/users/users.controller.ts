@@ -60,6 +60,33 @@ export class UsersController {
     }
   }
 
+  // 👤 Получить пользователя по ID (для админов)
+  @Get('admin/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async getUserByIdAdmin(
+    @Param('id') id: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.findById(id);
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'User not found',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}`,
+      };
+    }
+  }
+
   // 👤 Получить текущего пользователя
   @Get('profile')
   @UseGuards(JwtAuthGuard)
