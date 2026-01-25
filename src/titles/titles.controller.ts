@@ -89,6 +89,31 @@ export class TitlesController {
   }
 
   /**
+   * Вспомогательный метод для определения canViewAdult на основе настроек пользователя
+   * Возвращает true если пользователь может видеть взрослый контент
+   */
+  private async getCanViewAdult(req: any): Promise<boolean> {
+    // По умолчанию показываем весь контент для неавторизованных пользователей
+    let canViewAdult = true;
+
+    // Проверяем, авторизован ли пользователь
+    if (req.user && req.user.userId) {
+      try {
+        const user = await this.usersService.findById(req.user.userId);
+        if (user && user.displaySettings) {
+          // Если пользователь отключил взрослый контент в настройках, скрываем его
+          canViewAdult = user.displaySettings.isAdult !== false;
+        }
+      } catch {
+        // Пользователь не найден или ошибка, показываем весь контент
+        canViewAdult = true;
+      }
+    }
+
+    return canViewAdult;
+  }
+
+  /**
    * Обработать isAdult поле - просто возвращает boolean на основе ageLimit
    * Настройки пользователя НЕ влияют на это поле
    */
@@ -124,7 +149,11 @@ export class TitlesController {
     await this.checkIPActivity(req);
 
     try {
-      const titles = await this.titlesService.getPopularTitles(Number(limit));
+      const canViewAdult = await this.getCanViewAdult(req);
+      const titles = await this.titlesService.getPopularTitles(
+        Number(limit),
+        canViewAdult,
+      );
 
       const data = titles.map((title) => ({
         id: title._id?.toString(),
@@ -264,10 +293,15 @@ export class TitlesController {
   @Get('titles/latest-updates')
   async getLatestUpdates(
     @Query('limit') limit = 15,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
+      const canViewAdult = await this.getCanViewAdult(req);
       const titlesWithChapters =
-        await this.titlesService.getTitlesWithRecentChapters(Number(limit));
+        await this.titlesService.getTitlesWithRecentChapters(
+          Number(limit),
+          canViewAdult,
+        );
       const data = titlesWithChapters.map((item) => {
         const releaseDate = new Date(item.latestChapter.releaseDate);
 
@@ -326,6 +360,7 @@ export class TitlesController {
     await this.checkIPActivity(req);
 
     try {
+      const canViewAdult = await this.getCanViewAdult(req);
       const result = await this.titlesService.findAll({
         search: query,
         page: Number(page),
@@ -338,6 +373,7 @@ export class TitlesController {
         sortBy,
         sortOrder,
         populateChapters: false,
+        canViewAdult,
       });
 
       const data = result.titles.map((title) => ({
@@ -579,6 +615,7 @@ export class TitlesController {
     @Query('tags') tags?: string,
     @Query('sortBy') sortBy = 'createdAt',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
       this.logger.debug(
@@ -643,6 +680,8 @@ export class TitlesController {
         `Parsed age limits for filtering: ${JSON.stringify(filterAgeLimits)}`,
       );
 
+      const canViewAdult = await this.getCanViewAdult(req);
+
       const result = await this.titlesService.findAll({
         page: Number(page),
         limit: Number(limit),
@@ -656,6 +695,7 @@ export class TitlesController {
         sortBy,
         sortOrder,
         populateChapters: false,
+        canViewAdult,
       });
 
       const data = {
@@ -685,9 +725,16 @@ export class TitlesController {
   }
 
   @Get('titles/recent')
-  async getRecent(@Query('limit') limit = 10): Promise<ApiResponseDto<any>> {
+  async getRecent(
+    @Query('limit') limit = 10,
+    @Req() req?: any,
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.titlesService.getRecentTitles(Number(limit));
+      const canViewAdult = await this.getCanViewAdult(req);
+      const data = await this.titlesService.getRecentTitles(
+        Number(limit),
+        canViewAdult,
+      );
 
       return {
         success: true,
@@ -709,9 +756,14 @@ export class TitlesController {
   @Get('titles/random')
   async getRandomTitles(
     @Query('limit') limit = 10,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const titles = await this.titlesService.getRandomTitles(Number(limit));
+      const canViewAdult = await this.getCanViewAdult(req);
+      const titles = await this.titlesService.getRandomTitles(
+        Number(limit),
+        canViewAdult,
+      );
 
       const data = titles.map((title) => ({
         id: title._id?.toString(),
@@ -927,11 +979,14 @@ export class TitlesController {
   @Get('titles/top/day')
   async getTopTitlesDay(
     @Query('limit') limit = 10,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
+      const canViewAdult = await this.getCanViewAdult(req);
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'day',
         Number(limit),
+        canViewAdult,
       );
 
       const data = titles.map((title) => ({
@@ -966,11 +1021,14 @@ export class TitlesController {
   @Get('titles/top/week')
   async getTopTitlesWeek(
     @Query('limit') limit = 10,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
+      const canViewAdult = await this.getCanViewAdult(req);
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'week',
         Number(limit),
+        canViewAdult,
       );
 
       const data = titles.map((title) => ({
@@ -1005,11 +1063,14 @@ export class TitlesController {
   @Get('titles/top/month')
   async getTopTitlesMonth(
     @Query('limit') limit = 10,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
+      const canViewAdult = await this.getCanViewAdult(req);
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'month',
         Number(limit),
+        canViewAdult,
       );
 
       const data = titles.map((title) => ({
