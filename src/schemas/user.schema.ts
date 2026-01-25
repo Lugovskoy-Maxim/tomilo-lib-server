@@ -226,7 +226,7 @@ export class User {
   // Display settings
   @Prop({
     type: {
-      isAdult: { type: Boolean, default: false },
+      isAdult: { type: Boolean, default: true },
       theme: {
         type: String,
         enum: ['light', 'dark', 'system'],
@@ -234,7 +234,7 @@ export class User {
       },
     },
     default: {
-      isAdult: false,
+      isAdult: true,
       theme: 'system',
     },
   })
