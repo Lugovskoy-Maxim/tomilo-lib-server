@@ -953,4 +953,242 @@ export class UsersService {
   }> {
     return this.botDetectionService.getBotStats();
   }
+
+  // 🔒 Privacy Settings Methods
+
+  /**
+   * Обновить настройки приватности
+   */
+  async updatePrivacySettings(
+    userId: string,
+    privacySettings: {
+      profileVisibility?: 'public' | 'friends' | 'private';
+      readingHistoryVisibility?: 'public' | 'friends' | 'private';
+    },
+  ): Promise<User> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const updateFields: Record<string, any> = {};
+    if (privacySettings.profileVisibility !== undefined) {
+      updateFields['privacy.profileVisibility'] =
+        privacySettings.profileVisibility;
+    }
+    if (privacySettings.readingHistoryVisibility !== undefined) {
+      updateFields['privacy.readingHistoryVisibility'] =
+        privacySettings.readingHistoryVisibility;
+    }
+
+    const updatedUser = await this.userModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { $set: updateFields },
+        { new: true },
+      )
+      .select('-password');
+
+    if (!updatedUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    this.logger.log(
+      `Privacy settings updated for user ${userId}: ${JSON.stringify(privacySettings)}`,
+    );
+    return updatedUser;
+  }
+
+  /**
+   * Проверить, может ли указанный пользователь видеть профиль
+   */
+  canViewProfile(
+    targetUserPrivacy: {
+      profileVisibility: 'public' | 'friends' | 'private';
+    },
+    viewerId?: string,
+    isFriend: boolean = false,
+  ): boolean {
+    if (!targetUserPrivacy) return true;
+
+    switch (targetUserPrivacy.profileVisibility) {
+      case 'public':
+        return true;
+      case 'friends':
+        return !!viewerId && isFriend;
+      case 'private':
+        return !!viewerId; // Only the user themselves
+      default:
+        return true;
+    }
+  }
+
+  /**
+   * Проверить, может ли указанный пользователь видеть историю чтения
+   */
+  canViewReadingHistory(
+    targetUserPrivacy: {
+      readingHistoryVisibility: 'public' | 'friends' | 'private';
+    },
+    viewerId?: string,
+    isFriend: boolean = false,
+  ): boolean {
+    if (!targetUserPrivacy) return false;
+
+    switch (targetUserPrivacy.readingHistoryVisibility) {
+      case 'public':
+        return true;
+      case 'friends':
+        return !!viewerId && isFriend;
+      case 'private':
+        return !!viewerId; // Only the user themselves
+      default:
+        return false;
+    }
+  }
+
+  // 🔔 Notification Settings Methods
+
+  /**
+   * Обновить настройки уведомлений
+   */
+  async updateNotificationSettings(
+    userId: string,
+    notificationSettings: {
+      newChapters?: boolean;
+      comments?: boolean;
+    },
+  ): Promise<User> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const updateFields: Record<string, any> = {};
+    if (notificationSettings.newChapters !== undefined) {
+      updateFields['notifications.newChapters'] =
+        notificationSettings.newChapters;
+    }
+    if (notificationSettings.comments !== undefined) {
+      updateFields['notifications.comments'] = notificationSettings.comments;
+    }
+
+    const user = await this.userModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { $set: updateFields },
+        { new: true },
+      )
+      .select('-password');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    this.logger.log(
+      `Notification settings updated for user ${userId}: ${JSON.stringify(notificationSettings)}`,
+    );
+    return user;
+  }
+
+  /**
+   * Получить настройки уведомлений пользователя
+   */
+  async getNotificationSettings(userId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('notifications');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user.notifications;
+  }
+
+  // 🎨 Display Settings Methods
+
+  /**
+   * Обновить настройки отображения
+   */
+  async updateDisplaySettings(
+    userId: string,
+    displaySettings: {
+      isAdult?: boolean;
+      theme?: 'light' | 'dark' | 'system';
+    },
+  ): Promise<User> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const updateFields: Record<string, any> = {};
+    if (displaySettings.isAdult !== undefined) {
+      updateFields['displaySettings.isAdult'] = displaySettings.isAdult;
+    }
+    if (displaySettings.theme !== undefined) {
+      updateFields['displaySettings.theme'] = displaySettings.theme;
+    }
+
+    const user = await this.userModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { $set: updateFields },
+        { new: true },
+      )
+      .select('-password');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    this.logger.log(
+      `Display settings updated for user ${userId}: ${JSON.stringify(displaySettings)}`,
+    );
+    return user;
+  }
+
+  /**
+   * Получить настройки отображения пользователя
+   */
+  async getDisplaySettings(userId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('displaySettings');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user.displaySettings;
+  }
+
+  /**
+   * Получить все настройки пользователя
+   */
+  async getUserSettings(userId: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('privacy notifications displaySettings');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return {
+      privacy: user.privacy,
+      notifications: user.notifications,
+      displaySettings: user.displaySettings,
+    };
+  }
 }

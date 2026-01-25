@@ -7,6 +7,7 @@ import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
 import { Collection, CollectionSchema } from '../schemas/collection.schema';
 import { FilesModule } from '../files/files.module';
 import { BotDetectionModule } from '../common/services/bot-detection.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { BotDetectionModule } from '../common/services/bot-detection.module';
     ]),
     FilesModule,
     BotDetectionModule,
+    UsersModule,
   ],
   controllers: [TitlesController],
   providers: [TitlesService],

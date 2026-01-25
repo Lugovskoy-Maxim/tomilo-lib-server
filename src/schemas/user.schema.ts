@@ -182,6 +182,66 @@ export class User {
 
   @Prop({ required: false })
   passwordResetExpires?: Date;
+
+  // Privacy settings
+  @Prop({
+    type: {
+      profileVisibility: {
+        type: String,
+        enum: ['public', 'friends', 'private'],
+        default: 'public',
+      },
+      readingHistoryVisibility: {
+        type: String,
+        enum: ['public', 'friends', 'private'],
+        default: 'private',
+      },
+    },
+    default: {
+      profileVisibility: 'public',
+      readingHistoryVisibility: 'private',
+    },
+  })
+  privacy: {
+    profileVisibility: 'public' | 'friends' | 'private';
+    readingHistoryVisibility: 'public' | 'friends' | 'private';
+  };
+
+  // Notification settings
+  @Prop({
+    type: {
+      newChapters: { type: Boolean, default: true },
+      comments: { type: Boolean, default: true },
+    },
+    default: {
+      newChapters: true,
+      comments: true,
+    },
+  })
+  notifications: {
+    newChapters: boolean;
+    comments: boolean;
+  };
+
+  // Display settings
+  @Prop({
+    type: {
+      isAdult: { type: Boolean, default: false },
+      theme: {
+        type: String,
+        enum: ['light', 'dark', 'system'],
+        default: 'system',
+      },
+    },
+    default: {
+      isAdult: false,
+      theme: 'system',
+    },
+  })
+  displaySettings: {
+    isAdult: boolean;
+    theme: 'light' | 'dark' | 'system';
+  };
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

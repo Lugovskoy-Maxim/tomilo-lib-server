@@ -17,6 +17,7 @@ import {
   Req,
   HttpCode,
   HttpStatus,
+  ForbiddenException,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -659,12 +660,65 @@ export class UsersController {
     }
   }
 
-  // 👥 Получить пользователя по ID
+  // 👥 Получить пользователя по ID (с учётом приватности)
   @Get(':id')
   @UseGuards(JwtAuthGuard)
-  async getUserById(@Param('id') id: string): Promise<ApiResponseDto<any>> {
+  async getUserById(
+    @Param('id') id: string,
+    @Request() req,
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.usersService.findById(id);
+      const viewerId = req.user.userId;
+      const isOwnProfile = viewerId === id;
+
+      // Получаем полные данные пользователя (including privacy settings)
+      const targetUser = await this.usersService.findById(id);
+
+      // Проверяем видимость профиля
+      const canViewProfile = this.usersService.canViewProfile(
+        targetUser.privacy,
+        viewerId,
+        false, // TODO: добавить проверку дружбы если есть друзья
+      );
+
+      if (!canViewProfile) {
+        throw new ForbiddenException('This profile is private');
+      }
+
+      // Формируем ответ в зависимости от настроек приватности
+      let data: any = {
+        _id: targetUser._id,
+        username: targetUser.username,
+        avatar: targetUser.avatar,
+        level: targetUser.level,
+        role: targetUser.role,
+        privacy: {
+          profileVisibility: targetUser.privacy?.profileVisibility,
+          readingHistoryVisibility:
+            targetUser.privacy?.readingHistoryVisibility,
+        },
+      };
+
+      // Если профиль публичный или владелец - добавляем больше данных
+      if (targetUser.privacy?.profileVisibility === 'public' || isOwnProfile) {
+        data = {
+          ...data,
+          firstName: targetUser.firstName,
+          lastName: targetUser.lastName,
+          bookmarks: targetUser.bookmarks,
+        };
+      }
+
+      // Проверяем видимость истории чтения
+      const canViewReadingHistory = this.usersService.canViewReadingHistory(
+        targetUser.privacy,
+        viewerId,
+        false,
+      );
+
+      if (canViewReadingHistory) {
+        data.readingHistory = targetUser.readingHistory;
+      }
 
       return {
         success: true,
@@ -673,6 +727,15 @@ export class UsersController {
         path: `users/${id}`,
       };
     } catch (error) {
+      if (error instanceof ForbiddenException) {
+        return {
+          success: false,
+          message: 'This profile is private',
+          errors: [error.message],
+          timestamp: new Date().toISOString(),
+          path: `users/${id}`,
+        };
+      }
       return {
         success: false,
         message: 'Failed to fetch user',
@@ -799,6 +862,239 @@ export class UsersController {
         timestamp: new Date().toISOString(),
         path: `users/admin/${id}/reset-bot-status`,
         method: 'POST',
+      };
+    }
+  }
+
+  // 🔒 Настройки приватности
+
+  /**
+   * Получить настройки приватности
+   */
+  @Get('profile/settings/privacy')
+  @UseGuards(JwtAuthGuard)
+  async getPrivacySettings(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const user = await this.usersService.findById(req.user.userId);
+
+      return {
+        success: true,
+        data: {
+          profileVisibility: user.privacy?.profileVisibility || 'public',
+          readingHistoryVisibility:
+            user.privacy?.readingHistoryVisibility || 'private',
+        },
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings/privacy',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch privacy settings',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings/privacy',
+      };
+    }
+  }
+
+  /**
+   * Обновить настройки приватности
+   */
+  @Put('profile/settings/privacy')
+  @UseGuards(JwtAuthGuard)
+  async updatePrivacySettings(
+    @Request() req,
+    @Body()
+    body: {
+      profileVisibility?: 'public' | 'friends' | 'private';
+      readingHistoryVisibility?: 'public' | 'friends' | 'private';
+    },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.updatePrivacySettings(
+        req.user.userId,
+        body,
+      );
+
+      return {
+        success: true,
+        data: data.privacy,
+        message: 'Privacy settings updated successfully',
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings/privacy',
+        method: 'PUT',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to update privacy settings',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings/privacy',
+        method: 'PUT',
+      };
+    }
+  }
+
+  // 🔔 Настройки уведомлений
+
+  /**
+   * Получить настройки уведомлений
+   */
+  @Get('profile/settings/notifications')
+  @UseGuards(JwtAuthGuard)
+  async getNotificationSettings(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getNotificationSettings(
+        req.user.userId,
+      );
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings/notifications',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch notification settings',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings/notifications',
+      };
+    }
+  }
+
+  /**
+   * Обновить настройки уведомлений
+   */
+  @Put('profile/settings/notifications')
+  @UseGuards(JwtAuthGuard)
+  async updateNotificationSettings(
+    @Request() req,
+    @Body()
+    body: {
+      newChapters?: boolean;
+      comments?: boolean;
+    },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.updateNotificationSettings(
+        req.user.userId,
+        body,
+      );
+
+      return {
+        success: true,
+        data: data.notifications,
+        message: 'Notification settings updated successfully',
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings/notifications',
+        method: 'PUT',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to update notification settings',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings/notifications',
+        method: 'PUT',
+      };
+    }
+  }
+
+  // 🎨 Настройки отображения
+
+  /**
+   * Получить настройки отображения
+   */
+  @Get('profile/settings/display')
+  @UseGuards(JwtAuthGuard)
+  async getDisplaySettings(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getDisplaySettings(req.user.userId);
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings/display',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch display settings',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings/display',
+      };
+    }
+  }
+
+  /**
+   * Обновить настройки отображения
+   */
+  @Put('profile/settings/display')
+  @UseGuards(JwtAuthGuard)
+  async updateDisplaySettings(
+    @Request() req,
+    @Body()
+    body: {
+      isAdult?: boolean;
+      theme?: 'light' | 'dark' | 'system';
+    },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.updateDisplaySettings(
+        req.user.userId,
+        body,
+      );
+
+      return {
+        success: true,
+        data: data.displaySettings,
+        message: 'Display settings updated successfully',
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings/display',
+        method: 'PUT',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to update display settings',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings/display',
+        method: 'PUT',
+      };
+    }
+  }
+
+  /**
+   * Получить все настройки пользователя
+   */
+  @Get('profile/settings')
+  @UseGuards(JwtAuthGuard)
+  async getAllSettings(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getUserSettings(req.user.userId);
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch settings',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/settings',
       };
     }
   }
