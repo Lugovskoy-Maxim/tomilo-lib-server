@@ -21,6 +21,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Request } from 'express';
+import * as jwt from 'jsonwebtoken';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -96,17 +97,31 @@ export class TitlesController {
     // По умолчанию показываем весь контент для неавторизованных пользователей
     let canViewAdult = true;
 
-    // Проверяем, авторизован ли пользователь
-    if (req.user && req.user.userId) {
-      try {
-        const user = await this.usersService.findById(req.user.userId);
-        if (user && user.displaySettings) {
-          // Если пользователь отключил взрослый контент в настройках, скрываем его
-          canViewAdult = user.displaySettings.isAdult !== false;
+    // Извлекаем токен из заголовка Authorization
+    const authHeader = req.headers?.authorization || req.headers?.Authorization;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7);
+
+      if (token) {
+        try {
+          // Декодируем JWT токен и верифицируем для получения userId
+          const jwtSecret =
+            process.env.JWT_SECRET || 'your-super-secret-jwt-key';
+
+          const decoded = jwt.verify(token, jwtSecret) as { userId?: string };
+
+          if (decoded && decoded.userId) {
+            const user = await this.usersService.findById(decoded.userId);
+            if (user && user.displaySettings) {
+              // Если пользователь отключил взрослый контент в настройках, скрываем его
+              canViewAdult = user.displaySettings.isAdult !== false;
+            }
+          }
+        } catch {
+          // Токен недействителен или истек, показываем весь контент
+          canViewAdult = true;
         }
-      } catch {
-        // Пользователь не найден или ошибка, показываем весь контент
-        canViewAdult = true;
       }
     }
 

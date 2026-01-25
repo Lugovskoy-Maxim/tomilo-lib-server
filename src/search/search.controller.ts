@@ -2,6 +2,7 @@ import { Controller, Get, Query, Request } from '@nestjs/common';
 import { SearchService } from './search.service';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { UsersService } from '../users/users.service';
+import * as jwt from 'jsonwebtoken';
 
 // DTO для ответов API
 class TitleResponseDto {
@@ -34,17 +35,32 @@ export class SearchController {
       // Determine if user can view adult content
       let canViewAdult = true; // Default: show all content for unauthenticated users
 
-      // Check if user is authenticated via JWT
-      if (req.user && req.user.userId) {
-        try {
-          const user = await this.usersService.findById(req.user.userId);
-          if (user && user.displaySettings) {
-            // If user has disabled adult content in settings, filter it out
-            canViewAdult = user.displaySettings.isAdult !== false;
+      // Извлекаем токен из заголовка Authorization
+      const authHeader =
+        req.headers?.authorization || req.headers?.Authorization;
+
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+
+        if (token) {
+          try {
+            // Декодируем JWT токен и верифицируем для получения userId
+            const jwtSecret =
+              process.env.JWT_SECRET || 'your-super-secret-jwt-key';
+
+            const decoded = jwt.verify(token, jwtSecret) as { userId?: string };
+
+            if (decoded && decoded.userId) {
+              const user = await this.usersService.findById(decoded.userId);
+              if (user && user.displaySettings) {
+                // Если пользователь отключил взрослый контент в настройках, скрываем его
+                canViewAdult = user.displaySettings.isAdult !== false;
+              }
+            }
+          } catch {
+            // Токен недействителен или истек, показываем весь контент
+            canViewAdult = true;
           }
-        } catch {
-          // User not found or error, default to showing all content
-          canViewAdult = true;
         }
       }
 
