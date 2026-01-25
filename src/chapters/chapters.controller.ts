@@ -399,6 +399,7 @@ export class ChaptersController {
   }
 
   @Post(':id/view')
+  @UseGuards(JwtAuthGuard)
   async incrementViews(@Param('id') id: string): Promise<ApiResponseDto<any>> {
     try {
       const data = await this.chaptersService.incrementViews(id);

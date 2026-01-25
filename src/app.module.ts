@@ -3,6 +3,8 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 import { UsersModule } from './users/users.module';
 import { TitlesModule } from './titles/titles.module';
 import { ChaptersModule } from './chapters/chapters.module';
@@ -30,6 +32,7 @@ import {
 } from './schemas/auto-parsing-job.schema';
 import { AutoParsingModule } from './auto-parsing/auto-parsing.module';
 import { EmailModule } from './email/email.module';
+
 @Module({
   imports: [
     MongooseModule.forRootAsync({
@@ -37,6 +40,13 @@ import { EmailModule } from './email/email.module';
       inject: [ConfigService],
       useFactory: getMongoConfig,
     }),
+    // Rate limiting configuration
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000, // 1 minute
+        limit: 60, // 60 requests per minute for normal endpoints
+      },
+    ]),
     ConfigModule.forRoot(),
     ScheduleModule.forRoot(),
     MongooseModule.forFeature([
@@ -66,6 +76,12 @@ import { EmailModule } from './email/email.module';
     EmailModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

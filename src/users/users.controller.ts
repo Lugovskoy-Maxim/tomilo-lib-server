@@ -715,4 +715,91 @@ export class UsersController {
       };
     }
   }
+
+  // 🛡️ Bot Detection Admin Endpoints
+
+  /**
+   * Получить список подозрительных пользователей (ботов)
+   */
+  @Get('admin/suspicious-users')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async getSuspiciousUsers(
+    @Query('limit') limit: number = 50,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getSuspiciousUsers(Number(limit));
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/admin/suspicious-users',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch suspicious users',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/admin/suspicious-users',
+      };
+    }
+  }
+
+  /**
+   * Получить статистику по ботам
+   */
+  @Get('admin/bot-stats')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async getBotStats(): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getBotStats();
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/admin/bot-stats',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch bot stats',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/admin/bot-stats',
+      };
+    }
+  }
+
+  /**
+   * Сбросить статус бота для пользователя
+   */
+  @Post('admin/:id/reset-bot-status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async resetBotStatus(@Param('id') id: string): Promise<ApiResponseDto<any>> {
+    try {
+      await this.usersService.resetBotStatus(id);
+
+      return {
+        success: true,
+        message: 'Bot status reset successfully',
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/reset-bot-status`,
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to reset bot status',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/reset-bot-status`,
+        method: 'POST',
+      };
+    }
+  }
 }

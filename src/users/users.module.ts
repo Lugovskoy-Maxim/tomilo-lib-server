@@ -5,6 +5,7 @@ import { UsersController } from './users.controller';
 import { User, UserSchema } from '../schemas/user.schema';
 import { FilesModule } from '../files/files.module';
 import { ChaptersModule } from '../chapters/chapters.module';
+import { BotDetectionService } from '../common/services/bot-detection.service';
 
 @Module({
   imports: [
@@ -13,7 +14,7 @@ import { ChaptersModule } from '../chapters/chapters.module';
     ChaptersModule,
   ],
   controllers: [UsersController],
-  providers: [UsersService],
+  providers: [UsersService, BotDetectionService],
   exports: [UsersService],
 })
 export class UsersModule {}

@@ -32,6 +32,39 @@ export class User {
   @Prop({ default: 0 })
   balance: number;
 
+  // Bot detection fields
+  @Prop({ default: false })
+  isBot: boolean;
+
+  @Prop({ default: false })
+  suspicious: boolean;
+
+  @Prop({ default: 0 })
+  botScore: number;
+
+  @Prop()
+  lastActivityAt: Date;
+
+  @Prop({
+    type: [
+      {
+        botScore: { type: Number, required: true },
+        reasons: [{ type: String, required: true }],
+        chapterId: { type: Types.ObjectId, ref: 'Chapter' },
+        titleId: { type: Types.ObjectId, ref: 'Title' },
+        timestamp: { type: Date, default: Date.now },
+      },
+    ],
+    default: [],
+  })
+  suspiciousActivityLog: {
+    botScore: number;
+    reasons: string[];
+    chapterId?: Types.ObjectId;
+    titleId?: Types.ObjectId;
+    timestamp: Date;
+  }[];
+
   // Profile decorations
   @Prop({
     type: {

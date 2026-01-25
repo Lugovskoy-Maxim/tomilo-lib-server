@@ -44,6 +44,11 @@ Authorization: Bearer <jwt_token>
 - `POST /users/avatar` - Remove user avatar
 - `GET /users/:id` - Get user by ID
 
+#### Bot Detection (Admin)
+- `GET /users/admin/suspicious-users` - Get list of suspicious/bot users
+- `GET /users/admin/bot-stats` - Get bot detection statistics
+- `POST /users/admin/:id/reset-bot-status` - Reset bot status for a user
+
 ### Titles
 - `GET /titles/titles/popular` - Get popular titles
 - `GET /titles/collections` - Get title collections

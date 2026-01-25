@@ -13,6 +13,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { FilesService } from '../files/files.service';
 import { ChaptersService } from '../chapters/chapters.service';
 import { LoggerService } from '../common/logger/logger.service';
+import { BotDetectionService } from '../common/services/bot-detection.service';
 // Interfaces for type safety in reading history operations
 interface ReadingHistoryEntry {
   titleId: Types.ObjectId;
@@ -44,6 +45,7 @@ export class UsersService {
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     private filesService: FilesService,
     private chaptersService: ChaptersService,
+    private botDetectionService: BotDetectionService,
   ) {
     this.logger.setContext(UsersService.name);
   }
@@ -468,8 +470,37 @@ export class UsersService {
       this.logger.log(`Added new title to user ${userId}'s reading history`);
     } // <- Добавлена закрывающая скобка для блока else
 
-    // Award experience for reading
-    await this.addExperience(userId, 10); // 10 XP per chapter read
+    // 🛡️ Проверка на ботов перед начислением XP
+    const botDetectionResult = await this.botDetectionService.checkActivity(
+      userId,
+      chapterObjectId.toString(),
+      titleIdStr,
+    );
+
+    // Если пользователь определен как бот - не начисляем XP и предупреждаем
+    if (botDetectionResult.isBot) {
+      this.logger.warn(
+        `Bot activity detected for user ${userId}: score=${botDetectionResult.botScore}, reasons=${JSON.stringify(botDetectionResult.reasons)}`,
+      );
+      // Обновляем статус в базе данных
+      await this.botDetectionService.updateBotStatus(
+        userId,
+        botDetectionResult,
+      );
+    } else if (botDetectionResult.isSuspicious) {
+      // Для подозрительных пользователей постепенно увеличиваем score
+      await this.botDetectionService.updateBotStatus(
+        userId,
+        botDetectionResult,
+      );
+    }
+
+    // Award experience for reading (только если не бот)
+    if (!botDetectionResult.isBot) {
+      await this.addExperience(userId, 10); // 10 XP per chapter read
+    } else {
+      this.logger.warn(`Skipping XP award for bot user ${userId}`);
+    }
 
     // Сохраняем изменения
     await user.save();
@@ -891,5 +922,35 @@ export class UsersService {
     } catch {
       return false;
     }
+  }
+
+  // 🛡️ Bot Detection Methods
+  /**
+   * Получить подозрительных пользователей (для админов)
+   */
+  async getSuspiciousUsers(limit: number = 50) {
+    return this.botDetectionService.getSuspiciousUsers(limit);
+  }
+
+  /**
+   * Сбросить статус бота для пользователя (для админов)
+   */
+  async resetBotStatus(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    await this.botDetectionService.resetBotStatus(userId);
+  }
+
+  /**
+   * Получить статистику по ботам (для админов)
+   */
+  async getBotStats(): Promise<{
+    totalUsers: number;
+    suspectedBots: number;
+    confirmedBots: number;
+    recentSuspiciousActivities: number;
+  }> {
+    return this.botDetectionService.getBotStats();
   }
 }
