@@ -10,11 +10,13 @@ export class SearchService {
     limit = 10,
     sortBy = 'createdAt',
     sortOrder = 'desc',
+    canViewAdult = true,
   }: {
     search: string;
     limit?: number;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    canViewAdult?: boolean;
   }) {
     const result = await this.titlesService.findAll({
       search,
@@ -22,6 +24,7 @@ export class SearchService {
       limit,
       sortBy,
       sortOrder,
+      canViewAdult,
     });
 
     return result.titles;
