@@ -1,11 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { ConfigService } from '@nestjs/config';
 import { Model, Types } from 'mongoose';
 import { User, UserDocument } from '../../schemas/user.schema';
 import {
   IPActivity,
   IPActivityDocument,
 } from '../../schemas/ip-activity.schema';
+import {
+  BotDetectionConfig,
+  getBotDetectionConfig,
+} from '../../config/bot-detection.config';
 
 export interface BotDetectionResult {
   isBot: boolean;
@@ -42,20 +47,8 @@ export interface RequestInfo {
 export class BotDetectionService {
   private readonly logger = new Logger(BotDetectionService.name);
 
-  // Конфигурация детекции
-  private readonly MIN_TIME_BETWEEN_CHAPTERS_MS = 10000; // 10 секунд минимум
-  private readonly MAX_CHAPTERS_PER_HOUR = 100; // 100 глав/час - подозрительно
-  private readonly BOT_SCORE_THRESHOLD = 80; // Порог для определения бота
-  private readonly SUSPICIOUS_SCORE_THRESHOLD = 50; // Порог для подозрительной активности
-
-  // Rate limiting configuration (more strict for suspicious users)
-  private readonly RATE_LIMIT_NORMAL = 60; // 60 requests/min for authenticated users
-  private readonly RATE_LIMIT_ANONYMOUS = 50; // 50 requests/min for anonymous users
-  private readonly RATE_LIMIT_SUSPICIOUS = 10; // 10 requests/min for suspicious users
-
-  // IP Blocking thresholds
-  private readonly IP_BLOCK_THRESHOLD = 100; // Score for auto-blocking IP
-  private readonly IP_SUSPICIOUS_THRESHOLD = 50; // Score for suspicious IP
+  // Конфигурация (загружается из ConfigService или используются значения по умолчанию)
+  private readonly config: BotDetectionConfig;
 
   // Хранилище последней активности (в продакшене использовать Redis)
   private readonly userActivityHistory: Map<string, ActivityCheck[]> =
@@ -65,7 +58,41 @@ export class BotDetectionService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(IPActivity.name)
     private ipActivityModel: Model<IPActivityDocument>,
-  ) {}
+    private configService: ConfigService,
+  ) {
+    // Загружаем конфигурацию из ConfigService с поддержкой переменных окружения
+    this.config = getBotDetectionConfig(this.configService);
+
+    this.logger.log('BotDetectionService initialized with config:');
+    this.logger.log(
+      `  MIN_TIME_BETWEEN_CHAPTERS_MS: ${this.config.MIN_TIME_BETWEEN_CHAPTERS_MS}ms`,
+    );
+    this.logger.log(
+      `  MAX_CHAPTERS_PER_HOUR: ${this.config.MAX_CHAPTERS_PER_HOUR}`,
+    );
+    this.logger.log(
+      `  BOT_SCORE_THRESHOLD: ${this.config.BOT_SCORE_THRESHOLD}`,
+    );
+    this.logger.log(
+      `  SUSPICIOUS_SCORE_THRESHOLD: ${this.config.SUSPICIOUS_SCORE_THRESHOLD}`,
+    );
+    this.logger.log(
+      `  RATE_LIMIT_NORMAL: ${this.config.RATE_LIMIT_NORMAL}/min`,
+    );
+    this.logger.log(
+      `  RATE_LIMIT_ANONYMOUS: ${this.config.RATE_LIMIT_ANONYMOUS}/min`,
+    );
+    this.logger.log(
+      `  RATE_LIMIT_SUSPICIOUS: ${this.config.RATE_LIMIT_SUSPICIOUS}/min`,
+    );
+    this.logger.log(`  IP_BLOCK_THRESHOLD: ${this.config.IP_BLOCK_THRESHOLD}`);
+    this.logger.log(
+      `  IP_SUSPICIOUS_THRESHOLD: ${this.config.IP_SUSPICIOUS_THRESHOLD}`,
+    );
+    this.logger.log(
+      `  Night time: ${this.config.NIGHT_TIME_START}:00 - ${this.config.NIGHT_TIME_END}:00`,
+    );
+  }
 
   /**
    * Проверить активность на признаки бота
@@ -110,8 +137,8 @@ export class BotDetectionService {
       reasons.push(...nightTimeCheck.reasons);
     }
 
-    const isBot = botScore >= this.BOT_SCORE_THRESHOLD;
-    const isSuspicious = botScore >= this.SUSPICIOUS_SCORE_THRESHOLD;
+    const isBot = botScore >= this.config.BOT_SCORE_THRESHOLD;
+    const isSuspicious = botScore >= this.config.SUSPICIOUS_SCORE_THRESHOLD;
 
     // Логируем подозрительную активность
     if (isSuspicious) {
@@ -168,11 +195,11 @@ export class BotDetectionService {
     const timeDiff = now.getTime() - lastActivity.timestamp.getTime();
 
     // Проверяем минимальное время между главами
-    if (timeDiff < this.MIN_TIME_BETWEEN_CHAPTERS_MS) {
+    if (timeDiff < this.config.MIN_TIME_BETWEEN_CHAPTERS_MS) {
       result.isSuspicious = true;
       result.score = 20; // Высокий вес - это явный признак бота
       result.reasons.push(
-        `Reading speed too fast: ${Math.round(timeDiff / 1000)}s between chapters (min: ${this.MIN_TIME_BETWEEN_CHAPTERS_MS / 1000}s)`,
+        `Reading speed too fast: ${Math.round(timeDiff / 1000)}s between chapters (min: ${this.config.MIN_TIME_BETWEEN_CHAPTERS_MS / 1000}s)`,
       );
     }
 
@@ -194,11 +221,11 @@ export class BotDetectionService {
     );
     const count = recentActivities.length + 1; // +1 текущая активность
 
-    if (count > this.MAX_CHAPTERS_PER_HOUR) {
+    if (count > this.config.MAX_CHAPTERS_PER_HOUR) {
       result.isSuspicious = true;
       result.score = 30;
       result.reasons.push(
-        `High volume: ${count} chapters in the last hour (max: ${this.MAX_CHAPTERS_PER_HOUR})`,
+        `High volume: ${count} chapters in the last hour (max: ${this.config.MAX_CHAPTERS_PER_HOUR})`,
       );
     }
 
@@ -357,7 +384,7 @@ export class BotDetectionService {
         $or: [
           { isBot: true },
           { suspicious: true },
-          { botScore: { $gt: this.SUSPICIOUS_SCORE_THRESHOLD } },
+          { botScore: { $gt: this.config.SUSPICIOUS_SCORE_THRESHOLD } },
         ],
       })
       .select('-password')
@@ -447,11 +474,12 @@ export class BotDetectionService {
 
     // Для подозрительных пользователей лимит строже
     const user = this.userActivityHistory.get(userId);
-    const isSuspicious = user && user.length > this.MAX_CHAPTERS_PER_HOUR / 2; // Если уже есть много активности
+    const isSuspicious =
+      user && user.length > this.config.MAX_CHAPTERS_PER_HOUR / 2; // Если уже есть много активности
 
     const limit = isSuspicious
-      ? this.RATE_LIMIT_SUSPICIOUS
-      : this.RATE_LIMIT_NORMAL;
+      ? this.config.RATE_LIMIT_SUSPICIOUS
+      : this.config.RATE_LIMIT_NORMAL;
 
     if (recentRequests.length >= limit) {
       // Находим время до освобождения
@@ -474,10 +502,10 @@ export class BotDetectionService {
       history.filter((a) => a.timestamp.getTime() > Date.now() - 60000).length +
       1;
 
-    if (recentCount > this.MAX_CHAPTERS_PER_HOUR / 10) {
-      return this.RATE_LIMIT_SUSPICIOUS;
+    if (recentCount > this.config.MAX_CHAPTERS_PER_HOUR / 10) {
+      return this.config.RATE_LIMIT_SUSPICIOUS;
     }
-    return this.RATE_LIMIT_NORMAL;
+    return this.config.RATE_LIMIT_NORMAL;
   }
 
   // ============ IP TRACKING METHODS ============
@@ -541,20 +569,25 @@ export class BotDetectionService {
 
     // 5. Проверить ночное время
     const hour = now.getHours();
-    if (hour >= 2 && hour < 6) {
-      botScore += 5;
+    if (
+      hour >= this.config.NIGHT_TIME_START &&
+      hour < this.config.NIGHT_TIME_END
+    ) {
+      botScore += this.config.NIGHT_TIME_SCORE;
       reasons.push(`Nighttime activity from IP: ${hour}:00`);
     }
 
     // 6. Обновить botScore и статус
     ipActivity.botScore = Math.max(ipActivity.botScore, botScore);
-    ipActivity.isSuspicious = botScore >= this.IP_SUSPICIOUS_THRESHOLD;
+    ipActivity.isSuspicious = botScore >= this.config.IP_SUSPICIOUS_THRESHOLD;
 
     // 7. Автоматическая блокировка при превышении порога
-    if (botScore >= this.IP_BLOCK_THRESHOLD) {
+    if (botScore >= this.config.IP_BLOCK_THRESHOLD) {
       ipActivity.isBlocked = true;
       ipActivity.blockedAt = now;
-      ipActivity.blockedUntil = new Date(now.getTime() + 60 * 60 * 1000); // 1 час
+      ipActivity.blockedUntil = new Date(
+        now.getTime() + this.config.IP_BLOCK_DURATION_MS,
+      ); // Конфигурируемое время
       ipActivity.blockedReason = `Auto-blocked: score=${botScore}, reasons=${JSON.stringify(reasons)}`;
       this.logger.warn(`IP ${ip} auto-blocked: ${ipActivity.blockedReason}`);
     }
@@ -619,8 +652,8 @@ export class BotDetectionService {
     const finalLimit = ipActivity.isBlocked
       ? 0
       : ipActivity.isSuspicious
-        ? this.RATE_LIMIT_SUSPICIOUS
-        : this.RATE_LIMIT_ANONYMOUS;
+        ? this.config.RATE_LIMIT_SUSPICIOUS
+        : this.config.RATE_LIMIT_ANONYMOUS;
 
     return {
       allowed:
@@ -647,8 +680,8 @@ export class BotDetectionService {
     const limit = ipActivity.isBlocked
       ? 0
       : ipActivity.isSuspicious
-        ? this.RATE_LIMIT_SUSPICIOUS
-        : this.RATE_LIMIT_ANONYMOUS;
+        ? this.config.RATE_LIMIT_SUSPICIOUS
+        : this.config.RATE_LIMIT_ANONYMOUS;
 
     // Проверяем последнюю минуту
     const oneMinuteAgo = now.getTime() - 60000;
@@ -761,7 +794,7 @@ export class BotDetectionService {
         $or: [
           { isBlocked: true },
           { isSuspicious: true },
-          { botScore: { $gte: this.IP_SUSPICIOUS_THRESHOLD } },
+          { botScore: { $gte: this.config.IP_SUSPICIOUS_THRESHOLD } },
         ],
       })
       .sort({ botScore: -1 })
@@ -904,8 +937,8 @@ export class BotDetectionService {
     const limit = ipActivity.isBlocked
       ? 0
       : ipActivity.isSuspicious
-        ? this.RATE_LIMIT_SUSPICIOUS
-        : this.RATE_LIMIT_ANONYMOUS;
+        ? this.config.RATE_LIMIT_SUSPICIOUS
+        : this.config.RATE_LIMIT_ANONYMOUS;
 
     if (recentRequests.length >= limit) {
       const oldestRequest = recentRequests.sort(
