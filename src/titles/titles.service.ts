@@ -36,6 +36,7 @@ export class TitlesService {
     sortBy = 'createdAt',
     sortOrder = 'desc',
     populateChapters = true,
+    canViewAdult = true,
   }: {
     page?: number;
     limit?: number;
@@ -49,6 +50,7 @@ export class TitlesService {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
     populateChapters?: boolean;
+    canViewAdult?: boolean;
   }) {
     const skip = (page - 1) * limit;
     const query: any = {};
@@ -79,6 +81,18 @@ export class TitlesService {
 
     if (ageLimits && ageLimits.length > 0) {
       query.ageLimit = { $in: ageLimits };
+    }
+
+    // Фильтрация взрослого контента
+    // Если пользователь не может видеть взрослый контент, исключаем тайтлы с ageLimit >= 18
+    if (!canViewAdult) {
+      // Исключаем тайтлы с возрастным ограничением 18+
+      // ageLimit < 18 или ageLimit не определен (null/undefined) - это не взрослый контент
+      query.$or = [
+        { ageLimit: { $lt: 18 } },
+        { ageLimit: { $exists: false } },
+        { ageLimit: null },
+      ];
     }
 
     if (tags && tags.length > 0) {
@@ -191,23 +205,36 @@ export class TitlesService {
   async findById(
     id: string,
     populateChapters: boolean = true,
+    canViewAdult: boolean = true,
   ): Promise<TitleDocument> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid title ID');
     }
 
-    let query = this.titleModel.findById(id);
+    const query: any = { _id: id };
+
+    // Фильтрация взрослого контента
+    // Если пользователь не может видеть взрослый контент, тайтл не возвращаем
+    if (!canViewAdult) {
+      query.$or = [
+        { ageLimit: { $lt: 18 } },
+        { ageLimit: { $exists: false } },
+        { ageLimit: null },
+      ];
+    }
+
+    let findQuery = this.titleModel.findOne(query);
 
     // Conditionally populate chapters
     if (populateChapters) {
-      query = query.populate({
+      findQuery = findQuery.populate({
         path: 'chapters',
         select: '-chapters',
         options: { sort: { chapterNumber: 1 } },
       });
     }
 
-    const title = await query.exec();
+    const title = await findQuery.exec();
 
     if (!title) {
       throw new NotFoundException('Title not found');
@@ -219,19 +246,32 @@ export class TitlesService {
   async findBySlug(
     slug: string,
     populateChapters: boolean = true,
+    canViewAdult: boolean = true,
   ): Promise<TitleDocument | null> {
-    let query = this.titleModel.findOne({ slug });
+    const query: any = { slug };
+
+    // Фильтрация взрослого контента
+    // Если пользователь не может видеть взрослый контент, тайтл не возвращаем
+    if (!canViewAdult) {
+      query.$or = [
+        { ageLimit: { $lt: 18 } },
+        { ageLimit: { $exists: false } },
+        { ageLimit: null },
+      ];
+    }
+
+    let findQuery = this.titleModel.findOne(query);
 
     // Conditionally populate chapters
     if (populateChapters) {
-      query = query.populate({
+      findQuery = findQuery.populate({
         path: 'chapters',
         select: '-chapters',
         options: { sort: { chapterNumber: 1 } },
       });
     }
 
-    return query.exec();
+    return findQuery.exec();
   }
 
   async findByName(name: string): Promise<TitleDocument | null> {
@@ -391,18 +431,46 @@ export class TitlesService {
     return title;
   }
 
-  async getPopularTitles(limit = 10): Promise<TitleDocument[]> {
+  async getPopularTitles(
+    limit = 10,
+    canViewAdult = true,
+  ): Promise<TitleDocument[]> {
+    const query: any = {};
+
+    // Фильтрация взрослого контента
+    if (!canViewAdult) {
+      query.$or = [
+        { ageLimit: { $lt: 18 } },
+        { ageLimit: { $exists: false } },
+        { ageLimit: null },
+      ];
+    }
+
     return this.titleModel
-      .find()
+      .find(query)
       .sort({ weekViews: -1, rating: -1 })
       .limit(limit)
       .populate('chapters')
       .exec();
   }
 
-  async getRecentTitles(limit = 10): Promise<TitleDocument[]> {
+  async getRecentTitles(
+    limit = 10,
+    canViewAdult = true,
+  ): Promise<TitleDocument[]> {
+    const query: any = {};
+
+    // Фильтрация взрослого контента
+    if (!canViewAdult) {
+      query.$or = [
+        { ageLimit: { $lt: 18 } },
+        { ageLimit: { $exists: false } },
+        { ageLimit: null },
+      ];
+    }
+
     return this.titleModel
-      .find()
+      .find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
       .populate({
@@ -412,8 +480,11 @@ export class TitlesService {
       .exec();
   }
 
-  async getTitlesWithRecentChapters(limit = 15): Promise<any[]> {
-    // Получаем недавние главы, отсортированные по дате добавления
+  async getTitlesWithRecentChapters(
+    limit = 15,
+    canViewAdult = true,
+  ): Promise<any[]> {
+    // Получаем все главы, отсортированные по дате добавления
     const recentChapters = await this.chapterModel
       .find({ isPublished: true })
       .sort({ releaseDate: -1 })
@@ -425,10 +496,19 @@ export class TitlesService {
     const titleMap = new Map();
     for (const chapter of recentChapters) {
       if (chapter.titleId) {
-        const titleId = chapter.titleId._id.toString();
+        const title = chapter.titleId as any;
+        const ageLimit = title.ageLimit;
+
+        // Фильтрация взрослого контента на этапе группировки
+        // Если пользователь не может видеть взрослый контент, пропускаем взрослые тайтлы
+        if (!canViewAdult && ageLimit >= 18) {
+          continue;
+        }
+
+        const titleId = title._id.toString();
         if (!titleMap.has(titleId)) {
           titleMap.set(titleId, {
-            title: chapter.titleId,
+            title,
             chapters: [chapter],
             minChapter: chapter.chapterNumber,
             maxChapter: chapter.chapterNumber,
@@ -533,6 +613,7 @@ export class TitlesService {
   async getTopTitlesForPeriod(
     period: 'day' | 'week' | 'month',
     limit = 10,
+    canViewAdult = true,
   ): Promise<TitleDocument[]> {
     // Определяем поле для сортировки в зависимости от периода
     let sortField: string;
@@ -550,9 +631,20 @@ export class TitlesService {
         throw new BadRequestException('Invalid period');
     }
 
+    const query: any = {};
+
+    // Фильтрация взрослого контента
+    if (!canViewAdult) {
+      query.$or = [
+        { ageLimit: { $lt: 18 } },
+        { ageLimit: { $exists: false } },
+        { ageLimit: null },
+      ];
+    }
+
     // Возвращаем тайтлы, отсортированные по просмотрам за период
     return this.titleModel
-      .find()
+      .find(query)
       .sort({ [sortField]: -1 })
       .limit(limit)
       .populate({
@@ -566,13 +658,25 @@ export class TitlesService {
     return this.collectionModel.find().limit(limit).exec();
   }
 
-  async getRandomTitles(limit = 10): Promise<TitleDocument[]> {
-    // Получаем общее количество тайтлов
-    const totalTitles = await this.titleModel.countDocuments();
+  async getRandomTitles(
+    limit = 10,
+    canViewAdult = true,
+  ): Promise<TitleDocument[]> {
+    // Получаем общее количество тайтлов с учетом фильтрации
+    const filterQuery: any = {};
+    if (!canViewAdult) {
+      filterQuery.$or = [
+        { ageLimit: { $lt: 18 } },
+        { ageLimit: { $exists: false } },
+        { ageLimit: null },
+      ];
+    }
+
+    const totalTitles = await this.titleModel.countDocuments(filterQuery);
 
     // Генерируем случайные смещения
     const randomOffsets: number[] = [];
-    const maxAttempts = Math.min(limit * 3, totalTitles); // Ограничиваем количество попыток
+    const maxAttempts = Math.min(limit * 5, totalTitles); // Увеличиваем количество попыток
 
     // Генерируем уникальные случайные смещения
     while (randomOffsets.length < Math.min(limit, totalTitles)) {
@@ -587,9 +691,9 @@ export class TitlesService {
       }
     }
 
-    // Получаем тайтлы по случайным смещениям
+    // Получаем тайтлы по случайным смещениям с фильтрацией
     const promises = randomOffsets.map((offset) =>
-      this.titleModel.findOne().skip(offset).exec(),
+      this.titleModel.findOne(filterQuery).skip(offset).exec(),
     );
 
     const titles = await Promise.all(promises);
