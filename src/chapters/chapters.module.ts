@@ -6,6 +6,7 @@ import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
 import { Title, TitleSchema } from '../schemas/title.schema';
 import { FilesModule } from '../files/files.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { BotDetectionModule } from '../common/services/bot-detection.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     ]),
     FilesModule,
     NotificationsModule,
+    BotDetectionModule,
   ],
   controllers: [ChaptersController],
   providers: [ChaptersService],

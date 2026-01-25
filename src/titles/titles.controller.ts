@@ -17,7 +17,10 @@ import {
   ParseFloatPipe,
   UseGuards,
   Logger,
+  Req,
+  ForbiddenException,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -29,6 +32,7 @@ import { UpdateTitleDto } from './dto/update-title.dto';
 import { extname } from 'path';
 import { FilterOptionsResponseDto } from './dto/title-controller.dto';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
+import { BotDetectionService } from '../common/services/bot-detection.service';
 
 // DTO для ответов API
 class TitleResponseDto {
@@ -81,7 +85,30 @@ class LatestUpdateResponseDto {
 export class TitlesController {
   private readonly logger = new Logger(TitlesController.name);
 
-  constructor(private readonly titlesService: TitlesService) {}
+  constructor(
+    private readonly titlesService: TitlesService,
+    private readonly botDetectionService: BotDetectionService,
+  ) {}
+
+  /**
+   * Вспомогательный метод для проверки IP-активности
+   * Выбрасывает ForbiddenException если IP заблокирован
+   */
+  private async checkIPActivity(req: any): Promise<void> {
+    const ip = req.realIP || req.ip || 'unknown';
+    const checkResult = await this.botDetectionService.canMakeRequest(ip);
+
+    if (!checkResult.allowed) {
+      if (checkResult.blocked) {
+        throw new ForbiddenException(
+          `Access denied: IP blocked. ${checkResult.message}`,
+        );
+      }
+      throw new ForbiddenException(
+        `Rate limit exceeded. ${checkResult.message}`,
+      );
+    }
+  }
 
   private getHoursWord(hours: number): string {
     if (hours % 10 === 1 && hours % 100 !== 11) {
@@ -100,7 +127,10 @@ export class TitlesController {
   @Get('titles/popular')
   async getPopularTitles(
     @Query('limit') limit = 10,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
+    await this.checkIPActivity(req);
+
     try {
       const titles = await this.titlesService.getPopularTitles(Number(limit));
 
@@ -299,7 +329,10 @@ export class TitlesController {
     @Query('tags') tags?: string,
     @Query('sortBy') sortBy = 'createdAt',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
+    await this.checkIPActivity(req);
+
     try {
       const result = await this.titlesService.findAll({
         search: query,

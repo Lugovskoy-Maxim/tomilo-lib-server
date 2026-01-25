@@ -2,6 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { User, UserDocument } from '../../schemas/user.schema';
+import {
+  IPActivity,
+  IPActivityDocument,
+} from '../../schemas/ip-activity.schema';
 
 export interface BotDetectionResult {
   isBot: boolean;
@@ -17,6 +21,23 @@ export interface ActivityCheck {
   timestamp: Date;
 }
 
+export interface IPCheckResult {
+  allowed: boolean;
+  isBlocked: boolean;
+  isSuspicious: boolean;
+  botScore: number;
+  remainingMs: number;
+  reasons: string[];
+}
+
+export interface RequestInfo {
+  ip: string;
+  endpoint: string;
+  method: string;
+  userAgent?: string;
+  userId?: string;
+}
+
 @Injectable()
 export class BotDetectionService {
   private readonly logger = new Logger(BotDetectionService.name);
@@ -28,14 +49,23 @@ export class BotDetectionService {
   private readonly SUSPICIOUS_SCORE_THRESHOLD = 50; // Порог для подозрительной активности
 
   // Rate limiting configuration (more strict for suspicious users)
-  private readonly RATE_LIMIT_NORMAL = 60; // 60 requests/min
-  private readonly RATE_LIMIT_SUSPICIOUS = 30; // 30 requests/min for suspicious users
+  private readonly RATE_LIMIT_NORMAL = 60; // 60 requests/min for authenticated users
+  private readonly RATE_LIMIT_ANONYMOUS = 50; // 50 requests/min for anonymous users
+  private readonly RATE_LIMIT_SUSPICIOUS = 10; // 10 requests/min for suspicious users
+
+  // IP Blocking thresholds
+  private readonly IP_BLOCK_THRESHOLD = 100; // Score for auto-blocking IP
+  private readonly IP_SUSPICIOUS_THRESHOLD = 50; // Score for suspicious IP
 
   // Хранилище последней активности (в продакшене использовать Redis)
   private readonly userActivityHistory: Map<string, ActivityCheck[]> =
     new Map();
 
-  constructor(@InjectModel(User.name) private userModel: Model<UserDocument>) {}
+  constructor(
+    @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(IPActivity.name)
+    private ipActivityModel: Model<IPActivityDocument>,
+  ) {}
 
   /**
    * Проверить активность на признаки бота
@@ -448,5 +478,449 @@ export class BotDetectionService {
       return this.RATE_LIMIT_SUSPICIOUS;
     }
     return this.RATE_LIMIT_NORMAL;
+  }
+
+  // ============ IP TRACKING METHODS ============
+
+  /**
+   * Проверить IP-адрес на подозрительную активность
+   * Возвращает результат проверки с информацией о блокировке
+   */
+  async checkIPActivity(requestInfo: RequestInfo): Promise<IPCheckResult> {
+    const { ip, endpoint, method, userAgent } = requestInfo;
+    const now = new Date();
+    const reasons: string[] = [];
+    let botScore = 0;
+
+    // 1. Найти или создать запись активности для IP
+    let ipActivity = await this.ipActivityModel.findOne({ ip });
+
+    if (!ipActivity) {
+      ipActivity = new this.ipActivityModel({
+        ip,
+        firstSeenAt: now,
+        activityLog: [],
+        suspiciousActivityLog: [],
+      });
+    }
+
+    if (ipActivity.isBlocked) {
+      if (ipActivity.blockedUntil && ipActivity.blockedUntil > now) {
+        // IP временно заблокирован
+        const remainingMs = ipActivity.blockedUntil.getTime() - now.getTime();
+        return {
+          allowed: false,
+          isBlocked: true,
+          isSuspicious: true,
+          botScore: ipActivity.botScore,
+          remainingMs,
+          reasons: ['IP temporarily blocked'],
+        };
+      } else {
+        // Блокировка истекла, сбрасываем статус
+        ipActivity.isBlocked = false;
+        ipActivity.blockedReason = null;
+        ipActivity.blockedAt = null;
+        ipActivity.blockedUntil = null;
+      }
+    }
+
+    // 3. Проверить rate limit для анонимных пользователей
+    const rateLimitResult = this.checkIPRateLimit(ipActivity, now);
+    if (!rateLimitResult.allowed) {
+      botScore += 20;
+      reasons.push(...rateLimitResult.reasons);
+    }
+
+    // 4. Проверить паттерны подозрительной активности
+    const patternCheck = this.checkIPPatterns(ipActivity, now);
+    if (patternCheck.isSuspicious) {
+      botScore += patternCheck.score;
+      reasons.push(...patternCheck.reasons);
+    }
+
+    // 5. Проверить ночное время
+    const hour = now.getHours();
+    if (hour >= 2 && hour < 6) {
+      botScore += 5;
+      reasons.push(`Nighttime activity from IP: ${hour}:00`);
+    }
+
+    // 6. Обновить botScore и статус
+    ipActivity.botScore = Math.max(ipActivity.botScore, botScore);
+    ipActivity.isSuspicious = botScore >= this.IP_SUSPICIOUS_THRESHOLD;
+
+    // 7. Автоматическая блокировка при превышении порога
+    if (botScore >= this.IP_BLOCK_THRESHOLD) {
+      ipActivity.isBlocked = true;
+      ipActivity.blockedAt = now;
+      ipActivity.blockedUntil = new Date(now.getTime() + 60 * 60 * 1000); // 1 час
+      ipActivity.blockedReason = `Auto-blocked: score=${botScore}, reasons=${JSON.stringify(reasons)}`;
+      this.logger.warn(`IP ${ip} auto-blocked: ${ipActivity.blockedReason}`);
+    }
+
+    // 8. Логируем подозрительную активность
+    if (reasons.length > 0) {
+      ipActivity.suspiciousActivityLog.push({
+        score: botScore,
+        reasons,
+        endpoint,
+        timestamp: now,
+      });
+
+      // Ограничиваем размер лога
+      if (ipActivity.suspiciousActivityLog.length > 100) {
+        ipActivity.suspiciousActivityLog =
+          ipActivity.suspiciousActivityLog.slice(-100);
+      }
+
+      this.logger.warn(
+        `Suspicious activity from IP ${ip}: score=${botScore}, reasons=${JSON.stringify(reasons)}`,
+      );
+    }
+
+    // 9. Обновить статистику
+    ipActivity.lastRequestAt = now;
+    ipActivity.totalRequests += 1;
+    ipActivity.requestsToday += 1;
+
+    // Сброс счетчика daily в полночь
+    if (ipActivity.lastRateLimitReset) {
+      const lastReset = ipActivity.lastRateLimitReset;
+      if (
+        lastReset.getDate() !== now.getDate() ||
+        lastReset.getMonth() !== now.getMonth()
+      ) {
+        ipActivity.requestsToday = 1;
+        ipActivity.lastRateLimitReset = now;
+      }
+    } else {
+      ipActivity.lastRateLimitReset = now;
+    }
+
+    // 10. Добавить в лог активности
+    ipActivity.activityLog.push({
+      endpoint,
+      method,
+      timestamp: now,
+      userAgent,
+    });
+
+    // Ограничиваем размер лога активности
+    if (ipActivity.activityLog.length > 500) {
+      ipActivity.activityLog = ipActivity.activityLog.slice(-500);
+    }
+
+    // 11. Сохранить изменения
+    await ipActivity.save();
+
+    // 12. Проверить rate limit для возврата
+    const finalRateLimitResult = this.checkIPRateLimit(ipActivity, now);
+    const finalLimit = ipActivity.isBlocked
+      ? 0
+      : ipActivity.isSuspicious
+        ? this.RATE_LIMIT_SUSPICIOUS
+        : this.RATE_LIMIT_ANONYMOUS;
+
+    return {
+      allowed:
+        finalRateLimitResult.remainingMs === 0 ||
+        ipActivity.requestsLastMinute < finalLimit,
+      isBlocked: ipActivity.isBlocked,
+      isSuspicious: ipActivity.isSuspicious,
+      botScore: ipActivity.botScore,
+      remainingMs: finalRateLimitResult.remainingMs,
+      reasons,
+    };
+  }
+
+  /**
+   * Проверить rate limit для IP-адреса
+   */
+  private checkIPRateLimit(
+    ipActivity: IPActivityDocument,
+    now: Date,
+  ): { allowed: boolean; remainingMs: number; reasons: string[] } {
+    const result = { allowed: true, remainingMs: 0, reasons: [] as string[] };
+
+    // Определяем лимит в зависимости от статуса
+    const limit = ipActivity.isBlocked
+      ? 0
+      : ipActivity.isSuspicious
+        ? this.RATE_LIMIT_SUSPICIOUS
+        : this.RATE_LIMIT_ANONYMOUS;
+
+    // Проверяем последнюю минуту
+    const oneMinuteAgo = now.getTime() - 60000;
+    const recentRequests = ipActivity.activityLog.filter(
+      (a) => a.timestamp.getTime() > oneMinuteAgo,
+    );
+
+    if (recentRequests.length >= limit && limit > 0) {
+      // Находим время до освобождения
+      const oldestRequest = recentRequests.sort(
+        (a, b) => a.timestamp.getTime() - b.timestamp.getTime(),
+      )[0];
+      result.remainingMs =
+        60000 - (now.getTime() - oldestRequest.timestamp.getTime());
+      result.allowed = false;
+      result.reasons.push(
+        `Rate limit exceeded: ${recentRequests.length} requests in the last minute (limit: ${limit})`,
+      );
+    }
+
+    // Обновляем счетчик
+    ipActivity.requestsLastMinute = recentRequests.length;
+
+    return result;
+  }
+
+  /**
+   * Проверить паттерны подозрительной активности
+   */
+  private checkIPPatterns(
+    ipActivity: IPActivityDocument,
+    now: Date,
+  ): { isSuspicious: boolean; score: number; reasons: string[] } {
+    const result = { isSuspicious: false, score: 0, reasons: [] as string[] };
+
+    // Проверяем общее количество запросов сегодня
+    if (ipActivity.requestsToday > 500) {
+      result.isSuspicious = true;
+      result.score += 10;
+      result.reasons.push(
+        `High daily volume: ${ipActivity.requestsToday} requests today`,
+      );
+    }
+
+    // Проверяем частоту запросов
+    const recentActivity = ipActivity.activityLog.slice(-20);
+    if (recentActivity.length >= 10) {
+      const timeSpan = now.getTime() - recentActivity[0].timestamp.getTime();
+      const avgInterval = timeSpan / recentActivity.length;
+
+      // Если средний интервал меньше 500мс - очень быстро
+      if (avgInterval < 500) {
+        result.isSuspicious = true;
+        result.score += 25;
+        result.reasons.push(
+          `Very high request frequency: ${Math.round(avgInterval)}ms average interval`,
+        );
+      }
+      // Если средний интервал меньше 1 секунды - быстро
+      else if (avgInterval < 1000) {
+        result.isSuspicious = true;
+        result.score += 15;
+        result.reasons.push(
+          `High request frequency: ${Math.round(avgInterval)}ms average interval`,
+        );
+      }
+    }
+
+    // Проверяем разнообразие endpoints (боты часто запрашивают много разных endpoints)
+    const uniqueEndpoints = new Set(
+      ipActivity.activityLog.map((a) => a.endpoint),
+    );
+    if (uniqueEndpoints.size > 50 && ipActivity.activityLog.length > 0) {
+      const ratio = uniqueEndpoints.size / ipActivity.activityLog.length;
+      if (ratio > 0.8) {
+        result.isSuspicious = true;
+        result.score += 10;
+        result.reasons.push(
+          `High endpoint diversity: ${uniqueEndpoints.size} unique endpoints`,
+        );
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Получить информацию об активности IP
+   */
+  async getIPActivity(ip: string): Promise<IPActivityDocument | null> {
+    return this.ipActivityModel.findOne({ ip });
+  }
+
+  /**
+   * Получить все заблокированные IP
+   */
+  async getBlockedIPs(): Promise<IPActivityDocument[]> {
+    return this.ipActivityModel
+      .find({ isBlocked: true })
+      .sort({ blockedAt: -1 })
+      .exec();
+  }
+
+  /**
+   * Получить подозрительные IP
+   */
+  async getSuspiciousIPs(limit: number = 50): Promise<IPActivityDocument[]> {
+    return this.ipActivityModel
+      .find({
+        $or: [
+          { isBlocked: true },
+          { isSuspicious: true },
+          { botScore: { $gte: this.IP_SUSPICIOUS_THRESHOLD } },
+        ],
+      })
+      .sort({ botScore: -1 })
+      .limit(limit)
+      .exec();
+  }
+
+  /**
+   * Заблокировать IP вручную
+   */
+  async blockIP(
+    ip: string,
+    reason: string,
+    durationMinutes: number = 60,
+  ): Promise<void> {
+    const now = new Date();
+    await this.ipActivityModel.updateOne(
+      { ip },
+      {
+        $set: {
+          isBlocked: true,
+          blockedAt: now,
+          blockedUntil: new Date(now.getTime() + durationMinutes * 60 * 1000),
+          blockedReason: reason,
+        },
+      },
+      { upsert: true },
+    );
+    this.logger.warn(`IP ${ip} manually blocked: ${reason}`);
+  }
+
+  /**
+   * Разблокировать IP
+   */
+  async unblockIP(ip: string): Promise<void> {
+    await this.ipActivityModel.updateOne(
+      { ip },
+      {
+        $set: {
+          isBlocked: false,
+          blockedReason: null,
+          blockedAt: null,
+          blockedUntil: null,
+        },
+      },
+    );
+    this.logger.log(`IP ${ip} manually unblocked`);
+  }
+
+  /**
+   * Сбросить счетчики для IP
+   */
+  async resetIPActivity(ip: string): Promise<void> {
+    await this.ipActivityModel.updateOne(
+      { ip },
+      {
+        $set: {
+          botScore: 0,
+          isSuspicious: false,
+          isBlocked: false,
+          requestsToday: 0,
+          requestsLastMinute: 0,
+        },
+        $unset: {
+          blockedReason: '',
+          blockedAt: '',
+          blockedUntil: '',
+        },
+      },
+    );
+    this.logger.log(`Activity reset for IP ${ip}`);
+  }
+
+  /**
+   * Получить статистику по IP активности
+   */
+  async getIPStats(): Promise<{
+    totalIPs: number;
+    blockedIPs: number;
+    suspiciousIPs: number;
+    totalRequests: number;
+  }> {
+    const [totalIPs, blockedIPs, suspiciousIPs, ipStats] = await Promise.all([
+      this.ipActivityModel.countDocuments(),
+      this.ipActivityModel.countDocuments({ isBlocked: true }),
+      this.ipActivityModel.countDocuments({ isSuspicious: true }),
+      this.ipActivityModel.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalRequests: { $sum: '$totalRequests' },
+          },
+        },
+      ]),
+    ]);
+
+    return {
+      totalIPs,
+      blockedIPs,
+      suspiciousIPs,
+      totalRequests: ipStats[0]?.totalRequests || 0,
+    };
+  }
+
+  /**
+   * Проверить, может ли IP делать запросы (для использования в middleware)
+   */
+  async canMakeRequest(ip: string): Promise<{
+    allowed: boolean;
+    blocked: boolean;
+    remainingMs: number;
+    message?: string;
+  }> {
+    const ipActivity = await this.ipActivityModel.findOne({ ip });
+
+    if (!ipActivity) {
+      return { allowed: true, blocked: false, remainingMs: 0 };
+    }
+
+    if (ipActivity.isBlocked && ipActivity.blockedUntil) {
+      const now = new Date();
+      if (ipActivity.blockedUntil > now) {
+        const remainingMs = ipActivity.blockedUntil.getTime() - now.getTime();
+        return {
+          allowed: false,
+          blocked: true,
+          remainingMs,
+          message: `IP blocked. Try again in ${Math.ceil(remainingMs / 1000)} seconds.`,
+        };
+      }
+    }
+
+    // Проверить rate limit
+    const now = new Date();
+    const oneMinuteAgo = now.getTime() - 60000;
+    const recentRequests = ipActivity.activityLog.filter(
+      (a) => a.timestamp.getTime() > oneMinuteAgo,
+    );
+
+    const limit = ipActivity.isBlocked
+      ? 0
+      : ipActivity.isSuspicious
+        ? this.RATE_LIMIT_SUSPICIOUS
+        : this.RATE_LIMIT_ANONYMOUS;
+
+    if (recentRequests.length >= limit) {
+      const oldestRequest = recentRequests.sort(
+        (a, b) => a.timestamp.getTime() - b.timestamp.getTime(),
+      )[0];
+      const remainingMs =
+        60000 - (now.getTime() - oldestRequest.timestamp.getTime());
+      return {
+        allowed: false,
+        blocked: false,
+        remainingMs,
+        message: `Rate limit exceeded. Try again in ${Math.ceil(remainingMs / 1000)} seconds.`,
+      };
+    }
+
+    return { allowed: true, blocked: false, remainingMs: 0 };
   }
 }

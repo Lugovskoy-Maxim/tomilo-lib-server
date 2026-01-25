@@ -6,6 +6,7 @@ import { Title, TitleSchema } from '../schemas/title.schema';
 import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
 import { Collection, CollectionSchema } from '../schemas/collection.schema';
 import { FilesModule } from '../files/files.module';
+import { BotDetectionModule } from '../common/services/bot-detection.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { FilesModule } from '../files/files.module';
       { name: Collection.name, schema: CollectionSchema },
     ]),
     FilesModule,
+    BotDetectionModule,
   ],
   controllers: [TitlesController],
   providers: [TitlesService],

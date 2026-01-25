@@ -16,7 +16,10 @@ import {
   ValidationPipe,
   BadRequestException,
   UseGuards,
+  Req,
+  ForbiddenException,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -25,10 +28,34 @@ import { CreateChapterDto } from './dto/create-chapter.dto';
 import { UpdateChapterDto } from './dto/update-chapter.dto';
 import { FileUploadInterceptor } from '../common/interceptors/file-upload.interceptor';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
+import { BotDetectionService } from '../common/services/bot-detection.service';
 
 @Controller('chapters')
 export class ChaptersController {
-  constructor(private readonly chaptersService: ChaptersService) {}
+  constructor(
+    private readonly chaptersService: ChaptersService,
+    private readonly botDetectionService: BotDetectionService,
+  ) {}
+
+  /**
+   * Вспомогательный метод для проверки IP-активности
+   * Выбрасывает ForbiddenException если IP заблокирован
+   */
+  private async checkIPActivity(req: Request): Promise<void> {
+    const ip = (req as any).realIP || req.ip || 'unknown';
+    const checkResult = await this.botDetectionService.canMakeRequest(ip);
+
+    if (!checkResult.allowed) {
+      if (checkResult.blocked) {
+        throw new ForbiddenException(
+          `Access denied: IP blocked. ${checkResult.message}`,
+        );
+      }
+      throw new ForbiddenException(
+        `Rate limit exceeded. ${checkResult.message}`,
+      );
+    }
+  }
 
   @Post()
   @Roles('admin')
@@ -147,7 +174,10 @@ export class ChaptersController {
   @Header('Expires', '0')
   async count(
     @Query('titleId') titleId?: string,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
+    await this.checkIPActivity(req);
+
     try {
       const total = await this.chaptersService.count({ titleId });
       const data = { total };
@@ -170,7 +200,12 @@ export class ChaptersController {
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<ApiResponseDto<any>> {
+  async findOne(
+    @Param('id') id: string,
+    @Req() req?: any,
+  ): Promise<ApiResponseDto<any>> {
+    await this.checkIPActivity(req);
+
     try {
       const data = await this.chaptersService.findById(id);
 
@@ -195,7 +230,10 @@ export class ChaptersController {
   async getNextChapter(
     @Param('id') id: string,
     @Query('currentChapter') currentChapter: number,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
+    await this.checkIPActivity(req);
+
     try {
       const chapter = await this.chaptersService.findById(id);
       const data = await this.chaptersService.getNextChapter(
@@ -224,7 +262,10 @@ export class ChaptersController {
   async getPrevChapter(
     @Param('id') id: string,
     @Query('currentChapter') currentChapter: number,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
+    await this.checkIPActivity(req);
+
     try {
       const chapter = await this.chaptersService.findById(id);
       const data = await this.chaptersService.getPrevChapter(
@@ -258,7 +299,10 @@ export class ChaptersController {
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'asc',
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
+    await this.checkIPActivity(req);
+
     try {
       const data = await this.chaptersService.findAll({
         page: Number(page),
@@ -292,7 +336,10 @@ export class ChaptersController {
   async getByNumber(
     @Param('titleId') titleId: string,
     @Query('chapterNumber') chapterNumber: number,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
+    await this.checkIPActivity(req);
+
     try {
       const data = await this.chaptersService.findByTitleAndNumber(
         titleId,
@@ -322,7 +369,10 @@ export class ChaptersController {
   @Header('Expires', '0')
   async getLatest(
     @Param('titleId') titleId: string,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
+    await this.checkIPActivity(req);
+
     try {
       const data = await this.chaptersService.getLatestChapter(titleId);
 

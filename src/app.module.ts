@@ -30,6 +30,7 @@ import {
   AutoParsingJob,
   AutoParsingJobSchema,
 } from './schemas/auto-parsing-job.schema';
+import { IPActivity, IPActivitySchema } from './schemas/ip-activity.schema';
 import { AutoParsingModule } from './auto-parsing/auto-parsing.module';
 import { EmailModule } from './email/email.module';
 
@@ -55,6 +56,7 @@ import { EmailModule } from './email/email.module';
       { name: User.name, schema: UserSchema },
       { name: Collection.name, schema: CollectionSchema },
       { name: AutoParsingJob.name, schema: AutoParsingJobSchema },
+      { name: IPActivity.name, schema: IPActivitySchema },
     ]),
     UsersModule,
     AuthModule,
