@@ -57,29 +57,29 @@ export const SUSPICIOUS_SCORE_THRESHOLD = 50;
  * RATE_LIMIT_NORMAL
  * Лимит запросов в минуту для авторизованных пользователей.
  *
- * По умолчанию: 60
+ * По умолчанию: 480
  * Переменная окружения: BOT_DETECTION_RATE_LIMIT_NORMAL
  */
-export const RATE_LIMIT_NORMAL = 60;
+export const RATE_LIMIT_NORMAL = 480;
 
 /**
  * RATE_LIMIT_ANONYMOUS
  * Лимит запросов в минуту для анонимных (неавторизованных) пользователей.
  *
- * По умолчанию: 50
+ * По умолчанию: 450
  * Переменная окружения: BOT_DETECTION_RATE_LIMIT_ANONYMOUS
  */
-export const RATE_LIMIT_ANONYMOUS = 50;
+export const RATE_LIMIT_ANONYMOUS = 450;
 
 /**
  * RATE_LIMIT_SUSPICIOUS
  * Лимит запросов в минуту для подозрительных пользователей/IP.
  * Более строгий лимит для тех, кто уже помечен как подозрительный.
  *
- * По умолчанию: 10
+ * По умолчанию: 30
  * Переменная окружения: BOT_DETECTION_RATE_LIMIT_SUSPICIOUS
  */
-export const RATE_LIMIT_SUSPICIOUS = 10;
+export const RATE_LIMIT_SUSPICIOUS = 30;
 
 // === IP Blocking ===
 
