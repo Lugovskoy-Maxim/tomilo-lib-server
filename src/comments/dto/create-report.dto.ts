@@ -36,4 +36,12 @@ export class CreateReportDto {
   @IsString()
   @IsOptional()
   url?: string;
+
+  @IsMongoId()
+  @IsOptional()
+  creatorId?: string;
+
+  @IsMongoId()
+  @IsOptional()
+  titleId?: string;
 }

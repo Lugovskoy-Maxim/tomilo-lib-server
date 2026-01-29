@@ -4,12 +4,19 @@ import { Model, Types } from 'mongoose';
 import { Report, ReportDocument, ReportType } from '../schemas/report.schema';
 import { CreateReportDto } from './dto/create-report.dto';
 import { User, UserDocument } from '../schemas/user.schema';
+import {
+  Notification,
+  NotificationDocument,
+  NotificationType,
+} from '../schemas/notification.schema';
 
 @Injectable()
 export class ReportsService {
   constructor(
     @InjectModel(Report.name) private reportModel: Model<ReportDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
+    @InjectModel(Notification.name)
+    private notificationModel: Model<NotificationDocument>,
   ) {}
 
   async create(
@@ -21,6 +28,12 @@ export class ReportsService {
       userId: new Types.ObjectId(userId),
       entityId: createReportDto.entityId
         ? new Types.ObjectId(createReportDto.entityId)
+        : null,
+      creatorId: createReportDto.creatorId
+        ? new Types.ObjectId(createReportDto.creatorId)
+        : null,
+      titleId: createReportDto.titleId
+        ? new Types.ObjectId(createReportDto.titleId)
         : null,
     });
 
@@ -90,6 +103,7 @@ export class ReportsService {
       throw new NotFoundException('Report not found');
     }
 
+    const wasPreviouslyResolved = report.isResolved;
     report.isResolved = isResolved;
     if (isResolved) {
       report.resolvedBy = new Types.ObjectId(resolvedById);
@@ -99,7 +113,27 @@ export class ReportsService {
       report.resolvedAt = null;
     }
 
-    return report.save();
+    const savedReport = await report.save();
+
+    // Send notification to creator if report was just resolved
+    if (isResolved && !wasPreviouslyResolved && report.creatorId) {
+      await this.notificationModel.create({
+        userId: report.creatorId,
+        type: NotificationType.REPORT_RESOLVED,
+        title: 'Ваша жалоба рассмотрена',
+        message: `Жалоба на ${
+          report.entityType || 'контент'
+        } была рассмотрена и закрыта.`,
+        metadata: {
+          reportId: report._id,
+          reportType: report.reportType,
+          entityType: report.entityType,
+          entityId: report.entityId,
+        },
+      });
+    }
+
+    return savedReport;
   }
 
   async delete(id: string): Promise<void> {

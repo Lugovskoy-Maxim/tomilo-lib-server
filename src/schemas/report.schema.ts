@@ -31,6 +31,12 @@ export class Report {
   @Prop({ required: true, type: Types.ObjectId, ref: 'User' })
   userId: Types.ObjectId;
 
+  @Prop({ type: Types.ObjectId, ref: 'User', default: null })
+  creatorId: Types.ObjectId | null;
+
+  @Prop({ type: Types.ObjectId, ref: 'Title', default: null })
+  titleId: Types.ObjectId | null;
+
   @Prop({ default: false })
   isResolved: boolean;
 
