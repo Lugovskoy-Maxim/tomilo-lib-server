@@ -114,14 +114,95 @@ All API responses follow this structure:
 ```
 
 ## Statistics Endpoint Response
-The `/stats` endpoint returns:
+The `/stats` endpoint returns comprehensive statistics:
+
+### Base Statistics
 ```json
 {
   "totalTitles": number,
   "totalChapters": number,
   "totalUsers": number,
+  "totalCollections": number,
   "totalViews": number,
   "totalBookmarks": number
+}
+```
+
+### Daily Statistics
+```json
+{
+  "daily": {
+    "views": number,
+    "newUsers": number,
+    "newTitles": number,
+    "newChapters": number,
+    "chaptersRead": number
+  }
+}
+```
+
+### Weekly Statistics
+```json
+{
+  "weekly": {
+    "views": number,
+    "newUsers": number,
+    "newTitles": number,
+    "newChapters": number,
+    "chaptersRead": number
+  }
+}
+```
+
+### Monthly Statistics
+```json
+{
+  "monthly": {
+    "views": number,
+    "newUsers": number,
+    "newTitles": number,
+    "newChapters": number,
+    "chaptersRead": number
+  }
+}
+```
+
+### Popular Content
+```json
+{
+  "popularTitles": [
+    {
+      "id": string,
+      "name": string,
+      "slug": string,
+      "views": number,
+      "dayViews": number,
+      "weekViews": number,
+      "monthViews": number
+    }
+  ],
+  "popularChapters": [
+    {
+      "id": string,
+      "titleId": string,
+      "titleName": string,
+      "chapterNumber": number,
+      "name": string,
+      "views": number
+    }
+  ]
+}
+```
+
+### Additional Metrics
+```json
+{
+  "activeUsersToday": number,
+  "newUsersThisMonth": number,
+  "totalRatings": number,
+  "averageRating": number,
+  "ongoingTitles": number,
+  "completedTitles": number
 }
 ```
 

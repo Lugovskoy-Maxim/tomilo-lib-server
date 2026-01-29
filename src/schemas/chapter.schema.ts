@@ -37,6 +37,10 @@ export class Chapter {
 
   @Prop({ default: 0 })
   unlockPrice: number;
+
+  // Activity tracking for stats
+  @Prop({ type: Date, default: null })
+  lastViewedAt: Date | null;
 }
 
 export const ChapterSchema = SchemaFactory.createForClass(Chapter);
