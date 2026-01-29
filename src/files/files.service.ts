@@ -72,11 +72,20 @@ export class FilesService {
     this.logger.log(
       `Водяной знак загружен: ${this.watermarkUtil.isWatermarkLoaded()}`,
     );
-    if (!this.watermarkUtil.isWatermarkLoaded()) {
-      this.logger.warn('Водяной знак не загружен! Пытаемся перезагрузить...');
+    this.logger.log(
+      `Верхний водяной знак загружен: ${this.watermarkUtil.isWatermarkTopLoaded()}`,
+    );
+    if (
+      !this.watermarkUtil.isWatermarkLoaded() ||
+      !this.watermarkUtil.isWatermarkTopLoaded()
+    ) {
+      this.logger.warn('Водяные знаки не загружены! Пытаемся перезагрузить...');
       this.watermarkUtil.reloadWatermark();
       this.logger.log(
         `После перезагрузки водяной знак загружен: ${this.watermarkUtil.isWatermarkLoaded()}`,
+      );
+      this.logger.log(
+        `После перезагрузки верхний водяной знак загружен: ${this.watermarkUtil.isWatermarkTopLoaded()}`,
       );
     }
 
@@ -316,27 +325,63 @@ export class FilesService {
       this.logger.log(
         `Водяной знак загружен: ${this.watermarkUtil.isWatermarkLoaded()}`,
       );
-      if (!this.watermarkUtil.isWatermarkLoaded()) {
-        this.logger.warn('Водяной знак не загружен! Пытаемся перезагрузить...');
+      this.logger.log(
+        `Верхний водяной знак загружен: ${this.watermarkUtil.isWatermarkTopLoaded()}`,
+      );
+      if (
+        !this.watermarkUtil.isWatermarkLoaded() ||
+        !this.watermarkUtil.isWatermarkTopLoaded()
+      ) {
+        this.logger.warn(
+          'Водяные знаки не загружены! Пытаемся перезагрузить...',
+        );
         this.watermarkUtil.reloadWatermark();
         this.logger.log(
           `После перезагрузки водяной знак загружен: ${this.watermarkUtil.isWatermarkLoaded()}`,
+        );
+        this.logger.log(
+          `После перезагрузки верхний водяной знак загружен: ${this.watermarkUtil.isWatermarkTopLoaded()}`,
         );
       }
 
       // Добавляем водяной знак к изображению
       const imageBuffer = Buffer.from(response.data);
-      this.logger.log(`Применяем водяной знак к изображению`);
-      const watermarkedBuffer = await this.watermarkUtil.addWatermark(
-        imageBuffer,
-        {
+      this.logger.log(
+        `Применяем водяной знак к изображению (страница ${pageNumber})`,
+      );
+
+      let watermarkedBuffer: Buffer;
+
+      // Страница 1 - добавляем ОБА водяных знака
+      if (pageNumber === 1) {
+        this.logger.log(
+          `Страница 1 - добавляем верхний и обычный водяной знак`,
+        );
+
+        // Сначала добавляем верхний водяной знак
+        watermarkedBuffer =
+          await this.watermarkUtil.addTopWatermark(imageBuffer);
+
+        // Затем добавляем обычный водяной знак
+        watermarkedBuffer = await this.watermarkUtil.addWatermark(
+          watermarkedBuffer,
+          {
+            position: 'center-right',
+            scale: 0.35,
+            minHeight: 2000,
+          },
+        );
+      } else {
+        // Для остальных страниц используем стандартную логику
+        watermarkedBuffer = await this.watermarkUtil.addWatermark(imageBuffer, {
           position: 'center-right',
           scale: 0.35,
           minHeight: 2000,
           pageNumber: pageNumber,
           applyEvenPageLogic: true,
-        },
-      );
+        });
+      }
+
       this.logger.log(`Водяной знак применен успешно`);
 
       // Сохраняем файл с водяным знаком

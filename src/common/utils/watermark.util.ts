@@ -9,15 +9,27 @@ import sharp from 'sharp';
 export class WatermarkUtil {
   private readonly logger = new Logger(WatermarkUtil.name);
   private watermarkBuffer: Buffer | null = null;
+  private watermarkTopBuffer: Buffer | null = null;
   private watermarkPath = join(process.cwd(), 'watermark', 'watermark.png');
+  private watermarkTopPath = join(
+    process.cwd(),
+    'watermark',
+    'watermark-top.png',
+  );
 
   // Добавляем геттер для проверки пути
   public getWatermarkPath(): string {
     return this.watermarkPath;
   }
 
+  // Геттер для пути верхнего водяного знака
+  public getWatermarkTopPath(): string {
+    return this.watermarkTopPath;
+  }
+
   constructor() {
     this.initializeWatermark();
+    this.initializeWatermarkTop();
   }
 
   /**
@@ -37,6 +49,29 @@ export class WatermarkUtil {
       }
     } catch (error: any) {
       this.logger.error(`Ошибка загрузки водяного знака: ${error.message}`);
+    }
+  }
+
+  /**
+   * Инициализация верхнего водяного знака
+   */
+  private initializeWatermarkTop(): void {
+    try {
+      this.logger.log(
+        `Проверяем наличие верхнего водяного знака по пути: ${this.watermarkTopPath}`,
+      );
+      if (existsSync(this.watermarkTopPath)) {
+        this.watermarkTopBuffer = readFileSync(this.watermarkTopPath);
+        this.logger.log('Верхний водяной знак успешно загружен в буфер');
+      } else {
+        this.logger.warn(
+          `Верхний водяной знак не найден: ${this.watermarkTopPath}`,
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `Ошибка загрузки верхнего водяного знака: ${error.message}`,
+      );
     }
   }
 
@@ -158,11 +193,85 @@ export class WatermarkUtil {
   }
 
   /**
+   * Добавляет верхний водяной знак (watermark-top.png) на всю ширину без прозрачности
+   */
+  async addTopWatermark(imageBuffer: Buffer): Promise<Buffer> {
+    try {
+      this.logger.log(
+        `Попытка добавления верхнего водяного знака. Загружен: ${this.watermarkTopBuffer ? 'да' : 'нет'}`,
+      );
+
+      if (!this.watermarkTopBuffer) {
+        this.logger.warn(
+          'Верхний водяной знак не загружен, возвращаем оригинал',
+        );
+        return imageBuffer;
+      }
+
+      const mainImage = sharp(imageBuffer);
+      const metadata = await mainImage.metadata();
+
+      this.logger.log(
+        `Размеры изображения: ${metadata.width}x${metadata.height}`,
+      );
+
+      if (!metadata.width || !metadata.height) {
+        throw new Error('Не удалось получить размеры изображения');
+      }
+
+      // Верхний водяной знак на всю ширину изображения
+      const watermarkWidth = metadata.width;
+      const watermarkMetadata = await sharp(this.watermarkTopBuffer).metadata();
+      const watermarkHeight = Math.floor(
+        (watermarkWidth * watermarkMetadata.height) / watermarkMetadata.width,
+      );
+
+      this.logger.log(
+        `Размеры верхнего водяного знака: ${watermarkWidth}x${watermarkHeight}`,
+      );
+
+      // Изменяем размер водяного знака на всю ширину
+      const resizedWatermark = await sharp(this.watermarkTopBuffer)
+        .resize(watermarkWidth, watermarkHeight, {
+          fit: 'fill',
+          withoutEnlargement: false,
+        })
+        .png()
+        .toBuffer();
+
+      // Накладываем верхний водяной знак в самом верху (без прозрачности - gravity: north)
+      const compositeImage = await mainImage
+        .composite([
+          {
+            input: resizedWatermark,
+            gravity: 'north',
+          },
+        ])
+        .png({ quality: 100 })
+        .toBuffer();
+
+      this.logger.log(`Верхний водяной знак добавлен (полная ширина)`);
+
+      if (Buffer.isBuffer(compositeImage)) {
+        return compositeImage;
+      } else {
+        this.logger.warn(
+          'Composite image is not a Buffer, returning original image',
+        );
+        return imageBuffer;
+      }
+    } catch (error: any) {
+      this.logger.error(`Ошибка верхнего водяного знака: ${error.message}`);
+      return imageBuffer;
+    }
+  }
+
+  /**
    * Добавляет водяной знак к нескольким изображениям
    * С учетом новых требований:
-   * - Ватермарка ставится только на четных страницах
-   * - Ватермарка ставится в разных местах
-   * - Ватермарка ставится только на изображениях шириной 4000px и более
+   * - На 1 странице добавляются ОБА водяных знака (верхний + обычный)
+   * - На четных страницах (2, 4, 6...) добавляется только обычный водяной знак
+   * - На нечетных страницах (3, 5, 7...) водяные знаки не добавляются
    */
   async addWatermarkMultiple(
     imageBuffers: Buffer[],
@@ -203,6 +312,29 @@ export class WatermarkUtil {
         `Обрабатываем изображение ${i + 1}/${imageBuffers.length}`,
       );
       try {
+        // Страница 1 (индекс 0) - добавляем ОБА водяных знака
+        if (i === 0) {
+          this.logger.log(
+            `Страница 1 - добавляем верхний и обычный водяной знак`,
+          );
+
+          // Сначала добавляем верхний водяной знак
+          let watermarkedImage = await this.addTopWatermark(imageBuffers[i]);
+
+          // Затем добавляем обычный водяной знак
+          watermarkedImage = await this.addWatermark(watermarkedImage, {
+            position: 'center-right',
+            scale,
+            minHeight,
+          });
+
+          results.push(watermarkedImage);
+          this.logger.log(
+            `Страница 1 успешно обработана с обоими водяными знаками`,
+          );
+          continue;
+        }
+
         // Проверяем, является ли страница четной (индекс четный, так как индексация с 0)
         const isEvenPage = i % 2 === 1; // Страница четная, если индекс нечетный (1, 3, 5...)
 
@@ -280,7 +412,9 @@ export class WatermarkUtil {
    */
   reloadWatermark(): void {
     this.watermarkBuffer = null;
+    this.watermarkTopBuffer = null;
     this.initializeWatermark();
+    this.initializeWatermarkTop();
   }
 
   /**
@@ -288,5 +422,12 @@ export class WatermarkUtil {
    */
   isWatermarkLoaded(): boolean {
     return this.watermarkBuffer !== null;
+  }
+
+  /**
+   * Проверяет, загружен ли верхний водяной знак
+   */
+  isWatermarkTopLoaded(): boolean {
+    return this.watermarkTopBuffer !== null;
   }
 }
