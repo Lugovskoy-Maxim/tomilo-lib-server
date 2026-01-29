@@ -92,6 +92,9 @@ export class AppService {
       // Popular content
       popularTitles,
       popularChapters,
+
+      // Stale ongoing titles (status=ongoing, no chapter updates for over a month)
+      staleOngoingTitles,
     ] = await Promise.all([
       // Base counts
       this.titleModel.countDocuments(),
@@ -215,6 +218,13 @@ export class AppService {
           },
         },
       ]),
+
+      // Stale ongoing titles (status=ongoing, no chapter updates for over a month)
+      // A title is considered stale if no chapters have been added in the last month
+      this.titleModel.countDocuments({
+        status: 'ongoing',
+        updatedAt: { $lt: monthAgo },
+      }),
     ]);
 
     // Calculate totals
@@ -289,6 +299,7 @@ export class AppService {
       averageRating: Math.round(averageRating * 100) / 100,
       ongoingTitles,
       completedTitles,
+      staleOngoingTitles,
     };
 
     this.logger.log(

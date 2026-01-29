@@ -62,4 +62,7 @@ export class StatsResponseDto {
   averageRating: number;
   ongoingTitles: number;
   completedTitles: number;
+
+  // Stale ongoing titles (no updates for over a month)
+  staleOngoingTitles: number;
 }

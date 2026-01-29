@@ -202,9 +202,12 @@ The `/stats` endpoint returns comprehensive statistics:
   "totalRatings": number,
   "averageRating": number,
   "ongoingTitles": number,
-  "completedTitles": number
+  "completedTitles": number,
+  "staleOngoingTitles": number
 }
 ```
+
+- **staleOngoingTitles**: Количество тайтлов со статусом "ongoing", которые не обновлялись более месяца
 
 ## Error Handling
 - 400 Bad Request - Invalid input data
