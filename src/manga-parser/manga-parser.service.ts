@@ -16,6 +16,30 @@ import { MangabuffParser } from './parsers/mangabuff.parser';
 import { MangahubParser } from './parsers/mangahub.parser';
 import { MangahubCcParser } from './parsers/mangahub-cc.parser';
 
+/**
+ * Result of parsing chapters info from a single source
+ */
+export interface ParsingSourceResult {
+  url: string;
+  success: boolean;
+  title?: string;
+  chapters: ChapterInfo[];
+  error?: string;
+  chapterCount: number;
+}
+
+/**
+ * Result of sequential parsing from multiple sources
+ */
+export interface SequentialParsingResult {
+  success: boolean;
+  usedSourceUrl?: string;
+  title?: string;
+  chapters: ChapterInfo[];
+  totalSourcesTried: number;
+  errors: string[];
+}
+
 @Injectable()
 export class MangaParserService {
   private readonly logger = new Logger(MangaParserService.name);
@@ -808,5 +832,138 @@ export class MangaParserService {
         'mangahub.cc',
       ],
     };
+  }
+
+  /**
+   * Parse chapters info from multiple sources sequentially.
+   * Tries each source in order until chapters are found.
+   *
+   * @param sources Array of URLs to try in order
+   * @param chapterNumbers Optional filter for specific chapter numbers
+   * @returns SequentialParsingResult with chapters from the first successful source
+   */
+  async parseChaptersInfoSequential(
+    sources: string[],
+    chapterNumbers?: string[],
+  ): Promise<SequentialParsingResult> {
+    const errors: string[] = [];
+    let totalSourcesTried = 0;
+
+    // Try sources in order
+    for (let i = 0; i < sources.length; i++) {
+      const url = sources[i];
+      totalSourcesTried++;
+
+      try {
+        const parser = this.getParserForUrl(url);
+        if (!parser) {
+          const error = `Unsupported site for URL: ${url}`;
+          this.logger.warn(error);
+          errors.push(error);
+          continue;
+        }
+
+        this.logger.log(`Trying source ${i + 1}/${sources.length}: ${url}`);
+
+        const parsedData = await parser.parse(url);
+
+        let chapters = parsedData.chapters;
+        if (chapterNumbers && chapterNumbers.length > 0) {
+          const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
+          chapters = chapters.filter(
+            (ch) => ch.number && requestedNumbers.has(ch.number),
+          );
+        }
+
+        // Found chapters on this source
+        if (chapters.length > 0) {
+          this.logger.log(
+            `Found ${chapters.length} chapters from source: ${url}`,
+          );
+
+          return {
+            success: true,
+            usedSourceUrl: url,
+            title: parsedData.title,
+            chapters,
+            totalSourcesTried,
+            errors,
+          };
+        }
+
+        // No chapters found, continue to next source
+        this.logger.log(
+          `No chapters found from source ${url}, trying next source...`,
+        );
+        errors.push(`No chapters found at: ${url}`);
+      } catch (error) {
+        const errorMessage = `Failed to parse ${url}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+        this.logger.warn(errorMessage);
+        errors.push(errorMessage);
+      }
+    }
+
+    // All sources failed
+    this.logger.error(
+      `All ${sources.length} sources failed. Errors: ${errors.join('; ')}`,
+    );
+
+    return {
+      success: false,
+      chapters: [],
+      totalSourcesTried,
+      errors,
+    };
+  }
+
+  /**
+   * Parse chapters info from a single source with detailed result.
+   *
+   * @param url URL to parse
+   * @param chapterNumbers Optional filter for specific chapter numbers
+   * @returns ParsingSourceResult with detailed information about the parsing
+   */
+  async parseChaptersInfoDetailed(
+    url: string,
+    chapterNumbers?: string[],
+  ): Promise<ParsingSourceResult> {
+    try {
+      const parser = this.getParserForUrl(url);
+      if (!parser) {
+        return {
+          url,
+          success: false,
+          chapters: [],
+          chapterCount: 0,
+          error: `Unsupported site for URL: ${url}`,
+        };
+      }
+
+      const parsedData = await parser.parse(url);
+
+      let chapters = parsedData.chapters;
+      if (chapterNumbers && chapterNumbers.length > 0) {
+        const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
+        chapters = chapters.filter(
+          (ch) => ch.number && requestedNumbers.has(ch.number),
+        );
+      }
+
+      return {
+        url,
+        success: true,
+        title: parsedData.title,
+        chapters,
+        chapterCount: chapters.length,
+      };
+    } catch (error) {
+      return {
+        url,
+        success: false,
+        chapters: [],
+        chapterCount: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
   }
 }

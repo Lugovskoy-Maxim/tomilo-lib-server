@@ -16,8 +16,31 @@ export class AutoParsingJob {
   @Prop({ type: Types.ObjectId, ref: 'Title', required: true })
   titleId: Types.ObjectId;
 
-  @Prop({ required: true })
-  url: string;
+  /**
+   * @deprecated Use sources instead. Kept for backward compatibility.
+   */
+  @Prop({ required: false })
+  url?: string;
+
+  /**
+   * Array of source URLs to check sequentially for new chapters.
+   * The service will try each source in order until new chapters are found.
+   */
+  @Prop({ type: [String], default: [] })
+  sources: string[];
+
+  /**
+   * Index of the source that was last successfully used to find new chapters.
+   * Used to prioritize the same source in future checks.
+   */
+  @Prop({ default: 0 })
+  lastUsedSourceIndex: number;
+
+  /**
+   * URL of the source that was last successfully used.
+   */
+  @Prop({ required: false })
+  lastUsedSourceUrl?: string;
 
   @Prop({
     type: String,

@@ -25,6 +25,43 @@ export class AutoParsingService {
     private chaptersService: ChaptersService,
   ) {}
 
+  /**
+   * Get sources array from job, handling backward compatibility with single URL
+   */
+  private getSourcesFromJob(job: AutoParsingJob): string[] {
+    // If sources array is defined and not empty, use it
+    if (job.sources && job.sources.length > 0) {
+      return job.sources;
+    }
+    // Fall back to deprecated url field for backward compatibility
+    if (job.url) {
+      return [job.url];
+    }
+    return [];
+  }
+
+  /**
+   * Determine the order of sources to try based on last used source
+   */
+  private getSourceOrder(
+    sources: string[],
+    lastUsedSourceIndex: number,
+  ): number[] {
+    // If we have a last used source, try it first
+    if (lastUsedSourceIndex >= 0 && lastUsedSourceIndex < sources.length) {
+      const order = [lastUsedSourceIndex];
+      // Add remaining sources in order
+      for (let i = 0; i < sources.length; i++) {
+        if (i !== lastUsedSourceIndex) {
+          order.push(i);
+        }
+      }
+      return order;
+    }
+    // Default: try sources in order
+    return sources.map((_, i) => i);
+  }
+
   async create(
     createAutoParsingJobDto: CreateAutoParsingJobDto,
   ): Promise<AutoParsingJob> {
@@ -41,7 +78,24 @@ export class AutoParsingService {
       );
     }
 
-    const createdJob = new this.autoParsingJobModel(createAutoParsingJobDto);
+    // Handle both single url (deprecated) and sources array
+    const { sources, url } = createAutoParsingJobDto;
+
+    // Validate that we have at least one source
+    const sourceArray =
+      sources && sources.length > 0 ? sources : url ? [url] : null;
+
+    if (!sourceArray) {
+      throw new BadRequestException('At least one source URL is required');
+    }
+
+    const createdJob = new this.autoParsingJobModel({
+      ...createAutoParsingJobDto,
+      sources: sourceArray,
+      // Clear the deprecated url field when using sources
+      url: sources && sources.length > 0 ? undefined : url,
+    });
+
     return createdJob.save();
   }
 
@@ -64,8 +118,29 @@ export class AutoParsingService {
     id: string,
     updateAutoParsingJobDto: UpdateAutoParsingJobDto,
   ): Promise<AutoParsingJob> {
+    // Handle sources update - if sources is explicitly provided, use it
+    // Otherwise preserve existing sources
+    const updateData = { ...updateAutoParsingJobDto };
+
+    if (updateData.sources === null || updateData.sources === undefined) {
+      // If sources not being updated, get existing value
+      const existingJob = await this.autoParsingJobModel.findById(id);
+      if (existingJob) {
+        updateData.sources = existingJob.sources;
+      }
+    }
+
+    // Handle backward compatibility
+    if (
+      updateData.sources &&
+      Array.isArray(updateData.sources) &&
+      updateData.sources.length > 0
+    ) {
+      updateData.url = undefined;
+    }
+
     const updatedJob = await this.autoParsingJobModel
-      .findByIdAndUpdate(id, updateAutoParsingJobDto, { new: true })
+      .findByIdAndUpdate(id, updateData, { new: true })
       .populate('titleId')
       .exec();
     if (!updatedJob) {
@@ -93,13 +168,17 @@ export class AutoParsingService {
     }
 
     const titleId = job.titleId._id.toString();
+    const sources = this.getSourcesFromJob(job);
+
+    if (sources.length === 0) {
+      throw new BadRequestException('No sources configured for this job');
+    }
+
+    this.logger.log(
+      `Checking for new chapters for title ${job.titleId._id.toString()} with ${sources.length} source(s)`,
+    );
 
     try {
-      // Parse chapters info from the URL
-      const parsedData = await this.mangaParserService.parseChaptersInfo({
-        url: job.url,
-      });
-
       // Get existing chapters for the title
       const title = await this.titlesService.findById(
         job.titleId._id.toString(),
@@ -108,7 +187,6 @@ export class AutoParsingService {
         job.titleId._id.toString(),
       );
       const existingChapterNumbers = existingChapters.map((ch) => {
-        // Убедимся, что номер главы является числом
         if (typeof ch.chapterNumber === 'string') {
           const num = parseFloat(ch.chapterNumber);
           return isNaN(num) ? ch.chapterNumber : num;
@@ -116,16 +194,74 @@ export class AutoParsingService {
         return ch.chapterNumber;
       });
 
-      // Find new chapters
-      this.logger.log(
-        `Existing chapter numbers: ${JSON.stringify(existingChapterNumbers)} (types: ${existingChapterNumbers.map((n) => typeof n).join(', ')})`,
-      );
-      this.logger.log(
-        `Parsed chapter numbers: ${JSON.stringify(parsedData.chapters.map((ch) => ch.number))} (types: ${parsedData.chapters.map((ch) => typeof ch.number).join(', ')})`,
+      // Determine source order - try last used source first
+      const sourceOrder = this.getSourceOrder(
+        sources,
+        job.lastUsedSourceIndex || 0,
       );
 
+      // Try sources in order until we find new chapters
+      let parsedData: {
+        title: string;
+        chapters: Array<{
+          number?: number;
+          name: string;
+          url?: string;
+          slug?: string;
+        }>;
+      } | null = null;
+      let usedSourceIndex = -1;
+      let usedSourceUrl = '';
+      const errors: string[] = [];
+
+      for (const sourceIndex of sourceOrder) {
+        const url = sources[sourceIndex];
+        this.logger.log(
+          `Trying source ${sourceIndex + 1}/${sources.length}: ${url}`,
+        );
+
+        try {
+          const result =
+            await this.mangaParserService.parseChaptersInfoDetailed(url);
+
+          if (result.success && result.chapters.length > 0) {
+            this.logger.log(
+              `Found ${result.chapters.length} chapters from source: ${url}`,
+            );
+
+            parsedData = {
+              title: result.title || title.name,
+              chapters: result.chapters,
+            };
+            usedSourceIndex = sourceIndex;
+            usedSourceUrl = url;
+            break;
+          }
+
+          if (!result.success) {
+            errors.push(`${url}: ${result.error || 'Unknown error'}`);
+          } else {
+            errors.push(`${url}: No chapters found`);
+          }
+        } catch (error) {
+          const errorMessage = `Failed to parse ${url}: ${error instanceof Error ? error.message : 'Unknown error'}`;
+          this.logger.warn(errorMessage);
+          errors.push(errorMessage);
+        }
+      }
+
+      // If no sources succeeded, throw error
+      if (!parsedData) {
+        this.logger.error(
+          `All ${sources.length} sources failed for title ${title.name}. Errors: ${errors.join('; ')}`,
+        );
+        throw new BadRequestException(
+          'No sources were able to provide chapter information',
+        );
+      }
+
+      // Find new chapters from the successful source
       const newChapters = parsedData.chapters.filter((ch) => {
-        // Проверяем, что номер главы существует и является числом
         if (ch.number === undefined || ch.number === null || isNaN(ch.number)) {
           this.logger.log(
             `Skipping chapter with invalid number: ${JSON.stringify(ch)}`,
@@ -133,12 +269,9 @@ export class AutoParsingService {
           return false;
         }
 
-        // Преобразуем номер главы к числу для сравнения
         const chapterNumber = Number(ch.number);
 
-        // Проверяем, что глава еще не существует
         const exists = existingChapterNumbers.some((existing) => {
-          // Преобразуем оба значения к числам для сравнения
           const existingNum =
             typeof existing === 'string' ? parseFloat(existing) : existing;
           const chapterNum =
@@ -146,9 +279,7 @@ export class AutoParsingService {
               ? parseFloat(chapterNumber)
               : chapterNumber;
 
-          // Проверяем, являются ли оба значения корректными числами
           if (isNaN(existingNum) || isNaN(chapterNum)) {
-            // Если одно из значений не является числом, сравниваем как строки
             const result = String(existing) === String(chapterNumber);
             this.logger.log(
               `Comparing as strings: ${existing} with ${chapterNumber}: ${result}`,
@@ -156,7 +287,6 @@ export class AutoParsingService {
             return result;
           }
 
-          // Для целых чисел используем строгое сравнение
           if (Number.isInteger(existingNum) && Number.isInteger(chapterNum)) {
             const result = existingNum === chapterNum;
             this.logger.log(
@@ -165,7 +295,6 @@ export class AutoParsingService {
             return result;
           }
 
-          // Для чисел с плавающей точкой используем сравнение с допустимой погрешностью
           const result = Math.abs(existingNum - chapterNum) < 0.001;
           this.logger.log(
             `Comparing floats ${existingNum} with ${chapterNum}: ${result}`,
@@ -180,42 +309,43 @@ export class AutoParsingService {
       this.logger.log(`New chapters to import: ${newChapters.length}`);
 
       if (newChapters.length === 0) {
-        // Проверим, есть ли вообще главы для импорта
-        if (parsedData.chapters.length === 0) {
-          this.logger.log(
-            `No chapters found on source website for title ${title.name}`,
-          );
-          throw new BadRequestException(
-            'No chapters found on the source website',
-          );
-        } else {
-          this.logger.log(
-            `No new chapters found for title ${title.name} (all chapters may already exist)`,
-          );
-          // Не выбрасываем исключение, просто возвращаем пустой массив
-          return [];
-        }
+        this.logger.log(
+          `No new chapters found for title ${title.name} (all chapters may already exist)`,
+        );
+
+        // Update tracking even when no new chapters found
+        await this.autoParsingJobModel.findByIdAndUpdate(jobId, {
+          lastChecked: new Date(),
+          lastUsedSourceIndex: usedSourceIndex,
+          lastUsedSourceUrl: usedSourceUrl,
+        });
+
+        return [];
       }
 
-      // Import new chapters
+      // Import new chapters from the successful source
       const importedChapters =
         await this.mangaParserService.parseAndImportChapters({
-          url: job.url,
+          url: usedSourceUrl,
           titleId: titleId,
           chapterNumbers: newChapters.map((ch) => ch.number!.toString()),
         });
 
-      // Update last checked
+      // Update last checked and tracking info
       await this.autoParsingJobModel.findByIdAndUpdate(jobId, {
         lastChecked: new Date(),
+        lastUsedSourceIndex: usedSourceIndex,
+        lastUsedSourceUrl: usedSourceUrl,
       });
 
       this.logger.log(
-        `Imported ${importedChapters.length} new chapters for title ${title.name}`,
+        `Imported ${importedChapters.length} new chapters for title ${title.name} from source ${usedSourceUrl}`,
       );
       return importedChapters;
     } catch (error) {
-      this.logger.error(`Failed to check for new chapters: ${error.message}`);
+      this.logger.error(
+        `Failed to check for new chapters: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
       throw error;
     }
   }
@@ -246,7 +376,9 @@ export class AutoParsingService {
       try {
         await this.checkForNewChapters(job._id.toString());
       } catch (error) {
-        this.logger.error(`Failed to process job ${error.message}`);
+        this.logger.error(
+          `Failed to process job ${job._id.toString()}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
       }
     }
   }
