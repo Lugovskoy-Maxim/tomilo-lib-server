@@ -45,7 +45,7 @@ import { EmailModule } from './email/email.module';
     ThrottlerModule.forRoot([
       {
         ttl: 60000, // 1 minute
-        limit: 60, // 60 requests per minute for normal endpoints
+        limit: 240, // 240 requests per minute for normal endpoints
       },
     ]),
     ConfigModule.forRoot(),
