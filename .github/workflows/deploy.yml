@@ -19,7 +19,7 @@ jobs:
             echo "🚀 Deploying to cloud.ru server..."
 
             # Создаем папку проекта если не существует
-            PROJECT_DIR="/home/${{ secrets.VM_USERNAME }}/tomilo-lib-server"
+            PROJECT_DIR="/mnt/sdb1/tomilo-lib-server"
             mkdir -p "$PROJECT_DIR"
             cd "$PROJECT_DIR"
             echo "Current directory: $(pwd)"
