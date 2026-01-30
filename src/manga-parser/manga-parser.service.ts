@@ -695,9 +695,11 @@ export class MangaParserService {
           'No chapters found on the source website',
         );
       } else {
-        throw new BadRequestException(
-          'No chapters found to import (all chapters may already exist)',
+        // Return empty array instead of throwing - all chapters may already exist
+        this.logger.log(
+          'No new chapters to import (all chapters may already exist)',
         );
+        return [];
       }
     }
 
@@ -806,9 +808,14 @@ export class MangaParserService {
     }
 
     if (chapters.length === 0 && parsedData.chapters.length > 0) {
-      throw new BadRequestException(
-        'No chapters found to import (all chapters may already exist)',
+      // Return empty chapters instead of throwing - all chapters may already exist
+      this.logger.log(
+        'No chapters match the requested numbers (all may already exist)',
       );
+      return {
+        title: parsedData.title,
+        chapters: [],
+      };
     }
 
     if (chapters.length === 0 && parsedData.chapters.length === 0) {
