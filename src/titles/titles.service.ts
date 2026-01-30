@@ -12,16 +12,23 @@ import { Collection, CollectionDocument } from '../schemas/collection.schema';
 import { CreateTitleDto } from './dto/create-title.dto';
 import { UpdateTitleDto } from './dto/update-title.dto';
 import { FilesService } from '../files/files.service';
+import { UsersService } from '../users/users.service';
+import { LoggerService } from '../common/logger/logger.service';
 
 @Injectable()
 export class TitlesService {
+  private readonly logger = new LoggerService();
+
   constructor(
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
     @InjectModel(Collection.name)
     private collectionModel: Model<CollectionDocument>,
     private readonly filesService: FilesService,
-  ) {}
+    private readonly usersService: UsersService,
+  ) {
+    this.logger.setContext(TitlesService.name);
+  }
 
   async findAll({
     page = 1,
@@ -704,5 +711,194 @@ export class TitlesService {
       (title): title is NonNullable<typeof title> => title !== null,
     );
     return validTitles.slice(0, limit);
+  }
+
+  async getRecommendedTitles(
+    userId: string,
+    limit: number = 10,
+    canViewAdult: boolean = true,
+  ): Promise<TitleDocument[]> {
+    try {
+      // Получаем пользователя с bookmarks и reading history
+      const user = await this.usersService.findById(userId);
+
+      // Собираем ID тайтлов, которые нужно исключить (уже прочитанные + в закладках)
+      const excludedTitleIds: Set<string> = new Set();
+
+      // Добавляем закладки
+      if (user.bookmarks && user.bookmarks.length > 0) {
+        user.bookmarks.forEach((bookmarkId: any) => {
+          const idStr =
+            typeof bookmarkId === 'string'
+              ? bookmarkId
+              : bookmarkId?._id?.toString() || bookmarkId?.toString();
+          if (idStr) excludedTitleIds.add(idStr);
+        });
+      }
+
+      // Добавляем историю чтения
+      if (user.readingHistory && user.readingHistory.length > 0) {
+        user.readingHistory.forEach((entry: any) => {
+          const titleIdStr =
+            typeof entry.titleId === 'string'
+              ? entry.titleId
+              : entry.titleId?._id?.toString() || entry.titleId?.toString();
+          if (titleIdStr) excludedTitleIds.add(titleIdStr);
+        });
+      }
+
+      // Собираем жанры и теги из прочитанных тайтлов и закладок
+      const genreCount: Map<string, number> = new Map();
+      const tagCount: Map<string, number> = new Map();
+      const sourceTitleIds: string[] = [];
+
+      // Функция для обработки тайтла
+      const processTitle = (title: any, weight: number = 1) => {
+        if (!title) return;
+
+        const titleIdStr =
+          typeof title._id === 'string' ? title._id : title._id?.toString();
+        if (titleIdStr && !sourceTitleIds.includes(titleIdStr)) {
+          sourceTitleIds.push(titleIdStr);
+        }
+
+        // Считаем жанры
+        if (title.genres && Array.isArray(title.genres)) {
+          title.genres.forEach((genre: string) => {
+            genreCount.set(genre, (genreCount.get(genre) || 0) + weight);
+          });
+        }
+
+        // Считаем теги
+        if (title.tags && Array.isArray(title.tags)) {
+          title.tags.forEach((tag: string) => {
+            tagCount.set(tag, (tagCount.get(tag) || 0) + weight);
+          });
+        }
+      };
+
+      // Обрабатываем закладки
+      if (user.bookmarks && user.bookmarks.length > 0) {
+        for (const bookmark of user.bookmarks) {
+          // Если закладка - это populate объект
+          if (typeof bookmark === 'object' && bookmark !== null) {
+            processTitle(bookmark, 2); // Закладки имеют больший вес
+          } else {
+            // Если закладка - это ID, нужно получить тайтл
+            try {
+              const titleDoc = await this.titleModel.findById(bookmark).exec();
+              if (titleDoc) {
+                processTitle(titleDoc, 2);
+              }
+            } catch {
+              // Игнорируем ошибки
+            }
+          }
+        }
+      }
+
+      // Обрабатываем историю чтения
+      if (user.readingHistory && user.readingHistory.length > 0) {
+        for (const entry of user.readingHistory) {
+          const titleObj = entry.titleId;
+          if (typeof titleObj === 'string') {
+            try {
+              const foundTitle = await this.titleModel
+                .findById(titleObj)
+                .exec();
+              if (foundTitle) {
+                processTitle(foundTitle, 1);
+              }
+            } catch {
+              // Игнорируем ошибки
+            }
+          } else if (titleObj && typeof titleObj === 'object') {
+            processTitle(titleObj, 1); // История чтения имеет обычный вес
+          }
+        }
+      }
+
+      // Если нет данных для рекомендаций, возвращаем популярные тайтлы
+      if (genreCount.size === 0 && tagCount.size === 0) {
+        return this.getPopularTitles(limit, canViewAdult);
+      }
+
+      // Сортируем жанры и теги по частоте
+      const topGenres = [...genreCount.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10)
+        .map(([genre]) => genre);
+
+      const topTags = [...tagCount.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 20)
+        .map(([tag]) => tag);
+
+      // Формируем запрос для поиска рекомендаций
+      const query: any = {
+        $and: [
+          { $or: [{ genres: { $in: topGenres } }, { tags: { $in: topTags } }] },
+        ],
+      };
+
+      // Исключаем уже прочитанные тайтлы
+      if (excludedTitleIds.size > 0) {
+        query._id = { $nin: Array.from(excludedTitleIds) };
+      }
+
+      // Фильтрация взрослого контента
+      if (!canViewAdult) {
+        query.$and = query.$and || [];
+        query.$and.push({
+          $or: [
+            { ageLimit: { $lt: 18 } },
+            { ageLimit: { $exists: false } },
+            { ageLimit: null },
+          ],
+        });
+      }
+
+      // Получаем тайтлы и сортируем по релевантности
+      const titles = await this.titleModel
+        .find(query)
+        .limit(limit * 3) // Получаем больше, чтобы потом отфильтровать
+        .exec();
+
+      // Сортируем результаты по количеству совпадений с предпочтениями
+      const scoredTitles = titles.map((title) => {
+        let score = 0;
+
+        // Считаем совпадения по жанрам
+        if (title.genres) {
+          title.genres.forEach((genre) => {
+            score += (genreCount.get(genre) || 0) * 3; // Жанры имеют больший вес
+          });
+        }
+
+        // Считаем совпадения по тегам
+        if (title.tags) {
+          title.tags.forEach((tag) => {
+            score += tagCount.get(tag) || 0;
+          });
+        }
+
+        // Добавляем бонус за популярность
+        score += (title.weekViews || 0) * 0.001;
+        score += (title.averageRating || 0) * 5;
+
+        return { title, score };
+      });
+
+      // Сортируем по убыванию score и возвращаем limit
+      scoredTitles.sort((a, b) => b.score - a.score);
+
+      return scoredTitles.slice(0, limit).map((st) => st.title);
+    } catch (error) {
+      // В случае ошибки возвращаем популярные тайтлы
+      this.logger.warn(
+        `Error getting recommendations for user ${userId}: ${error.message}`,
+      );
+      return this.getPopularTitles(limit, canViewAdult);
+    }
   }
 }

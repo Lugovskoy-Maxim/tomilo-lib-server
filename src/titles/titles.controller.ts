@@ -1124,4 +1124,86 @@ export class TitlesController {
       };
     }
   }
+
+  /**
+   * Получить рекомендуемые тайтлы на основе истории чтения и закладок пользователя
+   */
+  @Get('titles/recommended')
+  @UseGuards(JwtAuthGuard)
+  async getRecommendedTitles(
+    @Query('limit') limit = 10,
+    @Req() req?: any,
+  ): Promise<ApiResponseDto<any>> {
+    await this.checkIPActivity(req);
+
+    try {
+      // Извлекаем userId из JWT токена
+      const authHeader =
+        req.headers?.authorization || req.headers?.Authorization;
+      let userId: string | null = null;
+
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        if (token) {
+          try {
+            const jwtSecret =
+              process.env.JWT_SECRET || 'your-super-secret-jwt-key';
+            const decoded = jwt.verify(token, jwtSecret) as { userId?: string };
+            userId = decoded.userId || null;
+          } catch {
+            userId = null;
+          }
+        }
+      }
+
+      if (!userId) {
+        return {
+          success: false,
+          message: 'User not authenticated',
+          errors: ['Authentication required for recommendations'],
+          timestamp: new Date().toISOString(),
+          path: 'titles/recommended',
+        };
+      }
+
+      // Определяем, может ли пользователь видеть взрослый контент
+      const canViewAdult = await this.getCanViewAdult(req);
+
+      // Получаем рекомендуемые тайтлы
+      const titles = await this.titlesService.getRecommendedTitles(
+        userId,
+        Number(limit),
+        canViewAdult,
+      );
+
+      const data = titles.map((title) => ({
+        id: title._id?.toString(),
+        title: title.name,
+        slug: title.slug,
+        cover: title.coverImage,
+        rating: title.averageRating,
+        type: title.type,
+        releaseYear: title.releaseYear,
+        description: title.description,
+        genres: title.genres,
+        tags: title.tags,
+        isAdult: this.processAdultField(title?.ageLimit),
+      }));
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'titles/recommended',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch recommended titles',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'titles/recommended',
+      };
+    }
+  }
 }
