@@ -633,10 +633,15 @@ export class TitlesController {
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
-      this.logger.debug(
-        `Received ageLimit query param: ${JSON.stringify(ageLimit)}`,
-      );
-      this.logger.debug(`Received ageLimits query param: ${ageLimits}`);
+      // Логируем только если параметры фильтрации возраста предоставлены
+      if (ageLimit !== undefined) {
+        this.logger.debug(
+          `Received ageLimit query param: ${JSON.stringify(ageLimit)}`,
+        );
+      }
+      if (ageLimits !== undefined) {
+        this.logger.debug(`Received ageLimits query param: ${ageLimits}`);
+      }
 
       // Определяем типы для фильтрации
       let filterTypes: string[] = [];
@@ -691,9 +696,12 @@ export class TitlesController {
         }
       }
 
-      this.logger.debug(
-        `Parsed age limits for filtering: ${JSON.stringify(filterAgeLimits)}`,
-      );
+      // Логируем только если фильтрация по возрастным ограничениям активна
+      if (filterAgeLimits.length > 0) {
+        this.logger.debug(
+          `Active age limits filter: ${JSON.stringify(filterAgeLimits)}`,
+        );
+      }
 
       const canViewAdult = await this.getCanViewAdult(req);
 
