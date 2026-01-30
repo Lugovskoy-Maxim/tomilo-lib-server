@@ -836,7 +836,10 @@ export class TitlesService {
             typeof bookmarkId === 'string'
               ? bookmarkId
               : bookmarkId?._id?.toString() || bookmarkId?.toString();
-          if (idStr) excludedTitleIds.add(idStr);
+          // Валидируем ObjectId перед добавлением
+          if (idStr && Types.ObjectId.isValid(idStr)) {
+            excludedTitleIds.add(idStr);
+          }
         });
       }
 
@@ -847,7 +850,10 @@ export class TitlesService {
             typeof entry.titleId === 'string'
               ? entry.titleId
               : entry.titleId?._id?.toString() || entry.titleId?.toString();
-          if (titleIdStr) excludedTitleIds.add(titleIdStr);
+          // Валидируем ObjectId перед добавлением
+          if (titleIdStr && Types.ObjectId.isValid(titleIdStr)) {
+            excludedTitleIds.add(titleIdStr);
+          }
         });
       }
 
@@ -889,13 +895,18 @@ export class TitlesService {
             processTitle(bookmark, 2); // Закладки имеют больший вес
           } else {
             // Если закладка - это ID, нужно получить тайтл
-            try {
-              const titleDoc = await this.titleModel.findById(bookmark).exec();
-              if (titleDoc) {
-                processTitle(titleDoc, 2);
+            // Валидируем ObjectId перед запросом
+            if (Types.ObjectId.isValid(bookmark)) {
+              try {
+                const titleDoc = await this.titleModel
+                  .findById(bookmark)
+                  .exec();
+                if (titleDoc) {
+                  processTitle(titleDoc, 2);
+                }
+              } catch {
+                // Игнорируем ошибки
               }
-            } catch {
-              // Игнорируем ошибки
             }
           }
         }
@@ -906,15 +917,18 @@ export class TitlesService {
         for (const entry of user.readingHistory) {
           const titleObj = entry.titleId;
           if (typeof titleObj === 'string') {
-            try {
-              const foundTitle = await this.titleModel
-                .findById(titleObj)
-                .exec();
-              if (foundTitle) {
-                processTitle(foundTitle, 1);
+            // Валидируем ObjectId перед запросом
+            if (Types.ObjectId.isValid(titleObj)) {
+              try {
+                const foundTitle = await this.titleModel
+                  .findById(titleObj)
+                  .exec();
+                if (foundTitle) {
+                  processTitle(foundTitle, 1);
+                }
+              } catch {
+                // Игнорируем ошибки
               }
-            } catch {
-              // Игнорируем ошибки
             }
           } else if (titleObj && typeof titleObj === 'object') {
             processTitle(titleObj, 1); // История чтения имеет обычный вес
