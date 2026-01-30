@@ -259,7 +259,24 @@ export class ChaptersService {
     return { deletedCount };
   }
 
-  async incrementViews(id: string): Promise<ChapterDocument> {
+  async incrementViews(
+    id: string,
+    userId: string | null = null,
+  ): Promise<ChapterDocument> {
+    // Validate chapter ID
+    if (!Types.ObjectId.isValid(id)) {
+      throw new BadRequestException('Invalid chapter ID');
+    }
+
+    // Log view info for debugging
+    if (userId) {
+      this.logger.log(
+        `Incrementing views for chapter ${id} by authenticated user ${userId}`,
+      );
+    } else {
+      this.logger.log(`Incrementing views for chapter ${id} by anonymous user`);
+    }
+
     const chapter = await this.chapterModel
       .findByIdAndUpdate(id, { $inc: { views: 1 } }, { new: true })
       .populate('titleId')

@@ -449,15 +449,21 @@ export class ChaptersController {
   }
 
   @Post(':id/view')
-  @UseGuards(JwtAuthGuard)
-  async incrementViews(@Param('id') id: string): Promise<ApiResponseDto<any>> {
+  async incrementViews(
+    @Param('id') id: string,
+    @Req() req?: any,
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.chaptersService.incrementViews(id);
+      // Extract userId from JWT if token is present, otherwise null (anonymous)
+      const userId = req?.user?.userId || null;
+      const data = await this.chaptersService.incrementViews(id, userId);
 
       return {
         success: true,
         data,
-        message: 'Chapter views incremented successfully',
+        message: userId
+          ? 'Chapter views incremented successfully'
+          : 'Chapter views incremented (anonymous)',
         timestamp: new Date().toISOString(),
         path: `chapters/${id}/view`,
         method: 'POST',

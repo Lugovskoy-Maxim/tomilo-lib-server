@@ -27,8 +27,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     return super.canActivate(context);
   }
 
-  handleRequest(err: any, user: any) {
+  handleRequest(err: any, user: any, info: any) {
     this.logger.log(`JWT Auth Guard handling request with user: ${user}`);
+
     if (err) {
       this.logger.warn(`JWT Auth Guard failed with error: ${err.message}`);
       this.logger.warn(`Error details: ${JSON.stringify(err)}`);
@@ -36,6 +37,18 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     }
 
     if (!user) {
+      // Check if it's a missing/empty token issue
+      if (info && info.message) {
+        const msg = info.message.toLowerCase();
+        if (
+          msg.includes('no auth token') ||
+          msg.includes('jwt expired') ||
+          msg.includes('invalid token')
+        ) {
+          this.logger.warn(`JWT Auth Guard failed: ${info.message}`);
+          throw new UnauthorizedException(`Invalid token: ${info.message}`);
+        }
+      }
       this.logger.warn(
         'JWT Auth Guard failed: User not found or invalid token',
       );
