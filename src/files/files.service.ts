@@ -140,6 +140,11 @@ export class FilesService {
     // Освобождаем ресурсы водяных знаков после обработки
     this.watermarkUtil.dispose();
 
+    // Принудительная очистка памяти
+    if (global.gc) {
+      global.gc();
+    }
+
     return pagePaths;
   }
 
@@ -399,6 +404,11 @@ export class FilesService {
       // Освобождаем буферы из памяти
       watermarkedBuffer = null as any;
       (imageBuffer as any) = null;
+
+      // Принудительная очистка памяти
+      if (global.gc) {
+        global.gc();
+      }
 
       this.logger.log(`=== КОНЕЦ downloadImageFromUrl ===`);
       return `/${chapterDir}/${fileName}`;

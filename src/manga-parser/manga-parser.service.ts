@@ -661,6 +661,11 @@ export class MangaParserService {
     // Освобождаем ресурсы водяных знаков после обработки всех глав
     this.filesService.disposeWatermarkResources();
 
+    // Принудительная очистка памяти
+    if (global.gc) {
+      global.gc();
+    }
+
     return {
       title: createdTitle,
       importedChapters,
@@ -773,6 +778,11 @@ export class MangaParserService {
 
     // Освобождаем ресурсы водяных знаков после обработки всех глав
     this.filesService.disposeWatermarkResources();
+
+    // Принудительная очистка памяти
+    if (global.gc) {
+      global.gc();
+    }
 
     return importedChapters;
   }
