@@ -133,6 +133,10 @@ export class FilesService {
       `=== КОНЕЦ saveChapterPages === Всего сохранено страниц: ${pagePaths.length}`,
     );
 
+    // Освобождаем буферы из памяти
+    imageBuffers.length = 0;
+    watermarkedBuffers.length = 0;
+
     // Освобождаем ресурсы водяных знаков после обработки
     this.watermarkUtil.dispose();
 
@@ -391,6 +395,10 @@ export class FilesService {
       // Сохраняем файл с водяным знаком
       await fs.writeFile(filePath, watermarkedBuffer);
       this.logger.log(`Файл сохранен: ${filePath}`);
+
+      // Освобождаем буферы из памяти
+      watermarkedBuffer = null as any;
+      (imageBuffer as any) = null;
 
       this.logger.log(`=== КОНЕЦ downloadImageFromUrl ===`);
       return `/${chapterDir}/${fileName}`;
