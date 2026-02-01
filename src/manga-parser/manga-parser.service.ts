@@ -658,6 +658,9 @@ export class MangaParserService {
       }
     }
 
+    // Освобождаем ресурсы водяных знаков после обработки всех глав
+    this.filesService.disposeWatermarkResources();
+
     return {
       title: createdTitle,
       importedChapters,
@@ -767,6 +770,9 @@ export class MangaParserService {
         );
       }
     }
+
+    // Освобождаем ресурсы водяных знаков после обработки всех глав
+    this.filesService.disposeWatermarkResources();
 
     return importedChapters;
   }

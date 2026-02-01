@@ -146,7 +146,9 @@ export class WatermarkUtil {
 
       // Рассчитываем размер водяного знака
       const watermarkWidth = Math.floor(metadata.width * scale);
-      const watermarkMetadata = await sharp(this.watermarkBuffer).metadata();
+      const watermarkMetadata = await sharp(
+        Buffer.from(this.watermarkBuffer),
+      ).metadata();
       const watermarkHeight = Math.floor(
         (watermarkWidth * watermarkMetadata.height) / watermarkMetadata.width,
       );
@@ -156,7 +158,7 @@ export class WatermarkUtil {
       );
 
       // Изменяем размер водяного знака
-      const resizedWatermark = await sharp(this.watermarkBuffer)
+      const resizedWatermark = await sharp(Buffer.from(this.watermarkBuffer))
         .resize(watermarkWidth, watermarkHeight, {
           fit: 'contain',
           withoutEnlargement: true,
@@ -221,7 +223,9 @@ export class WatermarkUtil {
 
       // Верхний водяной знак на всю ширину изображения
       const watermarkWidth = metadata.width;
-      const watermarkMetadata = await sharp(this.watermarkTopBuffer).metadata();
+      const watermarkMetadata = await sharp(
+        Buffer.from(this.watermarkTopBuffer),
+      ).metadata();
       const watermarkHeight = Math.floor(
         (watermarkWidth * watermarkMetadata.height) / watermarkMetadata.width,
       );
@@ -231,7 +235,7 @@ export class WatermarkUtil {
       );
 
       // Изменяем размер водяного знака на всю ширину
-      const resizedWatermark = await sharp(this.watermarkTopBuffer)
+      const resizedWatermark = await sharp(Buffer.from(this.watermarkTopBuffer))
         .resize(watermarkWidth, watermarkHeight, {
           fit: 'fill',
           withoutEnlargement: false,
@@ -429,5 +433,19 @@ export class WatermarkUtil {
    */
   isWatermarkTopLoaded(): boolean {
     return this.watermarkTopBuffer !== null;
+  }
+
+  /**
+   * Освобождает ресурсы и очищает кэш водяных знаков
+   */
+  dispose(): void {
+    this.logger.log('Очистка ресурсов водяных знаков');
+    this.watermarkBuffer = null;
+    this.watermarkTopBuffer = null;
+    // Принудительный сбор мусора, если доступен
+    if (global.gc) {
+      global.gc();
+      this.logger.log('Принудительный сбор мусора выполнен');
+    }
   }
 }

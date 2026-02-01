@@ -132,6 +132,10 @@ export class FilesService {
     this.logger.log(
       `=== КОНЕЦ saveChapterPages === Всего сохранено страниц: ${pagePaths.length}`,
     );
+
+    // Освобождаем ресурсы водяных знаков после обработки
+    this.watermarkUtil.dispose();
+
     return pagePaths;
   }
 
@@ -465,5 +469,12 @@ export class FilesService {
         );
       }
     }
+  }
+
+  /**
+   * Освобождает ресурсы водяных знаков
+   */
+  disposeWatermarkResources(): void {
+    this.watermarkUtil.dispose();
   }
 }
