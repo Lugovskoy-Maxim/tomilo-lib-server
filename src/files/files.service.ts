@@ -398,7 +398,6 @@ export class FilesService {
 
       // Освобождаем буферы из памяти
       watermarkedBuffer = null as any;
-      (imageBuffer as any) = null;
 
       this.logger.log(`=== КОНЕЦ downloadImageFromUrl ===`);
       return `/${chapterDir}/${fileName}`;
