@@ -15,6 +15,7 @@ import { MangaShiParser } from './parsers/manga-shi.parser';
 import { MangabuffParser } from './parsers/mangabuff.parser';
 import { MangahubParser } from './parsers/mangahub.parser';
 import { MangahubCcParser } from './parsers/mangahub-cc.parser';
+import { TelemangaParser } from './parsers/telemanga.parser';
 
 /**
  * Result of parsing chapters info from a single source
@@ -43,6 +44,7 @@ export interface SequentialParsingResult {
 @Injectable()
 export class MangaParserService {
   private readonly logger = new Logger(MangaParserService.name);
+  private readonly baseUrl = 'https://telemanga.me';
   private session: AxiosInstance;
   private parsers: Map<string, MangaParser>;
 
@@ -67,6 +69,7 @@ export class MangaParserService {
     this.parsers.set('v2.mangahub.one', new MangahubParser());
     this.parsers.set('mangahub.one', new MangahubParser());
     this.parsers.set('mangahub.cc', new MangahubCcParser());
+    this.parsers.set('telemanga.me', new TelemangaParser());
   }
 
   private sanitizeFilename(name: string): string {
@@ -526,6 +529,80 @@ export class MangaParserService {
     }
   }
 
+  /**
+   * Download chapter images for telemanga.me
+   */
+  private async downloadTelemangaChapterImages(
+    chapter: ChapterInfo,
+    chapterId: string,
+    mangaSlug: string,
+  ): Promise<string[]> {
+    if (!chapter.number) {
+      throw new BadRequestException(
+        'Chapter number is required for downloading telemanga.me chapters',
+      );
+    }
+
+    try {
+      const chapterPagesUrl = `${this.baseUrl}/api/manga/${mangaSlug}/chapter/${chapter.number}`;
+
+      const response = await this.session.get(chapterPagesUrl);
+
+      if (response.status !== 200) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Get page URLs from response
+      // API returns: { result: { pages: [...] } }
+      const pagesData = response.data.result?.pages || [];
+
+      if (!Array.isArray(pagesData) || pagesData.length === 0) {
+        throw new Error('No pages found in chapter response');
+      }
+
+      const pagePaths: string[] = [];
+      for (let i = 0; i < pagesData.length; i++) {
+        const imgUrl = pagesData[i];
+
+        if (!imgUrl) continue;
+
+        try {
+          const pagePath = await this.filesService.downloadImageFromUrl(
+            imgUrl,
+            chapterId,
+            i + 1,
+            {
+              headers: {
+                Referer: 'https://telemanga.me/',
+                Accept: 'image/webp,image/apng,image/*,*/*;q=0.8',
+              },
+            },
+          );
+          pagePaths.push(pagePath);
+        } catch (imageError) {
+          this.logger.error(
+            `Failed to download telemanga image ${i + 1}: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`,
+          );
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      if (pagePaths.length === 0) {
+        throw new Error('No images could be downloaded');
+      }
+
+      return pagePaths;
+    } catch (error) {
+      this.logger.error(
+        `Failed to download telemanga chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      throw new BadRequestException(
+        `Failed to download chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
   async parseAndImportTitle(
     parseTitleDto: ParseTitleDto,
   ): Promise<{ title: any; importedChapters: any[]; totalChapters: number }> {
@@ -595,6 +672,7 @@ export class MangaParserService {
 
     const importedChapters: any[] = [];
     const domain = this.extractDomain(url);
+    const mangaSlug = this.extractMangaSlug(url);
 
     for (const chapter of chapters) {
       try {
@@ -634,6 +712,12 @@ export class MangaParserService {
             // Требуется дополнительная реализация с использованием браузера
             throw new BadRequestException(
               'MangaHub image downloading requires additional implementation with browser automation',
+            );
+          } else if (domain.includes('telemanga.me') && mangaSlug) {
+            pagePaths = await this.downloadTelemangaChapterImages(
+              chapter,
+              createdChapter._id.toString(),
+              mangaSlug,
             );
           } else {
             throw new BadRequestException(`Unsupported domain: ${domain}`);
@@ -708,6 +792,7 @@ export class MangaParserService {
 
     const importedChapters: any[] = [];
     const domain = this.extractDomain(url);
+    const mangaSlug = this.extractMangaSlug(url);
 
     for (const chapter of selectedChapters) {
       try {
@@ -747,6 +832,12 @@ export class MangaParserService {
             // Требуется дополнительная реализация с использованием браузера
             throw new BadRequestException(
               'MangaHub image downloading requires additional implementation with browser automation',
+            );
+          } else if (domain.includes('telemanga.me') && mangaSlug) {
+            pagePaths = await this.downloadTelemangaChapterImages(
+              chapter,
+              createdChapter._id.toString(),
+              mangaSlug,
             );
           } else {
             throw new BadRequestException(`Unsupported domain: ${domain}`);
@@ -789,6 +880,16 @@ export class MangaParserService {
   private extractDomain(url: string): string {
     const urlObj = new URL(url);
     return urlObj.hostname;
+  }
+
+  private extractMangaSlug(url: string): string | null {
+    // Extract slug from URL for sites like telemanga.me
+    // Format: https://telemanga.me/manga/{slug}
+    const match = url.match(/telemanga\.me\/manga\/([^/]+)/);
+    if (match) {
+      return decodeURIComponent(match[1]);
+    }
+    return null;
   }
 
   async parseChaptersInfo(
@@ -843,6 +944,7 @@ export class MangaParserService {
         'v2.mangahub.one',
         'mangahub.one',
         'mangahub.cc',
+        'telemanga.me',
       ],
     };
   }
