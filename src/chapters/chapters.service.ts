@@ -190,7 +190,7 @@ export class ChaptersService {
       );
     } catch (error) {
       this.logger.error(
-        `Failed to create notifications for new chapter: ${error.message}`,
+        `Failed to create notifications for new chapter: ${(error as Error).message}`,
       );
     }
 
@@ -287,9 +287,52 @@ export class ChaptersService {
     }
 
     // Также увеличиваем просмотры тайтла
-    await this.titleModel.findByIdAndUpdate(chapter.titleId, {
-      $inc: { totalViews: 1 },
-    });
+    const title = await this.titleModel.findById(chapter.titleId);
+    if (!title) {
+      throw new NotFoundException('Title not found');
+    }
+
+    // Получаем текущую дату
+    const now = new Date();
+
+    // Подготавливаем обновления для счетчиков по периодам
+    const update: any = { $inc: { views: 1 } };
+
+    // Проверяем, нужно ли сбросить дневной счетчик
+    if (
+      !title.lastDayReset ||
+      now.getDate() !== title.lastDayReset.getDate() ||
+      now.getMonth() !== title.lastDayReset.getMonth() ||
+      now.getFullYear() !== title.lastDayReset.getFullYear()
+    ) {
+      update.dayViews = 1;
+      update.lastDayReset = now;
+    } else {
+      update.$inc.dayViews = 1;
+    }
+
+    // Проверяем, нужно ли сбросить недельный счетчик
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    if (!title.lastWeekReset || title.lastWeekReset < oneWeekAgo) {
+      update.weekViews = 1;
+      update.lastWeekReset = now;
+    } else {
+      update.$inc.weekViews = 1;
+    }
+
+    // Проверяем, нужно ли сбросить месячный счетчик
+    if (
+      !title.lastMonthReset ||
+      now.getMonth() !== title.lastMonthReset.getMonth() ||
+      now.getFullYear() !== title.lastMonthReset.getFullYear()
+    ) {
+      update.monthViews = 1;
+      update.lastMonthReset = now;
+    } else {
+      update.$inc.monthViews = 1;
+    }
+
+    await this.titleModel.findByIdAndUpdate(title._id, update);
 
     return chapter;
   }
@@ -488,7 +531,7 @@ export class ChaptersService {
         );
       } catch (error) {
         this.logger.error(
-          `Failed to create notifications for new chapter: ${error.message}`,
+          `Failed to create notifications for new chapter: ${error}`,
         );
       }
 
@@ -496,7 +539,9 @@ export class ChaptersService {
     } catch (error) {
       // Если ошибка при загрузке файлов, удаляем созданную главу
       await this.chapterModel.findByIdAndDelete(savedChapter._id);
-      this.logger.error(`Failed to upload chapter pages: ${error.message}`);
+      this.logger.error(
+        `Failed to upload chapter pages: ${(error as Error).message}`,
+      );
       throw new BadRequestException('Failed to upload chapter pages');
     }
   }
@@ -544,7 +589,7 @@ export class ChaptersService {
         );
       } catch (error) {
         this.logger.error(
-          `Failed to delete chapter ${chapter._id.toString()}: ${error.message}`,
+          `Failed to delete chapter ${chapter._id.toString()}: ${(error as Error).message}`,
         );
       }
     }
