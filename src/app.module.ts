@@ -33,6 +33,7 @@ import {
 import { IPActivity, IPActivitySchema } from './schemas/ip-activity.schema';
 import { AutoParsingModule } from './auto-parsing/auto-parsing.module';
 import { EmailModule } from './email/email.module';
+import { StatsModule } from './stats/stats.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { EmailModule } from './email/email.module';
     ReportsModule,
     AutoParsingModule,
     EmailModule,
+    StatsModule,
   ],
   controllers: [AppController],
   providers: [

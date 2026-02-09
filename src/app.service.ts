@@ -7,6 +7,7 @@ import { User, UserDocument } from './schemas/user.schema';
 import { Collection, CollectionDocument } from './schemas/collection.schema';
 import { StatsResponseDto } from './common/dto/stats-response.dto';
 import { LoggerService } from './common/logger/logger.service';
+import { StatsService } from './stats/stats.service';
 
 // Helper function to get date boundaries
 function getDateBoundaries() {
@@ -34,6 +35,7 @@ export class AppService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Collection.name)
     private collectionModel: Model<CollectionDocument>,
+    private readonly statsService: StatsService,
   ) {
     this.logger.setContext(AppService.name);
   }
@@ -306,5 +308,33 @@ export class AppService {
       `Statistics fetched successfully: ${JSON.stringify(stats)}`,
     );
     return stats;
+  }
+
+  /**
+   * Записать статистику за сегодня
+   */
+  async recordTodayStats() {
+    return this.statsService.recordDailyStats();
+  }
+
+  /**
+   * Получить историческую статистику за последние 30 дней
+   */
+  async getRecentStats(days: number = 30) {
+    return this.statsService.getRecentDailyStats(days);
+  }
+
+  /**
+   * Получить статистику за месяц
+   */
+  async getMonthlyStats(year: number, month: number) {
+    return this.statsService.getMonthlyStats(year, month);
+  }
+
+  /**
+   * Получить статистику за год
+   */
+  async getYearlyStats(year: number) {
+    return this.statsService.getYearlyStats(year);
   }
 }

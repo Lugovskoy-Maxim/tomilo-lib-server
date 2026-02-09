@@ -1,15 +1,15 @@
 // Base statistics
 export class StatsResponseDto {
   // General counts
-  totalTitles: number;
-  totalChapters: number;
-  totalUsers: number;
-  totalCollections: number;
-  totalViews: number;
-  totalBookmarks: number;
+  totalTitles!: number;
+  totalChapters!: number;
+  totalUsers!: number;
+  totalCollections!: number;
+  totalViews!: number;
+  totalBookmarks!: number;
 
   // Daily statistics
-  daily: {
+  daily!: {
     views: number;
     newUsers: number;
     newTitles: number;
@@ -18,7 +18,7 @@ export class StatsResponseDto {
   };
 
   // Weekly statistics
-  weekly: {
+  weekly!: {
     views: number;
     newUsers: number;
     newTitles: number;
@@ -27,7 +27,7 @@ export class StatsResponseDto {
   };
 
   // Monthly statistics
-  monthly: {
+  monthly!: {
     views: number;
     newUsers: number;
     newTitles: number;
@@ -36,7 +36,7 @@ export class StatsResponseDto {
   };
 
   // Popular content (top 10)
-  popularTitles: {
+  popularTitles!: {
     id: string;
     name: string;
     slug: string;
@@ -46,7 +46,7 @@ export class StatsResponseDto {
     monthViews: number;
   }[];
 
-  popularChapters: {
+  popularChapters!: {
     id: string;
     titleId: string;
     titleName: string;
@@ -56,13 +56,57 @@ export class StatsResponseDto {
   }[];
 
   // Additional metrics
-  activeUsersToday: number;
-  newUsersThisMonth: number;
-  totalRatings: number;
-  averageRating: number;
-  ongoingTitles: number;
-  completedTitles: number;
+  activeUsersToday!: number;
+  newUsersThisMonth!: number;
+  totalRatings!: number;
+  averageRating!: number;
+  ongoingTitles!: number;
+  completedTitles!: number;
 
   // Stale ongoing titles (no updates for over a month)
-  staleOngoingTitles: number;
+  staleOngoingTitles!: number;
+
+  // Historical data
+  dailyHistory?: {
+    date: string;
+    newUsers: number;
+    activeUsers: number;
+    newTitles: number;
+    newChapters: number;
+    chaptersRead: number;
+    titleViews: number;
+    chapterViews: number;
+    comments: number;
+    ratings: number;
+    bookmarks: number;
+  }[];
+
+  monthlyHistory?: {
+    year: number;
+    month: number;
+    totalNewUsers: number;
+    totalActiveUsers: number;
+    totalNewTitles: number;
+    totalNewChapters: number;
+    totalChaptersRead: number;
+    totalTitleViews: number;
+    totalChapterViews: number;
+    totalComments: number;
+    totalRatings: number;
+    totalBookmarks: number;
+  }[];
+
+  yearlyHistory?: {
+    year: number;
+    totalNewUsers: number;
+    totalActiveUsers: number;
+    totalNewTitles: number;
+    totalNewChapters: number;
+    totalChaptersRead: number;
+    totalTitleViews: number;
+    totalChapterViews: number;
+    totalComments: number;
+    totalRatings: number;
+    totalBookmarks: number;
+  }[];
 }
