@@ -38,25 +38,25 @@ import { UsersService } from '../users/users.service';
 
 // DTO для ответов API (определения типов для внутреннего использования)
 class CollectionResponseDto {
-  id: string;
-  name: string;
-  image: string;
-  link: string;
-  cover: string;
+  id!: string;
+  name!: string;
+  image!: string;
+  link!: string;
+  cover!: string;
   description?: string;
-  titles: string[];
-  comments: string[];
-  views: number;
+  titles!: string[];
+  comments!: string[];
+  views!: number;
 }
 
 class ReadingProgressResponseDto {
-  id: string;
-  title: string;
-  slug: string;
-  cover: string;
-  currentChapter: string;
-  chapterNumber: number;
-  progress: number;
+  id!: string;
+  title!: string;
+  slug!: string;
+  cover!: string;
+  currentChapter!: string;
+  chapterNumber!: number;
+  progress!: number;
 }
 
 @Controller()
@@ -192,7 +192,7 @@ export class TitlesController {
       return {
         success: false,
         message: 'Failed to fetch popular titles',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'titles/popular',
       };
@@ -229,7 +229,7 @@ export class TitlesController {
       return {
         success: false,
         message: 'Failed to fetch collections',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'collections',
       };
@@ -260,7 +260,7 @@ export class TitlesController {
       return {
         success: false,
         message: 'Failed to fetch filter options',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'titles/filters/options',
       };
@@ -298,7 +298,7 @@ export class TitlesController {
       return {
         success: false,
         message: 'Failed to fetch reading progress',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'user/reading-progress',
       };
@@ -350,7 +350,7 @@ export class TitlesController {
       return {
         success: false,
         message: 'Failed to fetch latest updates',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'titles/latest-updates',
       };
@@ -417,7 +417,7 @@ export class TitlesController {
       return {
         success: false,
         message: 'Failed to search titles',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'search',
       };
@@ -473,7 +473,7 @@ export class TitlesController {
       return {
         success: false,
         message: 'Failed to create title',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'titles',
         method: 'POST',
@@ -530,7 +530,7 @@ export class TitlesController {
       return {
         success: false,
         message: 'Failed to update title',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `titles/${id}`,
         method: 'PUT',
@@ -736,11 +736,14 @@ export class TitlesController {
         path: 'titles',
       };
     } catch (error) {
-      this.logger.error(`Error fetching titles: ${error.message}`, error.stack);
+      this.logger.error(
+        `Error fetching titles: ${(error as Error).message}`,
+        (error as Error).stack,
+      );
       return {
         success: false,
         message: 'Failed to fetch titles',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'titles',
       };
@@ -769,7 +772,7 @@ export class TitlesController {
       return {
         success: false,
         message: 'Failed to fetch recent titles',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'titles/recent',
       };
@@ -810,317 +813,9 @@ export class TitlesController {
       return {
         success: false,
         message: 'Failed to fetch random titles',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'titles/random',
-      };
-    }
-  }
-
-  @Get('titles/:id')
-  async findOne(
-    @Param('id') id: string,
-    @Query('populateChapters') populateChapters: string = 'true',
-  ): Promise<ApiResponseDto<any>> {
-    try {
-      const shouldPopulateChapters = populateChapters === 'true';
-      const title = await this.titlesService.findById(
-        id,
-        shouldPopulateChapters,
-      );
-
-      const data = {
-        ...JSON.parse(JSON.stringify(title)),
-        isAdult: this.processAdultField(title?.ageLimit),
-      };
-
-      return {
-        success: true,
-        data,
-        timestamp: new Date().toISOString(),
-        path: `titles/${id}`,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to fetch title',
-        errors: [error.message],
-        timestamp: new Date().toISOString(),
-        path: `titles/${id}`,
-      };
-    }
-  }
-
-  @Get('titles/slug/:slug')
-  async findBySlug(
-    @Param('slug') slug: string,
-    @Query('populateChapters') populateChapters: string = 'true',
-  ): Promise<ApiResponseDto<any>> {
-    try {
-      const shouldPopulateChapters = populateChapters === 'true';
-      const title = await this.titlesService.findBySlug(
-        slug,
-        shouldPopulateChapters,
-      );
-
-      if (!title) {
-        return {
-          success: false,
-          message: 'Title not found',
-          errors: ['Title with provided slug does not exist'],
-          timestamp: new Date().toISOString(),
-          path: `titles/slug/${slug}`,
-        };
-      }
-
-      const data = {
-        ...JSON.parse(JSON.stringify(title)),
-        isAdult: this.processAdultField(title?.ageLimit),
-      };
-
-      return {
-        success: true,
-        data,
-        timestamp: new Date().toISOString(),
-        path: `titles/slug/${slug}`,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to fetch title by slug',
-        errors: [error.message],
-        timestamp: new Date().toISOString(),
-        path: `titles/slug/${slug}`,
-      };
-    }
-  }
-
-  @Delete('titles/:id')
-  @Roles('admin')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @HttpCode(HttpStatus.NO_CONTENT)
-  async remove(@Param('id') id: string): Promise<ApiResponseDto<void>> {
-    try {
-      await this.titlesService.delete(id);
-
-      return {
-        success: true,
-        message: 'Title deleted successfully',
-        timestamp: new Date().toISOString(),
-        path: `titles/${id}`,
-        method: 'DELETE',
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to delete title',
-        errors: [error.message],
-        timestamp: new Date().toISOString(),
-        path: `titles/${id}`,
-        method: 'DELETE',
-      };
-    }
-  }
-
-  @Post('titles/:id/views')
-  async incrementViews(@Param('id') id: string): Promise<ApiResponseDto<any>> {
-    try {
-      const data = await this.titlesService.incrementViews(id);
-
-      return {
-        success: true,
-        data,
-        message: 'Views incremented successfully',
-        timestamp: new Date().toISOString(),
-        path: `titles/${id}/views`,
-        method: 'POST',
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to increment views',
-        errors: [error.message],
-        timestamp: new Date().toISOString(),
-        path: `titles/${id}/views`,
-        method: 'POST',
-      };
-    }
-  }
-
-  @Post('titles/:id/rating')
-  async updateRating(
-    @Param('id') id: string,
-    @Body('rating', ParseFloatPipe) rating: number,
-  ): Promise<ApiResponseDto<any>> {
-    try {
-      const data = await this.titlesService.updateRating(id, rating);
-
-      return {
-        success: true,
-        data,
-        message: 'Rating updated successfully',
-        timestamp: new Date().toISOString(),
-        path: `titles/${id}/rating`,
-        method: 'POST',
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to update rating',
-        errors: [error.message],
-        timestamp: new Date().toISOString(),
-        path: `titles/${id}/rating`,
-        method: 'POST',
-      };
-    }
-  }
-
-  @Get('titles/:id/chapters/count')
-  async getChaptersCount(
-    @Param('id') id: string,
-  ): Promise<ApiResponseDto<any>> {
-    try {
-      const data = await this.titlesService.getChaptersCount(id);
-
-      return {
-        success: true,
-        data,
-        timestamp: new Date().toISOString(),
-        path: `titles/${id}/chapters/count`,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to fetch chapters count',
-        errors: [error.message],
-        timestamp: new Date().toISOString(),
-        path: `titles/${id}/chapters/count`,
-      };
-    }
-  }
-
-  @Get('titles/top/day')
-  async getTopTitlesDay(
-    @Query('limit') limit = 10,
-    @Req() req?: any,
-  ): Promise<ApiResponseDto<any>> {
-    try {
-      const canViewAdult = await this.getCanViewAdult(req);
-      const titles = await this.titlesService.getTopTitlesForPeriod(
-        'day',
-        Number(limit),
-        canViewAdult,
-      );
-
-      const data = titles.map((title) => ({
-        id: title._id?.toString(),
-        title: title.name,
-        slug: title.slug,
-        cover: title.coverImage,
-        rating: title.averageRating,
-        type: title.type,
-        releaseYear: title.releaseYear,
-        description: title.description,
-        isAdult: this.processAdultField(title?.ageLimit),
-      }));
-
-      return {
-        success: true,
-        data,
-        timestamp: new Date().toISOString(),
-        path: 'titles/top/day',
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to fetch top titles for day',
-        errors: [error.message],
-        timestamp: new Date().toISOString(),
-        path: 'titles/top/day',
-      };
-    }
-  }
-
-  @Get('titles/top/week')
-  async getTopTitlesWeek(
-    @Query('limit') limit = 10,
-    @Req() req?: any,
-  ): Promise<ApiResponseDto<any>> {
-    try {
-      const canViewAdult = await this.getCanViewAdult(req);
-      const titles = await this.titlesService.getTopTitlesForPeriod(
-        'week',
-        Number(limit),
-        canViewAdult,
-      );
-
-      const data = titles.map((title) => ({
-        id: title._id?.toString(),
-        title: title.name,
-        slug: title.slug,
-        cover: title.coverImage,
-        rating: title.averageRating,
-        type: title.type,
-        releaseYear: title.releaseYear,
-        description: title.description,
-        isAdult: this.processAdultField(title?.ageLimit),
-      }));
-
-      return {
-        success: true,
-        data,
-        timestamp: new Date().toISOString(),
-        path: 'titles/top/week',
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to fetch top titles for week',
-        errors: [error.message],
-        timestamp: new Date().toISOString(),
-        path: 'titles/top/week',
-      };
-    }
-  }
-
-  @Get('titles/top/month')
-  async getTopTitlesMonth(
-    @Query('limit') limit = 10,
-    @Req() req?: any,
-  ): Promise<ApiResponseDto<any>> {
-    try {
-      const canViewAdult = await this.getCanViewAdult(req);
-      const titles = await this.titlesService.getTopTitlesForPeriod(
-        'month',
-        Number(limit),
-        canViewAdult,
-      );
-
-      const data = titles.map((title) => ({
-        id: title._id?.toString(),
-        title: title.name,
-        slug: title.slug,
-        cover: title.coverImage,
-        rating: title.averageRating,
-        type: title.type,
-        releaseYear: title.releaseYear,
-        description: title.description,
-        isAdult: this.processAdultField(title?.ageLimit),
-      }));
-
-      return {
-        success: true,
-        data,
-        timestamp: new Date().toISOString(),
-        path: 'titles/top/month',
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to fetch top titles for month',
-        errors: [error.message],
-        timestamp: new Date().toISOString(),
-        path: 'titles/top/month',
       };
     }
   }
@@ -1200,9 +895,317 @@ export class TitlesController {
       return {
         success: false,
         message: 'Failed to fetch recommended titles',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'titles/recommended',
+      };
+    }
+  }
+
+  @Get('titles/:id')
+  async findOne(
+    @Param('id') id: string,
+    @Query('populateChapters') populateChapters: string = 'true',
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const shouldPopulateChapters = populateChapters === 'true';
+      const title = await this.titlesService.findById(
+        id,
+        shouldPopulateChapters,
+      );
+
+      const data = {
+        ...JSON.parse(JSON.stringify(title)),
+        isAdult: this.processAdultField(title?.ageLimit),
+      };
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch title',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}`,
+      };
+    }
+  }
+
+  @Get('titles/slug/:slug')
+  async findBySlug(
+    @Param('slug') slug: string,
+    @Query('populateChapters') populateChapters: string = 'true',
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const shouldPopulateChapters = populateChapters === 'true';
+      const title = await this.titlesService.findBySlug(
+        slug,
+        shouldPopulateChapters,
+      );
+
+      if (!title) {
+        return {
+          success: false,
+          message: 'Title not found',
+          errors: ['Title with provided slug does not exist'],
+          timestamp: new Date().toISOString(),
+          path: `titles/slug/${slug}`,
+        };
+      }
+
+      const data = {
+        ...JSON.parse(JSON.stringify(title)),
+        isAdult: this.processAdultField(title?.ageLimit),
+      };
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `titles/slug/${slug}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch title by slug',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `titles/slug/${slug}`,
+      };
+    }
+  }
+
+  @Delete('titles/:id')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async remove(@Param('id') id: string): Promise<ApiResponseDto<void>> {
+    try {
+      await this.titlesService.delete(id);
+
+      return {
+        success: true,
+        message: 'Title deleted successfully',
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}`,
+        method: 'DELETE',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to delete title',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}`,
+        method: 'DELETE',
+      };
+    }
+  }
+
+  @Post('titles/:id/views')
+  async incrementViews(@Param('id') id: string): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.titlesService.incrementViews(id);
+
+      return {
+        success: true,
+        data,
+        message: 'Views incremented successfully',
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}/views`,
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to increment views',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}/views`,
+        method: 'POST',
+      };
+    }
+  }
+
+  @Post('titles/:id/rating')
+  async updateRating(
+    @Param('id') id: string,
+    @Body('rating', ParseFloatPipe) rating: number,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.titlesService.updateRating(id, rating);
+
+      return {
+        success: true,
+        data,
+        message: 'Rating updated successfully',
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}/rating`,
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to update rating',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}/rating`,
+        method: 'POST',
+      };
+    }
+  }
+
+  @Get('titles/:id/chapters/count')
+  async getChaptersCount(
+    @Param('id') id: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.titlesService.getChaptersCount(id);
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}/chapters/count`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch chapters count',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}/chapters/count`,
+      };
+    }
+  }
+
+  @Get('titles/top/day')
+  async getTopTitlesDay(
+    @Query('limit') limit = 10,
+    @Req() req?: any,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const canViewAdult = await this.getCanViewAdult(req);
+      const titles = await this.titlesService.getTopTitlesForPeriod(
+        'day',
+        Number(limit),
+        canViewAdult,
+      );
+
+      const data = titles.map((title) => ({
+        id: title._id?.toString(),
+        title: title.name,
+        slug: title.slug,
+        cover: title.coverImage,
+        rating: title.averageRating,
+        type: title.type,
+        releaseYear: title.releaseYear,
+        description: title.description,
+        isAdult: this.processAdultField(title?.ageLimit),
+      }));
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'titles/top/day',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch top titles for day',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'titles/top/day',
+      };
+    }
+  }
+
+  @Get('titles/top/week')
+  async getTopTitlesWeek(
+    @Query('limit') limit = 10,
+    @Req() req?: any,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const canViewAdult = await this.getCanViewAdult(req);
+      const titles = await this.titlesService.getTopTitlesForPeriod(
+        'week',
+        Number(limit),
+        canViewAdult,
+      );
+
+      const data = titles.map((title) => ({
+        id: title._id?.toString(),
+        title: title.name,
+        slug: title.slug,
+        cover: title.coverImage,
+        rating: title.averageRating,
+        type: title.type,
+        releaseYear: title.releaseYear,
+        description: title.description,
+        isAdult: this.processAdultField(title?.ageLimit),
+      }));
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'titles/top/week',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch top titles for week',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'titles/top/week',
+      };
+    }
+  }
+
+  @Get('titles/top/month')
+  async getTopTitlesMonth(
+    @Query('limit') limit = 10,
+    @Req() req?: any,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const canViewAdult = await this.getCanViewAdult(req);
+      const titles = await this.titlesService.getTopTitlesForPeriod(
+        'month',
+        Number(limit),
+        canViewAdult,
+      );
+
+      const data = titles.map((title) => ({
+        id: title._id?.toString(),
+        title: title.name,
+        slug: title.slug,
+        cover: title.coverImage,
+        rating: title.averageRating,
+        type: title.type,
+        releaseYear: title.releaseYear,
+        description: title.description,
+        isAdult: this.processAdultField(title?.ageLimit),
+      }));
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'titles/top/month',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch top titles for month',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'titles/top/month',
       };
     }
   }
