@@ -167,8 +167,10 @@ export class UsersService {
     }
     const didMigrate = this.normalizeBookmarksIfNeeded(user as UserDocument);
     if (didMigrate) await user.save();
+    const plain = (user as any).toObject ? (user as any).toObject() : { ...user };
+    plain.bookmarks = this.repairBookmarksPlain(plain.bookmarks);
     this.logger.log(`User profile found with ID: ${id}`);
-    return user;
+    return plain as User;
   }
 
   async create(createUserDto: CreateUserDto): Promise<User> {
@@ -554,6 +556,24 @@ export class UsersService {
     return user;
   }
 
+  /** Безопасно получить titleId записи истории как строку. */
+  private getHistoryTitleIdStr(entry: { titleId?: Types.ObjectId } | null): string {
+    if (entry?.titleId == null) return '';
+    const t = entry.titleId;
+    if (typeof t === 'string') return t;
+    if (typeof t.toString === 'function') return t.toString();
+    return String(t);
+  }
+
+  /** Безопасно получить chapterId как строку. */
+  private getHistoryChapterIdStr(ch: { chapterId?: Types.ObjectId } | null): string {
+    if (ch?.chapterId == null) return '';
+    const t = ch.chapterId;
+    if (typeof t === 'string') return t;
+    if (typeof t.toString === 'function') return t.toString();
+    return String(t);
+  }
+
   // 📖 Методы для работы с историей чтения
   async addToReadingHistory(
     userId: string,
@@ -621,7 +641,7 @@ export class UsersService {
 
     // Ищем существующую запись для этого тайтла
     const existingEntryIndex = user.readingHistory.findIndex(
-      (entry) => entry.titleId.toString() === titleIdStr,
+      (entry) => this.getHistoryTitleIdStr(entry) === titleIdStr,
     );
 
     const currentTime = new Date();
@@ -631,9 +651,9 @@ export class UsersService {
       const existingEntry = user.readingHistory[existingEntryIndex];
 
       // Ищем, есть ли уже такая глава
+      const chapterIdStr = chapterObjectId.toString();
       const existingChapterIndex = existingEntry.chapters.findIndex(
-        (chapter) =>
-          chapter.chapterId.toString() === chapterObjectId.toString(),
+        (chapter) => this.getHistoryChapterIdStr(chapter) === chapterIdStr,
       );
 
       if (existingChapterIndex !== -1) {
@@ -816,7 +836,7 @@ export class UsersService {
 
     // Находим запись для указанного тайтла
     const titleHistory = user.readingHistory.find(
-      (entry) => entry.titleId.toString() === titleId,
+      (entry) => this.getHistoryTitleIdStr(entry) === titleId,
     );
 
     if (!titleHistory) {
@@ -855,14 +875,21 @@ export class UsersService {
     }
 
     const entry = user.readingHistory.find(
-      (e) => e.titleId.toString() === titleId,
+      (e) => this.getHistoryTitleIdStr(e) === titleId,
     );
     if (!entry?.chapters?.length) {
       return { chapterIds: [], chapterNumbers: [] };
     }
 
-    const chapterIds = entry.chapters.map((c) => c.chapterId.toString());
-    const chapterNumbers = entry.chapters.map((c) => c.chapterNumber);
+    const chapterIds: string[] = [];
+    const chapterNumbers: number[] = [];
+    for (const c of entry.chapters) {
+      const idStr = this.getHistoryChapterIdStr(c);
+      if (idStr) {
+        chapterIds.push(idStr);
+        chapterNumbers.push(c.chapterNumber ?? 0);
+      }
+    }
     return { chapterIds, chapterNumbers };
   }
 
@@ -944,7 +971,7 @@ export class UsersService {
     }
 
     const existingEntryIndex = user.readingHistory.findIndex(
-      (entry) => entry.titleId.toString() === titleId,
+      (entry) => this.getHistoryTitleIdStr(entry) === titleId,
     );
 
     if (existingEntryIndex === -1) {
@@ -952,8 +979,9 @@ export class UsersService {
     }
 
     const existingEntry = user.readingHistory[existingEntryIndex];
+    const targetChapterIdStr = chapterObjectId.toString();
     const chapterIndex = existingEntry.chapters.findIndex(
-      (chapter) => chapter.chapterId.toString() === chapterObjectId.toString(),
+      (chapter) => this.getHistoryChapterIdStr(chapter) === targetChapterIdStr,
     );
 
     if (chapterIndex === -1) {
