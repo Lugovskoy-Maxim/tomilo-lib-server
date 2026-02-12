@@ -106,7 +106,10 @@ export class UsersService {
       .select('-password')
       .populate('bookmarks')
       .populate('readingHistory.titleId')
-      .populate('readingHistory.chapters.chapterId');
+      .populate('readingHistory.chapters.chapterId')
+      .populate('equippedDecorations.avatar')
+      .populate('equippedDecorations.background')
+      .populate('equippedDecorations.card');
 
     this.logger.log(
       `Database query result for user ${id}: ${user ? 'found' : 'not found'}`,
@@ -131,7 +134,10 @@ export class UsersService {
     const user = await this.userModel
       .findById(new Types.ObjectId(id))
       .select('-password -readingHistory')
-      .populate('bookmarks');
+      .populate('bookmarks')
+      .populate('equippedDecorations.avatar')
+      .populate('equippedDecorations.background')
+      .populate('equippedDecorations.card');
 
     this.logger.log(
       `Database query result: ${user ? 'User found' : 'User not found'}`,

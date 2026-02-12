@@ -86,6 +86,14 @@ Authorization: Bearer <jwt_token>
 ### Search
 - `GET /search` - Search titles
 
+### Shop
+- `GET /shop/decorations` - Get all available decorations (avatar, background, card)
+- `GET /shop/decorations/:type` - Get decorations by type (`avatar` | `background` | `card`)
+- `GET /shop/profile/decorations` - Get current user's owned and equipped decorations (auth required)
+- `POST /shop/purchase/:type/:decorationId` - Purchase decoration (auth required)
+- `PUT /shop/equip/:type/:decorationId` - Equip owned decoration (auth required)
+- `DELETE /shop/equip/:type` - Unequip decoration by type (auth required)
+
 ### Notifications
 - `GET /notifications` - Get notifications by user ID
 - `GET /notifications/unread-count` - Get unread notifications count

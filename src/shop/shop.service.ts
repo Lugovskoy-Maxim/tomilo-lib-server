@@ -252,54 +252,79 @@ export class ShopService {
     };
   }
 
-  // Get user's owned decorations
+  // Get user's owned decorations (bulk fetch to avoid N+1 queries)
   async getUserDecorations(userId: string) {
     this.logger.log(`Fetching owned decorations for user ${userId}`);
 
     const user = await this.usersService.findById(userId);
 
-    // Populate decoration details
-    const ownedAvatars: any[] = [];
-    const ownedBackgrounds: any[] = [];
-    const ownedCards: any[] = [];
+    const avatarIds = user.ownedDecorations
+      .filter((o) => o.decorationType === 'avatar')
+      .map((o) => o.decorationId);
+    const backgroundIds = user.ownedDecorations
+      .filter((o) => o.decorationType === 'background')
+      .map((o) => o.decorationId);
+    const cardIds = user.ownedDecorations
+      .filter((o) => o.decorationType === 'card')
+      .map((o) => o.decorationId);
 
-    for (const owned of user.ownedDecorations) {
-      switch (owned.decorationType) {
-        case 'avatar': {
-          const avatar = await this.avatarDecorationModel.findById(
-            owned.decorationId,
-          );
-          if (avatar)
-            ownedAvatars.push({
-              ...avatar.toObject(),
-              purchasedAt: owned.purchasedAt,
-            });
-          break;
-        }
-        case 'background': {
-          const background = await this.backgroundDecorationModel.findById(
-            owned.decorationId,
-          );
-          if (background)
-            ownedBackgrounds.push({
-              ...background.toObject(),
-              purchasedAt: owned.purchasedAt,
-            });
-          break;
-        }
-        case 'card': {
-          const card = await this.cardDecorationModel.findById(
-            owned.decorationId,
-          );
-          if (card)
-            ownedCards.push({
-              ...card.toObject(),
-              purchasedAt: owned.purchasedAt,
-            });
-          break;
-        }
-      }
-    }
+    const [avatars, backgrounds, cards] = await Promise.all([
+      avatarIds.length > 0
+        ? this.avatarDecorationModel.find({ _id: { $in: avatarIds } })
+        : [],
+      backgroundIds.length > 0
+        ? this.backgroundDecorationModel.find({ _id: { $in: backgroundIds } })
+        : [],
+      cardIds.length > 0
+        ? this.cardDecorationModel.find({ _id: { $in: cardIds } })
+        : [],
+    ]);
+
+    const avatarMap = new Map<string, AvatarDecorationDocument>(
+      (avatars as AvatarDecorationDocument[]).map((a) => [
+        a._id.toString(),
+        a,
+      ]),
+    );
+    const backgroundMap = new Map<string, BackgroundDecorationDocument>(
+      (backgrounds as BackgroundDecorationDocument[]).map((b) => [
+        b._id.toString(),
+        b,
+      ]),
+    );
+    const cardMap = new Map<string, CardDecorationDocument>(
+      (cards as CardDecorationDocument[]).map((c) => [c._id.toString(), c]),
+    );
+
+    const ownedAvatars = user.ownedDecorations
+      .filter((o) => o.decorationType === 'avatar')
+      .map((owned) => {
+        const avatar = avatarMap.get(owned.decorationId.toString());
+        return avatar
+          ? { ...avatar.toObject(), purchasedAt: owned.purchasedAt }
+          : null;
+      })
+      .filter(Boolean);
+
+    const ownedBackgrounds = user.ownedDecorations
+      .filter((o) => o.decorationType === 'background')
+      .map((owned) => {
+        const background = backgroundMap.get(owned.decorationId.toString());
+        return background
+          ? { ...background.toObject(), purchasedAt: owned.purchasedAt }
+          : null;
+      })
+      .filter(Boolean);
+
+    const ownedCards = user.ownedDecorations
+      .filter((o) => o.decorationType === 'card')
+      .map((owned) => {
+        const card = cardMap.get(owned.decorationId.toString());
+        return card
+          ? { ...card.toObject(), purchasedAt: owned.purchasedAt }
+          : null;
+      })
+      .filter(Boolean);
 
     return {
       ownedAvatars,

@@ -10,10 +10,17 @@ import {
   Request,
   UsePipes,
   ValidationPipe,
+  ParseEnumPipe,
 } from '@nestjs/common';
 import { ShopService } from './shop.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
+
+export enum DecorationType {
+  avatar = 'avatar',
+  background = 'background',
+  card = 'card',
+}
 
 @Controller('shop')
 @UsePipes(new ValidationPipe())
@@ -46,7 +53,8 @@ export class ShopController {
   // Get decorations by type
   @Get('decorations/:type')
   async getDecorationsByType(
-    @Param('type') type: 'avatar' | 'background' | 'card',
+    @Param('type', new ParseEnumPipe(DecorationType))
+    type: DecorationType,
   ): Promise<ApiResponseDto<any>> {
     try {
       const data = await this.shopService.getDecorationsByType(type);
@@ -97,7 +105,8 @@ export class ShopController {
   @UseGuards(JwtAuthGuard)
   async purchaseDecoration(
     @Request() req,
-    @Param('type') type: 'avatar' | 'background' | 'card',
+    @Param('type', new ParseEnumPipe(DecorationType))
+    type: DecorationType,
     @Param('decorationId') decorationId: string,
   ): Promise<ApiResponseDto<any>> {
     try {
@@ -132,7 +141,8 @@ export class ShopController {
   @UseGuards(JwtAuthGuard)
   async equipDecoration(
     @Request() req,
-    @Param('type') type: 'avatar' | 'background' | 'card',
+    @Param('type', new ParseEnumPipe(DecorationType))
+    type: DecorationType,
     @Param('decorationId') decorationId: string,
   ): Promise<ApiResponseDto<any>> {
     try {
@@ -167,7 +177,8 @@ export class ShopController {
   @UseGuards(JwtAuthGuard)
   async unequipDecoration(
     @Request() req,
-    @Param('type') type: 'avatar' | 'background' | 'card',
+    @Param('type', new ParseEnumPipe(DecorationType))
+    type: DecorationType,
   ): Promise<ApiResponseDto<any>> {
     try {
       const data = await this.shopService.unequipDecoration(

@@ -120,9 +120,16 @@ export class UsersController {
     @Body() updateUserDto: UpdateUserDto,
   ): Promise<ApiResponseDto<any>> {
     try {
+      // Запрещаем менять баланс и декорации через профиль (только через магазин/админку)
+      const { balance, ownedDecorations, equippedDecorations, ...safeUpdate } =
+        updateUserDto as UpdateUserDto & {
+          balance?: number;
+          ownedDecorations?: unknown;
+          equippedDecorations?: unknown;
+        };
       const data = await this.usersService.update(
         req.user.userId,
-        updateUserDto,
+        safeUpdate as UpdateUserDto,
       );
 
       return {
@@ -706,6 +713,7 @@ export class UsersController {
           firstName: targetUser.firstName,
           lastName: targetUser.lastName,
           bookmarks: targetUser.bookmarks,
+          equippedDecorations: targetUser.equippedDecorations,
         };
       }
 

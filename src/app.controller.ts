@@ -31,46 +31,56 @@ export class AppController {
 
     // Add historical data if requested
     if (includeHistory === 'true') {
-      const days = parseInt(historyDays || '30', 10) || 30;
+      try {
+        const days = parseInt(historyDays || '30', 10) || 30;
 
-      // Get recent daily stats
-      const recentStats = await this.appService.getRecentStats(days);
-      stats.dailyHistory = recentStats.map((day) => ({
-        date: day.date.toISOString(),
-        newUsers: day.newUsers,
-        activeUsers: day.activeUsers,
-        newTitles: day.newTitles,
-        newChapters: day.newChapters,
-        chaptersRead: day.chaptersRead,
-        titleViews: day.titleViews,
-        chapterViews: day.chapterViews,
-        comments: day.comments,
-        ratings: day.ratings,
-        bookmarks: day.bookmarks,
-      }));
+        // Get recent daily stats (only recorded days; may be empty)
+        const recentStats = await this.appService.getRecentStats(days);
+        stats.dailyHistory = recentStats.map((day) => ({
+          date:
+            day.date instanceof Date
+              ? day.date.toISOString()
+              : new Date(day.date as unknown as string).toISOString(),
+          newUsers: day.newUsers ?? 0,
+          activeUsers: day.activeUsers ?? 0,
+          newTitles: day.newTitles ?? 0,
+          newChapters: day.newChapters ?? 0,
+          chaptersRead: day.chaptersRead ?? 0,
+          titleViews: day.titleViews ?? 0,
+          chapterViews: day.chapterViews ?? 0,
+          comments: day.comments ?? 0,
+          ratings: day.ratings ?? 0,
+          bookmarks: day.bookmarks ?? 0,
+        }));
 
-      // Get monthly stats for current year
-      const currentYear = new Date().getFullYear();
-      const monthlyStats = await this.appService.getMonthlyStats(
-        currentYear,
-        new Date().getMonth() + 1,
-      );
-      stats.monthlyHistory = [
-        {
-          year: monthlyStats.year,
-          month: monthlyStats.month,
-          totalNewUsers: monthlyStats.totalNewUsers,
-          totalActiveUsers: monthlyStats.totalActiveUsers,
-          totalNewTitles: monthlyStats.totalNewTitles,
-          totalNewChapters: monthlyStats.totalNewChapters,
-          totalChaptersRead: monthlyStats.totalChaptersRead,
-          totalTitleViews: monthlyStats.totalTitleViews,
-          totalChapterViews: monthlyStats.totalChapterViews,
-          totalComments: monthlyStats.totalComments,
-          totalRatings: monthlyStats.totalRatings,
-          totalBookmarks: monthlyStats.totalBookmarks,
-        },
-      ];
+        // Get monthly stats for current year
+        const currentYear = new Date().getFullYear();
+        const currentMonth = new Date().getMonth() + 1;
+        const monthlyStats = await this.appService.getMonthlyStats(
+          currentYear,
+          currentMonth,
+        );
+        stats.monthlyHistory = [
+          {
+            year: monthlyStats.year,
+            month: monthlyStats.month,
+            totalNewUsers: monthlyStats.totalNewUsers ?? 0,
+            totalActiveUsers: monthlyStats.totalActiveUsers ?? 0,
+            totalNewTitles: monthlyStats.totalNewTitles ?? 0,
+            totalNewChapters: monthlyStats.totalNewChapters ?? 0,
+            totalChaptersRead: monthlyStats.totalChaptersRead ?? 0,
+            totalTitleViews: monthlyStats.totalTitleViews ?? 0,
+            totalChapterViews: monthlyStats.totalChapterViews ?? 0,
+            totalComments: monthlyStats.totalComments ?? 0,
+            totalRatings: monthlyStats.totalRatings ?? 0,
+            totalBookmarks: monthlyStats.totalBookmarks ?? 0,
+          },
+        ];
+      } catch (err) {
+        // Return main stats even if history fails (e.g. no recorded daily stats yet)
+        stats.dailyHistory = [];
+        stats.monthlyHistory = [];
+      }
     }
 
     return {
@@ -89,43 +99,55 @@ export class AppController {
     @Query('month') monthString?: string,
     @Query('days') daysString?: string,
   ): Promise<ApiResponseDto<any>> {
-    const year = parseInt(yearString || '', 10) || new Date().getFullYear();
-    const month = parseInt(monthString || '', 10) || new Date().getMonth() + 1;
-    const days = parseInt(daysString || '', 10) || 30;
+    try {
+      const year =
+        parseInt(yearString || '', 10) || new Date().getFullYear();
+      const month =
+        parseInt(monthString || '', 10) || new Date().getMonth() + 1;
+      const days = parseInt(daysString || '', 10) || 30;
 
-    let data: any;
+      let data: any;
 
-    switch (type) {
-      case 'daily':
-        data = await this.appService.getRecentStats(days);
-        break;
-      case 'monthly':
-        data = await this.appService.getMonthlyStats(year, month);
-        break;
-      case 'yearly':
-        data = await this.appService.getYearlyStats(year);
-        break;
-      default: {
-        // Return all types if no specific type requested
-        const [daily, monthly, yearly] = await Promise.all([
-          this.appService.getRecentStats(30),
-          this.appService.getMonthlyStats(
-            new Date().getFullYear(),
-            new Date().getMonth() + 1,
-          ),
-          this.appService.getYearlyStats(new Date().getFullYear()),
-        ]);
-        data = { daily, monthly, yearly };
-        break;
+      switch (type) {
+        case 'daily':
+          data = await this.appService.getRecentStats(days);
+          break;
+        case 'monthly':
+          data = await this.appService.getMonthlyStats(year, month);
+          break;
+        case 'yearly':
+          data = await this.appService.getYearlyStats(year);
+          break;
+        default: {
+          const [daily, monthly, yearly] = await Promise.all([
+            this.appService.getRecentStats(30),
+            this.appService.getMonthlyStats(
+              new Date().getFullYear(),
+              new Date().getMonth() + 1,
+            ),
+            this.appService.getYearlyStats(new Date().getFullYear()),
+          ]);
+          data = { daily, monthly, yearly };
+          break;
+        }
       }
-    }
 
-    return {
-      success: true,
-      data,
-      timestamp: new Date().toISOString(),
-      path: '/stats/history',
-      method: 'GET',
-    };
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: '/stats/history',
+        method: 'GET',
+      };
+    } catch (err) {
+      return {
+        success: false,
+        message: 'Failed to fetch stats history',
+        errors: [err instanceof Error ? err.message : String(err)],
+        timestamp: new Date().toISOString(),
+        path: '/stats/history',
+        method: 'GET',
+      };
+    }
   }
 }
