@@ -4,13 +4,22 @@ import { Injectable } from '@nestjs/common';
 import { LoggerService } from '../../common/logger/logger.service';
 import { UsersService } from '../../users/users.service';
 
+const COOKIE_ACCESS_TOKEN = 'access_token';
+
+/** Extract JWT from cookie (access_token) or Authorization Bearer header. */
+function jwtFromCookieOrHeader(req: any): string | null {
+  const fromCookie = req?.cookies?.[COOKIE_ACCESS_TOKEN];
+  if (fromCookie) return fromCookie;
+  return ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+}
+
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   private readonly logger = new LoggerService();
 
   constructor(private usersService: UsersService) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: jwtFromCookieOrHeader,
       ignoreExpiration: false,
       secretOrKey: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
     });

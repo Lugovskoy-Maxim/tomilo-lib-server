@@ -39,6 +39,11 @@ export class AuthService {
     return null;
   }
 
+  /** Access token TTL (short-lived). */
+  private readonly accessTokenExpiresIn = '15m';
+  /** Refresh token TTL (long-lived). */
+  private readonly refreshTokenExpiresIn = '7d';
+
   login(user: any) {
     const payload = {
       email: user.email,
@@ -47,10 +52,17 @@ export class AuthService {
       role: user.role,
     };
 
+    const access_token = this.jwtService.sign(payload, {
+      expiresIn: this.accessTokenExpiresIn,
+    });
+    const refresh_token = this.jwtService.sign(
+      { ...payload, type: 'refresh' },
+      { expiresIn: this.refreshTokenExpiresIn },
+    );
+
     return {
-      access_token: this.jwtService.sign(payload, {
-        expiresIn: '30d',
-      }),
+      access_token,
+      refresh_token,
       user: {
         id: user._id,
         email: user.email,
@@ -58,6 +70,30 @@ export class AuthService {
         role: user.role,
       },
     };
+  }
+
+  /**
+   * Issues new access and refresh tokens using a valid refresh token.
+   * Refresh token can be read from cookie or passed in body.
+   */
+  async refreshTokens(refreshToken: string) {
+    if (!refreshToken) {
+      return null;
+    }
+    try {
+      const payload = this.jwtService.verify(refreshToken);
+      if (payload.type !== 'refresh' || !payload.userId) {
+        return null;
+      }
+      const user = await this.userModel.findById(payload.userId);
+      if (!user) {
+        return null;
+      }
+      const userObj = user.toObject();
+      return this.login(userObj);
+    } catch {
+      return null;
+    }
   }
 
   async register(createUserDto: CreateUserDto) {

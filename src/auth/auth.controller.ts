@@ -6,10 +6,13 @@ import {
   Query,
   UseGuards,
   Request,
+  Response,
   HttpCode,
   HttpStatus,
   ConflictException,
+  UnauthorizedException,
 } from '@nestjs/common';
+import * as express from 'express';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -20,6 +23,32 @@ import { OAuthLoginDto } from './dto/oauth-login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
+const COOKIE_ACCESS_TOKEN = 'access_token';
+const COOKIE_REFRESH_TOKEN = 'refresh_token';
+const ACCESS_TOKEN_MAX_AGE_MS = 15 * 60 * 1000; // 15 min
+const REFRESH_TOKEN_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function setAuthCookies(
+  res: express.Response,
+  accessToken: string,
+  refreshToken: string,
+) {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const cookieOptions = {
+    httpOnly: true,
+    sameSite: 'lax' as const,
+    secure: isProduction,
+  };
+  res.cookie(COOKIE_ACCESS_TOKEN, accessToken, {
+    ...cookieOptions,
+    maxAge: ACCESS_TOKEN_MAX_AGE_MS,
+  });
+  res.cookie(COOKIE_REFRESH_TOKEN, refreshToken, {
+    ...cookieOptions,
+    maxAge: REFRESH_TOKEN_MAX_AGE_MS,
+  });
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(private authService: AuthService) {}
@@ -27,9 +56,13 @@ export class AuthController {
   @UseGuards(LocalAuthGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(@Request() req): ApiResponseDto<any> {
+  login(
+    @Request() req,
+    @Response({ passthrough: true }) res: express.Response,
+  ): ApiResponseDto<any> {
     try {
       const data = this.authService.login(req.user);
+      setAuthCookies(res, data.access_token, data.refresh_token);
 
       return {
         success: true,
@@ -55,10 +88,12 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   async register(
     @Body() createUserDto: CreateUserDto,
+    @Response({ passthrough: true }) res: express.Response,
   ): Promise<ApiResponseDto<any>> {
     try {
       const user = await this.authService.register(createUserDto);
       const data = this.authService.login(user);
+      setAuthCookies(res, data.access_token, data.refresh_token);
 
       return {
         success: true,
@@ -86,9 +121,11 @@ export class AuthController {
   yandexLogin(
     @Body() oauthLoginDto: OAuthLoginDto,
     @Request() req,
+    @Response({ passthrough: true }) res: express.Response,
   ): ApiResponseDto<any> {
     try {
       const data = this.authService.login(req.user);
+      setAuthCookies(res, data.access_token, data.refresh_token);
 
       return {
         success: true,
@@ -113,9 +150,13 @@ export class AuthController {
   @UseGuards(AuthGuard('yandex-token'))
   @Post('yandex-token')
   @HttpCode(HttpStatus.OK)
-  yandexTokenLogin(@Request() req): ApiResponseDto<any> {
+  yandexTokenLogin(
+    @Request() req,
+    @Response({ passthrough: true }) res: express.Response,
+  ): ApiResponseDto<any> {
     try {
       const data = this.authService.login(req.user);
+      setAuthCookies(res, data.access_token, data.refresh_token);
 
       return {
         success: true,
@@ -143,9 +184,11 @@ export class AuthController {
   vkLogin(
     @Body() oauthLoginDto: OAuthLoginDto,
     @Request() req,
+    @Response({ passthrough: true }) res: express.Response,
   ): ApiResponseDto<any> {
     try {
       const data = this.authService.login(req.user);
+      setAuthCookies(res, data.access_token, data.refresh_token);
 
       return {
         success: true,
@@ -165,6 +208,30 @@ export class AuthController {
         method: 'POST',
       };
     }
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  async refresh(
+    @Request() req,
+    @Body() body: { refresh_token?: string },
+    @Response({ passthrough: true }) res: express.Response,
+  ): Promise<ApiResponseDto<any>> {
+    const refreshToken =
+      req.cookies?.[COOKIE_REFRESH_TOKEN] ?? body?.refresh_token;
+    const data = await this.authService.refreshTokens(refreshToken);
+    if (!data) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+    setAuthCookies(res, data.access_token, data.refresh_token);
+    return {
+      success: true,
+      data,
+      message: 'Tokens refreshed',
+      timestamp: new Date().toISOString(),
+      path: 'auth/refresh',
+      method: 'POST',
+    };
   }
 
   @Post('send-verification-email')
