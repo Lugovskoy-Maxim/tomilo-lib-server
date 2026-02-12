@@ -264,6 +264,22 @@ export class User {
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
+// Перед сохранением убираем закладки без валидного titleId (избегаем "Path `titleId` is required")
+UserSchema.pre('save', function (next) {
+  if (this.bookmarks && Array.isArray(this.bookmarks) && this.bookmarks.length > 0) {
+    const valid = this.bookmarks.filter((b: any) => {
+      if (b == null) return false;
+      const tid = b.titleId;
+      if (tid == null) return false;
+      const idStr =
+        typeof tid === 'string' ? tid : tid instanceof Types.ObjectId ? tid.toString() : tid?._id?.toString?.() ?? '';
+      return idStr.length === 24 && Types.ObjectId.isValid(idStr);
+    });
+    this.bookmarks = valid;
+  }
+  next();
+});
+
 UserSchema.index({ 'readingHistory.titleId': 1 });
 UserSchema.index({ 'readingHistory.chapters.chapterId': 1 });
 UserSchema.index({ 'readingHistory.readAt': -1 });
