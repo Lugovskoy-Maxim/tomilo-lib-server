@@ -307,15 +307,19 @@ export class TitlesController {
 
   @Get('titles/latest-updates')
   async getLatestUpdates(
-    @Query('limit') limit = 15,
+    @Query('page') page = 1,
+    @Query('limit') limit = 18,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
+      const pageNum = Math.max(1, Math.floor(Number(page)) || 1);
+      const limitNum = Math.max(1, Math.min(100, Math.floor(Number(limit)) || 18));
       const canViewAdult = await this.getCanViewAdult(req);
       const titlesWithChapters =
         await this.titlesService.getTitlesWithRecentChapters(
-          Number(limit),
+          limitNum,
           canViewAdult,
+          pageNum,
         );
       const data = titlesWithChapters.map((item) => {
         const releaseDate = new Date(item.latestChapter.releaseDate);

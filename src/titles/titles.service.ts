@@ -541,14 +541,17 @@ export class TitlesService {
   }
 
   async getTitlesWithRecentChapters(
-    limit = 15,
+    limit = 18,
     canViewAdult = true,
+    page = 1,
   ): Promise<any[]> {
-    // Получаем все главы, отсортированные по дате добавления
+    const skip = (Math.max(1, page) - 1) * limit;
+    const needed = skip + limit;
+    // Получаем все главы, отсортированные по дате добавления (достаточно для нужной страницы)
     const recentChapters = await this.chapterModel
       .find({ isPublished: true })
       .sort({ releaseDate: -1 })
-      .limit(limit * 40) // Получаем значительно больше глав для лучшей фильтрации
+      .limit(needed * 40) // Получаем значительно больше глав для лучшей фильтрации
       .populate('titleId')
       .exec();
 
@@ -588,7 +591,7 @@ export class TitlesService {
       }
 
       // Прерываем цикл, если уже набрали нужное количество уникальных тайтлов
-      if (titleMap.size >= limit * 2) {
+      if (titleMap.size >= needed * 2) {
         break;
       }
     }
@@ -600,7 +603,7 @@ export class TitlesService {
           b.chapters[0].releaseDate.getTime() -
           a.chapters[0].releaseDate.getTime(),
       )
-      .slice(0, limit);
+      .slice(skip, skip + limit);
 
     // Возвращаем массив с информацией о тайтлах и диапазонах глав
     return titlesWithChapters.map((item) => ({
