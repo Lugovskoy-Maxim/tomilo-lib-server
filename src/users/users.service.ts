@@ -253,6 +253,27 @@ export class UsersService {
     });
   }
 
+  /**
+   * Удаляет закладки без валидного titleId, чтобы сохранение не падало на валидации Mongoose.
+   * Вызывать перед user.save(), если у пользователя могли появиться битые закладки.
+   */
+  private sanitizeBookmarksBeforeSave(user: UserDocument): void {
+    const raw = (user as any).bookmarks;
+    if (!raw || !Array.isArray(raw) || raw.length === 0) return;
+    const valid: Array<{ titleId: Types.ObjectId; category: string; addedAt: Date }> = [];
+    for (const b of raw) {
+      if (b == null) continue;
+      const titleIdStr = this.extractTitleIdFromBookmark(b);
+      if (!titleIdStr || !Types.ObjectId.isValid(titleIdStr)) continue;
+      valid.push({
+        titleId: new Types.ObjectId(titleIdStr),
+        category: BOOKMARK_CATEGORIES.includes(b?.category) ? b.category : 'reading',
+        addedAt: b?.addedAt ? new Date(b.addedAt) : new Date(),
+      });
+    }
+    user.bookmarks = valid as any;
+  }
+
   /** Безопасно получить titleId закладки как строку (без вызова .toString() у undefined). */
   private getBookmarkTitleIdStr(b: any): string {
     if (b == null || b.titleId == null) return '';
@@ -744,7 +765,8 @@ export class UsersService {
       this.logger.warn(`Skipping XP award for bot user ${userId}`);
     }
 
-    // Сохраняем изменения
+    // Убираем битые закладки, чтобы не падать на валидации при save
+    this.sanitizeBookmarksBeforeSave(user as UserDocument);
     await user.save();
     this.logger.log(`Reading history updated successfully for user ${userId}`);
     return (await this.userModel

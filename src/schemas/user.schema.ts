@@ -264,18 +264,30 @@ export class User {
 
 export const UserSchema = SchemaFactory.createForClass(User);
 
-// Перед сохранением убираем закладки без валидного titleId (избегаем "Path `titleId` is required")
+// Перед сохранением убираем закладки без titleId и приводим к формату { titleId: ObjectId, category, addedAt }
 UserSchema.pre('save', function (next) {
   if (this.bookmarks && Array.isArray(this.bookmarks) && this.bookmarks.length > 0) {
-    const valid = this.bookmarks.filter((b: any) => {
-      if (b == null) return false;
+    const out: Array<{ titleId: Types.ObjectId; category: string; addedAt: Date }> = [];
+    const categories = ['reading', 'planned', 'completed', 'favorites', 'dropped'];
+    for (const b of this.bookmarks as any[]) {
+      if (b == null) continue;
       const tid = b.titleId;
-      if (tid == null) return false;
       const idStr =
-        typeof tid === 'string' ? tid : tid instanceof Types.ObjectId ? tid.toString() : tid?._id?.toString?.() ?? '';
-      return idStr.length === 24 && Types.ObjectId.isValid(idStr);
-    });
-    this.bookmarks = valid;
+        tid == null
+          ? ''
+          : typeof tid === 'string'
+            ? tid
+            : tid instanceof Types.ObjectId
+              ? tid.toString()
+              : (tid?.toString?.() ?? tid?._id?.toString?.() ?? '');
+      if (idStr.length !== 24 || !Types.ObjectId.isValid(idStr)) continue;
+      out.push({
+        titleId: tid instanceof Types.ObjectId ? tid : new Types.ObjectId(idStr),
+        category: categories.includes(b?.category) ? b.category : 'reading',
+        addedAt: b?.addedAt ? new Date(b.addedAt) : new Date(),
+      });
+    }
+    this.bookmarks = out as any;
   }
   next();
 });
