@@ -281,13 +281,21 @@ export class UsersService {
 
   /**
    * Восстанавливает titleId из закладки.
-   * Поддерживает: titleId, title (старый ref), string, испорченный spread ("0"-"23").
+   * Поддерживает: titleId, title (старый ref), string, испорченный spread ("0"-"23"),
+   * populated document (titleId как объект с _id после populate).
    */
   private extractTitleIdFromBookmark(b: any): string {
     if (typeof b === 'string') return b;
     const from = b?.titleId ?? b?.title;
     if (from) {
-      return from instanceof Types.ObjectId ? from.toString() : String(from);
+      if (from instanceof Types.ObjectId) return from.toString();
+      // Populated document: { _id: ObjectId, ... }
+      if (typeof from === 'object' && from._id) {
+        return from._id instanceof Types.ObjectId
+          ? from._id.toString()
+          : String(from._id);
+      }
+      return String(from);
     }
     const chars: string[] = [];
     for (let i = 0; i < 24; i++) {
