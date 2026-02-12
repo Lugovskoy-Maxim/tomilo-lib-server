@@ -774,9 +774,14 @@ export class UsersService {
       );
     }
 
-    // Award experience for reading (только если не бот)
+    // Award experience for reading (только если не бот) — применяем к тому же user,
+    // чтобы не было version conflict (addExperience load+save инкрементит __v, и наш save падает)
     if (!botDetectionResult.isBot) {
-      await this.addExperience(userId, 10); // 10 XP per chapter read
+      user.experience += 10;
+      while (user.experience >= this.calculateNextLevelExp(user.level)) {
+        user.level += 1;
+        user.balance += user.level * 10; // 10 coins per level
+      }
     } else {
       this.logger.warn(`Skipping XP award for bot user ${userId}`);
     }
