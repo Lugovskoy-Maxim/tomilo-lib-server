@@ -165,6 +165,8 @@ export class UsersService {
       this.logger.warn(`User not found with ID: ${id}`);
       throw new NotFoundException('User not found');
     }
+    const didMigrate = this.normalizeBookmarksIfNeeded(user as UserDocument);
+    if (didMigrate) await user.save();
     this.logger.log(`User profile found with ID: ${id}`);
     return user;
   }
@@ -202,8 +204,15 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID');
     }
 
+    const sanitized = { ...updateUserDto };
+    if (sanitized.bookmarks !== undefined && Array.isArray(sanitized.bookmarks)) {
+      sanitized.bookmarks = this.normalizeBookmarksFromInput(
+        sanitized.bookmarks as any[],
+      ) as any;
+    }
+
     const user = await this.userModel
-      .findByIdAndUpdate(new Types.ObjectId(id), updateUserDto, { new: true })
+      .findByIdAndUpdate(new Types.ObjectId(id), sanitized, { new: true })
       .select('-password');
 
     if (!user) {
@@ -211,6 +220,51 @@ export class UsersService {
     }
 
     return user;
+  }
+
+  /**
+   * Нормализует закладки из входящих данных (string[] или mixed) в формат
+   * { titleId: ObjectId, category, addedAt }.
+   * Важно: не передавать raw string[] в Mongoose — при касте строка
+   * распространяется по символам (Object.assign даёт "0","1",...,"23").
+   */
+  private normalizeBookmarksFromInput(
+    raw: Array<string | { titleId: string; category?: string; addedAt?: Date }>,
+  ): Array<{ titleId: Types.ObjectId; category: string; addedAt: Date }> {
+    return raw.map((b: any) => {
+      if (typeof b === 'string') {
+        return {
+          titleId: new Types.ObjectId(b),
+          category: 'reading',
+          addedAt: new Date(),
+        };
+      }
+      const titleId =
+        b.titleId instanceof Types.ObjectId
+          ? b.titleId
+          : new Types.ObjectId(this.extractTitleIdFromBookmark(b));
+      return {
+        titleId,
+        category: BOOKMARK_CATEGORIES.includes(b.category) ? b.category : 'reading',
+        addedAt: b.addedAt ? new Date(b.addedAt) : new Date(),
+      };
+    });
+  }
+
+  /** Восстанавливает titleId из испорченного объекта (где строка была spread по "0"-"23"). */
+  private extractTitleIdFromBookmark(b: any): string {
+    if (typeof b === 'string') return b;
+    if (b.titleId) {
+      return b.titleId instanceof Types.ObjectId
+        ? b.titleId.toString()
+        : String(b.titleId);
+    }
+    const chars: string[] = [];
+    for (let i = 0; i < 24; i++) {
+      const c = b[String(i)];
+      if (typeof c === 'string' && /^[0-9a-f]$/i.test(c)) chars.push(c);
+    }
+    return chars.length === 24 ? chars.join('') : '';
   }
 
   async delete(id: string): Promise<void> {
@@ -240,30 +294,58 @@ export class UsersService {
   }
 
   /**
-   * Нормализует закладки из старого формата (string[]) в новый ({ titleId, category, addedAt }).
+   * Нормализует закладки из старого формата (string[]) или испорченного
+   * (где ObjectId был spread по символам → "0","1",...,"23") в новый формат.
    * Возвращает true, если документ был изменён (нужно сохранить).
    */
   private normalizeBookmarksIfNeeded(user: UserDocument): boolean {
     const raw = (user as any).bookmarks;
     if (!raw || !Array.isArray(raw) || raw.length === 0) return false;
-    const hasOldFormat = raw.some((b: any) => typeof b === 'string');
-    if (!hasOldFormat) return false;
-    const normalized = raw.map((b: any) => {
-      if (typeof b === 'string') {
+    const needsNormalize =
+      raw.some((b: any) => typeof b === 'string') ||
+      raw.some((b: any) => this.isCorruptedBookmark(b));
+    if (!needsNormalize) return false;
+    const normalized = raw
+      .map((b: any) => {
+        const titleIdStr = this.extractTitleIdFromBookmark(b);
+        if (!titleIdStr || !Types.ObjectId.isValid(titleIdStr)) return null;
         return {
-          titleId: new Types.ObjectId(b),
-          category: 'reading' as const,
-          addedAt: new Date(),
+          titleId: new Types.ObjectId(titleIdStr),
+          category: BOOKMARK_CATEGORIES.includes(b?.category) ? b.category : ('reading' as const),
+          addedAt: b?.addedAt ? new Date(b.addedAt) : new Date(),
         };
-      }
-      return {
-        titleId: b.titleId instanceof Types.ObjectId ? b.titleId : new Types.ObjectId(b.titleId),
-        category: BOOKMARK_CATEGORIES.includes(b.category) ? b.category : 'reading',
-        addedAt: b.addedAt ? new Date(b.addedAt) : new Date(),
-      };
-    });
-    user.bookmarks = normalized;
+      })
+      .filter(Boolean);
+    user.bookmarks = normalized as any;
     return true;
+  }
+
+  /** Восстанавливает закладки из plain-объекта (для lean-запросов), исправляя spread-формат. */
+  private repairBookmarksPlain(
+    bookmarks: any[] | undefined,
+  ): Array<{ titleId: any; category: string; addedAt: Date; _id?: any }> {
+    if (!bookmarks || !Array.isArray(bookmarks)) return [];
+    return bookmarks
+      .map((b: any) => {
+        const titleIdStr = this.extractTitleIdFromBookmark(b);
+        if (!titleIdStr || !Types.ObjectId.isValid(titleIdStr)) return null;
+        const titleId = b.titleId && typeof b.titleId === 'object' ? b.titleId : titleIdStr;
+        return {
+          titleId,
+          category: BOOKMARK_CATEGORIES.includes(b?.category) ? b.category : 'reading',
+          addedAt: b?.addedAt ? new Date(b.addedAt) : new Date(),
+          _id: b._id,
+        };
+      })
+      .filter(Boolean) as any;
+  }
+
+  private isCorruptedBookmark(b: any): boolean {
+    if (!b || typeof b !== 'object' || typeof b === 'string') return false;
+    if (b.titleId) return false;
+    const hasCharKeys = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
+      .every((i) => typeof b[String(i)] === 'string');
+    return hasCharKeys;
   }
 
   // 🔖 Методы для работы с закладками (по категориям: читаю, в планах, прочитано, избранное, брошено)
@@ -1357,7 +1439,7 @@ export class UsersService {
     if (showExtendedProfile) {
       profile.firstName = targetUser.firstName;
       profile.lastName = targetUser.lastName;
-      profile.bookmarks = targetUser.bookmarks;
+      profile.bookmarks = this.repairBookmarksPlain(targetUser.bookmarks);
       profile.equippedDecorations = targetUser.equippedDecorations;
       if (isOwnProfile) {
         profile.email = targetUser.email;
