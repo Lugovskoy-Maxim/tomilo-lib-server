@@ -274,26 +274,24 @@ export class UsersService {
     user.bookmarks = valid as any;
   }
 
-  /** Безопасно получить titleId закладки как строку (без вызова .toString() у undefined). */
+  /** Безопасно получить titleId закладки как строку (поддержка titleId и title). */
   private getBookmarkTitleIdStr(b: any): string {
-    if (b == null || b.titleId == null) return '';
-    const t = b.titleId;
-    if (typeof t === 'string') return t;
-    if (typeof t.toString === 'function') return t.toString();
-    return String(t);
+    return this.extractTitleIdFromBookmark(b);
   }
 
-  /** Восстанавливает titleId из испорченного объекта (где строка была spread по "0"-"23"). */
+  /**
+   * Восстанавливает titleId из закладки.
+   * Поддерживает: titleId, title (старый ref), string, испорченный spread ("0"-"23").
+   */
   private extractTitleIdFromBookmark(b: any): string {
     if (typeof b === 'string') return b;
-    if (b.titleId) {
-      return b.titleId instanceof Types.ObjectId
-        ? b.titleId.toString()
-        : String(b.titleId);
+    const from = b?.titleId ?? b?.title;
+    if (from) {
+      return from instanceof Types.ObjectId ? from.toString() : String(from);
     }
     const chars: string[] = [];
     for (let i = 0; i < 24; i++) {
-      const c = b[String(i)];
+      const c = b?.[String(i)];
       if (typeof c === 'string' && /^[0-9a-f]$/i.test(c)) chars.push(c);
     }
     return chars.length === 24 ? chars.join('') : '';
@@ -326,16 +324,14 @@ export class UsersService {
   }
 
   /**
-   * Нормализует закладки из старого формата (string[]) или испорченного
-   * (где ObjectId был spread по символам → "0","1",...,"23") в новый формат.
+   * Нормализует закладки: string[], испорченный spread ("0"-"23"), title без titleId
+   * → всегда { titleId: ObjectId, category, addedAt }.
    * Возвращает true, если документ был изменён (нужно сохранить).
    */
   private normalizeBookmarksIfNeeded(user: UserDocument): boolean {
     const raw = (user as any).bookmarks;
     if (!raw || !Array.isArray(raw) || raw.length === 0) return false;
-    const needsNormalize =
-      raw.some((b: any) => typeof b === 'string') ||
-      raw.some((b: any) => this.isCorruptedBookmark(b));
+    const needsNormalize = raw.some((b: any) => this.bookmarkNeedsNormalize(b));
     if (!needsNormalize) return false;
     const normalized = raw
       .map((b: any) => {
@@ -374,10 +370,19 @@ export class UsersService {
 
   private isCorruptedBookmark(b: any): boolean {
     if (!b || typeof b !== 'object' || typeof b === 'string') return false;
-    if (b.titleId) return false;
+    if (b.titleId || b.title) return false;
     const hasCharKeys = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
       .every((i) => typeof b[String(i)] === 'string');
     return hasCharKeys;
+  }
+
+  /** Требует нормализации: string, испорченный spread или title без titleId. */
+  private bookmarkNeedsNormalize(b: any): boolean {
+    if (typeof b === 'string') return true;
+    if (!b || typeof b !== 'object') return false;
+    if (this.isCorruptedBookmark(b)) return true;
+    if (b.title && !b.titleId) return true;
+    return false;
   }
 
   // 🔖 Методы для работы с закладками (по категориям: читаю, в планах, прочитано, избранное, брошено)
@@ -420,6 +425,7 @@ export class UsersService {
     } else {
       (user.bookmarks as any[]).push(entry);
     }
+    this.sanitizeBookmarksBeforeSave(user as UserDocument);
     await user.save();
 
     this.logger.log(
@@ -446,6 +452,7 @@ export class UsersService {
     if (user.bookmarks.length === before) {
       throw new NotFoundException('Bookmark not found');
     }
+    this.sanitizeBookmarksBeforeSave(user as UserDocument);
     await user.save();
     return (await this.userModel
       .findById(new Types.ObjectId(userId))
@@ -475,6 +482,7 @@ export class UsersService {
     );
     if (!entry) throw new NotFoundException('Bookmark not found');
     entry.category = category;
+    this.sanitizeBookmarksBeforeSave(user as UserDocument);
     await user.save();
     return (await this.userModel
       .findById(new Types.ObjectId(userId))
