@@ -251,6 +251,15 @@ export class UsersService {
     });
   }
 
+  /** Безопасно получить titleId закладки как строку (без вызова .toString() у undefined). */
+  private getBookmarkTitleIdStr(b: any): string {
+    if (b == null || b.titleId == null) return '';
+    const t = b.titleId;
+    if (typeof t === 'string') return t;
+    if (typeof t.toString === 'function') return t.toString();
+    return String(t);
+  }
+
   /** Восстанавливает titleId из испорченного объекта (где строка была spread по "0"-"23"). */
   private extractTitleIdFromBookmark(b: any): string {
     if (typeof b === 'string') return b;
@@ -376,8 +385,7 @@ export class UsersService {
 
     this.normalizeBookmarksIfNeeded(user as UserDocument);
     const existingIndex = (user.bookmarks as any[]).findIndex(
-      (b: any) =>
-        (b.titleId?.toString?.() ?? (b.titleId as Types.ObjectId).toString()) === titleId,
+      (b: any) => this.getBookmarkTitleIdStr(b) === titleId,
     );
     const entry = {
       titleId: titleObjectId,
@@ -410,8 +418,7 @@ export class UsersService {
 
     const before = (user.bookmarks as any[]).length;
     user.bookmarks = (user.bookmarks as any[]).filter(
-      (b: any) =>
-        (b.titleId?.toString?.() ?? (b.titleId as Types.ObjectId).toString()) !== titleId,
+      (b: any) => this.getBookmarkTitleIdStr(b) !== titleId,
     ) as any;
     if (user.bookmarks.length === before) {
       throw new NotFoundException('Bookmark not found');
@@ -441,8 +448,7 @@ export class UsersService {
     this.normalizeBookmarksIfNeeded(user as UserDocument);
 
     const entry = (user.bookmarks as any[]).find(
-      (b: any) =>
-        (b.titleId?.toString?.() ?? (b.titleId as Types.ObjectId).toString()) === titleId,
+      (b: any) => this.getBookmarkTitleIdStr(b) === titleId,
     );
     if (!entry) throw new NotFoundException('Bookmark not found');
     entry.category = category;
