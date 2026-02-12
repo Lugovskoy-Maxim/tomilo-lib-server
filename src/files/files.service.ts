@@ -94,53 +94,54 @@ export class FilesService {
       `Добавляем водяной знак к ${imageBuffers.length} изображениям`,
     );
 
-    const watermarkedBuffers = await this.watermarkUtil.addWatermarkMultiple(
-      imageBuffers,
-      {
-        scale: 0.35, // 35% от ширины основного изображения
-        minHeight: 2000, // Минимальная высота изображения для добавления водяного знака
-      },
-    );
-    this.logger.log(
-      `Водяной знак добавлен к изображениям. Результат: ${watermarkedBuffers.length} изображений`,
-    );
-
-    // Сохраняем обработанные файлы
-    for (let i = 0; i < watermarkedBuffers.length; i++) {
-      const file = sortedFiles[i];
-      const fileExtension = file.originalname.split('.').pop();
-      const fileName = `cover_${i + 1}.${fileExtension}`;
-      const filePath = join(uploadPath, fileName);
-
+    let watermarkedBuffers: Buffer[] = [];
+    try {
+      watermarkedBuffers = await this.watermarkUtil.addWatermarkMultiple(
+        imageBuffers,
+        {
+          scale: 0.35, // 35% от ширины основного изображения
+          minHeight: 2000, // Минимальная высота изображения для добавления водяного знака
+        },
+      );
       this.logger.log(
-        `Сохраняем файл ${i + 1}: ${fileName} по пути: ${filePath}`,
+        `Водяной знак добавлен к изображениям. Результат: ${watermarkedBuffers.length} изображений`,
       );
 
-      // Сохраняем изображение с водяным знаком
-      await fs.writeFile(filePath, watermarkedBuffers[i]);
-      this.logger.log(`Файл ${fileName} сохранен успешно`);
+      // Сохраняем обработанные файлы
+      for (let i = 0; i < watermarkedBuffers.length; i++) {
+        const file = sortedFiles[i];
+        const fileExtension = file.originalname.split('.').pop();
+        const fileName = `cover_${i + 1}.${fileExtension}`;
+        const filePath = join(uploadPath, fileName);
 
-      // Удаляем временный файл (если он был)
-      if (file.path) {
-        await fs.unlink(file.path);
-        this.logger.log(`Временный файл ${file.path} удален`);
+        this.logger.log(
+          `Сохраняем файл ${i + 1}: ${fileName} по пути: ${filePath}`,
+        );
+
+        // Сохраняем изображение с водяным знаком
+        await fs.writeFile(filePath, watermarkedBuffers[i]);
+        this.logger.log(`Файл ${fileName} сохранен успешно`);
+
+        // Удаляем временный файл (если он был)
+        if (file.path) {
+          await fs.unlink(file.path);
+          this.logger.log(`Временный файл ${file.path} удален`);
+        }
+
+        pagePaths.push(`/${chapterDir}/${fileName}`);
       }
 
-      pagePaths.push(`/${chapterDir}/${fileName}`);
+      this.logger.log(
+        `=== КОНЕЦ saveChapterPages === Всего сохранено страниц: ${pagePaths.length}`,
+      );
+
+      return pagePaths;
+    } finally {
+      // Всегда освобождаем буферы и ресурсы водяных знаков (предотвращение утечек ОЗУ)
+      imageBuffers.length = 0;
+      watermarkedBuffers.length = 0;
+      this.watermarkUtil.dispose();
     }
-
-    this.logger.log(
-      `=== КОНЕЦ saveChapterPages === Всего сохранено страниц: ${pagePaths.length}`,
-    );
-
-    // Освобождаем буферы из памяти
-    imageBuffers.length = 0;
-    watermarkedBuffers.length = 0;
-
-    // Освобождаем ресурсы водяных знаков после обработки
-    this.watermarkUtil.dispose();
-
-    return pagePaths;
   }
 
   async deleteChapterPages(chapterId: string): Promise<void> {

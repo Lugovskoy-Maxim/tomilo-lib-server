@@ -125,8 +125,8 @@ export class WatermarkUtil {
         minHeight = 2000,
       } = options;
 
-      const mainImage = sharp(imageBuffer);
-      const metadata = await mainImage.metadata();
+      // Метаданные получаем одноразовым вызовом, чтобы не оставлять недоведённые Sharp-пайпы при раннем выходе
+      const metadata = await sharp(imageBuffer).metadata();
 
       this.logger.log(
         `Размеры изображения: ${metadata.width}x${metadata.height}`,
@@ -166,7 +166,8 @@ export class WatermarkUtil {
         .png()
         .toBuffer();
 
-      // Накладываем водяной знак
+      // Пайп создаём только когда точно будем делать composite (избегаем утечки нативной памяти Sharp)
+      const mainImage = sharp(imageBuffer);
       const compositeImage = await mainImage
         .composite([
           {
@@ -210,8 +211,8 @@ export class WatermarkUtil {
         return imageBuffer;
       }
 
-      const mainImage = sharp(imageBuffer);
-      const metadata = await mainImage.metadata();
+      // Метаданные — одноразовый вызов, без сохранения пайпа (избегаем утечки при раннем выходе)
+      const metadata = await sharp(imageBuffer).metadata();
 
       this.logger.log(
         `Размеры изображения: ${metadata.width}x${metadata.height}`,
@@ -243,7 +244,8 @@ export class WatermarkUtil {
         .png()
         .toBuffer();
 
-      // Накладываем верхний водяной знак в самом верху (без прозрачности - gravity: north)
+      // Пайп создаём только для composite (избегаем утечки нативной памяти Sharp)
+      const mainImage = sharp(imageBuffer);
       const compositeImage = await mainImage
         .composite([
           {

@@ -674,76 +674,78 @@ export class MangaParserService {
     const domain = this.extractDomain(url);
     const mangaSlug = this.extractMangaSlug(url);
 
-    for (const chapter of chapters) {
-      try {
-        const chapterNumber = chapter.number || 1;
+    try {
+      for (const chapter of chapters) {
+        try {
+          const chapterNumber = chapter.number || 1;
 
-        const createChapterDto: CreateChapterDto = {
-          titleId: createdTitle._id.toString(),
-          chapterNumber,
-          name: chapter.name,
-          isPublished: true,
-        };
+          const createChapterDto: CreateChapterDto = {
+            titleId: createdTitle._id.toString(),
+            chapterNumber,
+            name: chapter.name,
+            isPublished: true,
+          };
 
-        const createdChapter =
-          await this.chaptersService.create(createChapterDto);
+          const createdChapter =
+            await this.chaptersService.create(createChapterDto);
 
-        if (chapter.slug || chapter.url) {
-          let pagePaths: string[] = [];
+          if (chapter.slug || chapter.url) {
+            let pagePaths: string[] = [];
 
-          if (domain.includes('senkuro.me') || domain.includes('sencuro.me')) {
-            pagePaths = await this.downloadChapterImages(
-              chapter,
-              createdChapter._id.toString(),
-              domain,
-            );
-          } else if (domain.includes('manga-shi.org')) {
-            pagePaths = await this.downloadMangaShiChapterImages(
-              chapter,
-              createdChapter._id.toString(),
-            );
-          } else if (domain.includes('mangabuff.ru')) {
-            pagePaths = await this.downloadMangabuffChapterImages(
-              chapter,
-              createdChapter._id.toString(),
-            );
-          } else if (domain.includes('mangahub.one')) {
-            // MangaHub использует JavaScript для загрузки изображений
-            // Требуется дополнительная реализация с использованием браузера
-            throw new BadRequestException(
-              'MangaHub image downloading requires additional implementation with browser automation',
-            );
-          } else if (domain.includes('telemanga.me') && mangaSlug) {
-            pagePaths = await this.downloadTelemangaChapterImages(
-              chapter,
-              createdChapter._id.toString(),
-              mangaSlug,
-            );
-          } else {
-            throw new BadRequestException(`Unsupported domain: ${domain}`);
+            if (domain.includes('senkuro.me') || domain.includes('sencuro.me')) {
+              pagePaths = await this.downloadChapterImages(
+                chapter,
+                createdChapter._id.toString(),
+                domain,
+              );
+            } else if (domain.includes('manga-shi.org')) {
+              pagePaths = await this.downloadMangaShiChapterImages(
+                chapter,
+                createdChapter._id.toString(),
+              );
+            } else if (domain.includes('mangabuff.ru')) {
+              pagePaths = await this.downloadMangabuffChapterImages(
+                chapter,
+                createdChapter._id.toString(),
+              );
+            } else if (domain.includes('mangahub.one')) {
+              // MangaHub использует JavaScript для загрузки изображений
+              // Требуется дополнительная реализация с использованием браузера
+              throw new BadRequestException(
+                'MangaHub image downloading requires additional implementation with browser automation',
+              );
+            } else if (domain.includes('telemanga.me') && mangaSlug) {
+              pagePaths = await this.downloadTelemangaChapterImages(
+                chapter,
+                createdChapter._id.toString(),
+                mangaSlug,
+              );
+            } else {
+              throw new BadRequestException(`Unsupported domain: ${domain}`);
+            }
+
+            if (pagePaths.length > 0) {
+              await this.chaptersService.update(createdChapter._id.toString(), {
+                pages: pagePaths,
+              });
+              this.logger.log(
+                `Downloaded ${pagePaths.length} pages for chapter ${chapterNumber}`,
+              );
+            }
           }
 
-          if (pagePaths.length > 0) {
-            await this.chaptersService.update(createdChapter._id.toString(), {
-              pages: pagePaths,
-            });
-            this.logger.log(
-              `Downloaded ${pagePaths.length} pages for chapter ${chapterNumber}`,
-            );
-          }
+          importedChapters.push(createdChapter);
+          this.logger.log(`Imported chapter ${chapterNumber}: ${chapter.name}`);
+        } catch (error) {
+          this.logger.error(
+            `Failed to import chapter ${chapter.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
         }
-
-        importedChapters.push(createdChapter);
-        this.logger.log(`Imported chapter ${chapterNumber}: ${chapter.name}`);
-      } catch (error) {
-        this.logger.error(
-          `Failed to import chapter ${chapter.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        );
       }
+    } finally {
+      // Всегда освобождаем ресурсы водяных знаков (предотвращение утечек ОЗУ)
+      this.filesService.disposeWatermarkResources();
     }
-
-    // Освобождаем ресурсы водяных знаков после обработки всех глав
-    this.filesService.disposeWatermarkResources();
 
     return {
       title: createdTitle,
@@ -794,76 +796,78 @@ export class MangaParserService {
     const domain = this.extractDomain(url);
     const mangaSlug = this.extractMangaSlug(url);
 
-    for (const chapter of selectedChapters) {
-      try {
-        const chapterNumber = chapter.number || 1;
+    try {
+      for (const chapter of selectedChapters) {
+        try {
+          const chapterNumber = chapter.number || 1;
 
-        const createChapterDto: CreateChapterDto = {
-          titleId,
-          chapterNumber,
-          name: chapter.name,
-          isPublished: true,
-        };
+          const createChapterDto: CreateChapterDto = {
+            titleId,
+            chapterNumber,
+            name: chapter.name,
+            isPublished: true,
+          };
 
-        const createdChapter =
-          await this.chaptersService.create(createChapterDto);
+          const createdChapter =
+            await this.chaptersService.create(createChapterDto);
 
-        if (chapter.slug || chapter.url) {
-          let pagePaths: string[] = [];
+          if (chapter.slug || chapter.url) {
+            let pagePaths: string[] = [];
 
-          if (domain.includes('senkuro.me') || domain.includes('sencuro.me')) {
-            pagePaths = await this.downloadChapterImages(
-              chapter,
-              createdChapter._id.toString(),
-              domain,
-            );
-          } else if (domain.includes('manga-shi.org')) {
-            pagePaths = await this.downloadMangaShiChapterImages(
-              chapter,
-              createdChapter._id.toString(),
-            );
-          } else if (domain.includes('mangabuff.ru')) {
-            pagePaths = await this.downloadMangabuffChapterImages(
-              chapter,
-              createdChapter._id.toString(),
-            );
-          } else if (domain.includes('mangahub.one')) {
-            // MangaHub использует JavaScript для загрузки изображений
-            // Требуется дополнительная реализация с использованием браузера
-            throw new BadRequestException(
-              'MangaHub image downloading requires additional implementation with browser automation',
-            );
-          } else if (domain.includes('telemanga.me') && mangaSlug) {
-            pagePaths = await this.downloadTelemangaChapterImages(
-              chapter,
-              createdChapter._id.toString(),
-              mangaSlug,
-            );
-          } else {
-            throw new BadRequestException(`Unsupported domain: ${domain}`);
+            if (domain.includes('senkuro.me') || domain.includes('sencuro.me')) {
+              pagePaths = await this.downloadChapterImages(
+                chapter,
+                createdChapter._id.toString(),
+                domain,
+              );
+            } else if (domain.includes('manga-shi.org')) {
+              pagePaths = await this.downloadMangaShiChapterImages(
+                chapter,
+                createdChapter._id.toString(),
+              );
+            } else if (domain.includes('mangabuff.ru')) {
+              pagePaths = await this.downloadMangabuffChapterImages(
+                chapter,
+                createdChapter._id.toString(),
+              );
+            } else if (domain.includes('mangahub.one')) {
+              // MangaHub использует JavaScript для загрузки изображений
+              // Требуется дополнительная реализация с использованием браузера
+              throw new BadRequestException(
+                'MangaHub image downloading requires additional implementation with browser automation',
+              );
+            } else if (domain.includes('telemanga.me') && mangaSlug) {
+              pagePaths = await this.downloadTelemangaChapterImages(
+                chapter,
+                createdChapter._id.toString(),
+                mangaSlug,
+              );
+            } else {
+              throw new BadRequestException(`Unsupported domain: ${domain}`);
+            }
+
+            if (pagePaths.length > 0) {
+              await this.chaptersService.update(createdChapter._id.toString(), {
+                pages: pagePaths,
+              });
+              this.logger.log(
+                `Downloaded ${pagePaths.length} pages for chapter ${chapterNumber}`,
+              );
+            }
           }
 
-          if (pagePaths.length > 0) {
-            await this.chaptersService.update(createdChapter._id.toString(), {
-              pages: pagePaths,
-            });
-            this.logger.log(
-              `Downloaded ${pagePaths.length} pages for chapter ${chapterNumber}`,
-            );
-          }
+          importedChapters.push(createdChapter);
+          this.logger.log(`Imported chapter ${chapterNumber}: ${chapter.name}`);
+        } catch (error) {
+          this.logger.error(
+            `Failed to import chapter ${chapter.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          );
         }
-
-        importedChapters.push(createdChapter);
-        this.logger.log(`Imported chapter ${chapterNumber}: ${chapter.name}`);
-      } catch (error) {
-        this.logger.error(
-          `Failed to import chapter ${chapter.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        );
       }
+    } finally {
+      // Всегда освобождаем ресурсы водяных знаков (предотвращение утечек ОЗУ)
+      this.filesService.disposeWatermarkResources();
     }
-
-    // Освобождаем ресурсы водяных знаков после обработки всех глав
-    this.filesService.disposeWatermarkResources();
 
     return importedChapters;
   }
