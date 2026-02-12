@@ -4,6 +4,7 @@ import {
   NotFoundException,
   ConflictException,
   BadRequestException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
@@ -1005,51 +1006,144 @@ export class UsersService {
   }
 
   /**
-   * Проверить, может ли указанный пользователь видеть профиль
+   * Проверить, может ли указанный пользователь видеть профиль.
+   * @param targetUserId — id владельца профиля (для private = только владелец)
    */
   canViewProfile(
     targetUserPrivacy: {
-      profileVisibility: 'public' | 'friends' | 'private';
-    },
-    viewerId?: string,
-    isFriend: boolean = false,
+      profileVisibility?: 'public' | 'friends' | 'private';
+    } | null,
+    viewerId: string | undefined,
+    isFriend: boolean,
+    targetUserId: string,
   ): boolean {
     if (!targetUserPrivacy) return true;
+    const visibility = targetUserPrivacy.profileVisibility ?? 'public';
 
-    switch (targetUserPrivacy.profileVisibility) {
+    switch (visibility) {
       case 'public':
         return true;
       case 'friends':
         return !!viewerId && isFriend;
       case 'private':
-        return !!viewerId; // Only the user themselves
+        return viewerId === targetUserId;
       default:
         return true;
     }
   }
 
   /**
-   * Проверить, может ли указанный пользователь видеть историю чтения
+   * Проверить, может ли указанный пользователь видеть историю чтения.
+   * @param targetUserId — id владельца профиля (для private = только владелец)
    */
   canViewReadingHistory(
     targetUserPrivacy: {
-      readingHistoryVisibility: 'public' | 'friends' | 'private';
-    },
-    viewerId?: string,
-    isFriend: boolean = false,
+      readingHistoryVisibility?: 'public' | 'friends' | 'private';
+    } | null,
+    viewerId: string | undefined,
+    isFriend: boolean,
+    targetUserId: string,
   ): boolean {
     if (!targetUserPrivacy) return false;
+    const visibility =
+      targetUserPrivacy.readingHistoryVisibility ?? 'private';
 
-    switch (targetUserPrivacy.readingHistoryVisibility) {
+    switch (visibility) {
       case 'public':
         return true;
       case 'friends':
         return !!viewerId && isFriend;
       case 'private':
-        return !!viewerId; // Only the user themselves
+        return viewerId === targetUserId;
       default:
         return false;
     }
+  }
+
+  /**
+   * Получить профиль пользователя с учётом настроек приватности.
+   * @param userId — id пользователя, чей профиль запрашивают
+   * @param viewerId — id смотрящего (если авторизован)
+   * @param isFriend — является ли смотрящий другом (для friends-only)
+   * @returns объект профиля без чувствительных данных; кидает ForbiddenException если профиль скрыт
+   */
+  async getProfileWithPrivacy(
+    userId: string,
+    viewerId?: string,
+    isFriend: boolean = false,
+  ): Promise<Record<string, unknown>> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const targetUser = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('-password')
+      .populate('bookmarks')
+      .populate('readingHistory.titleId')
+      .populate('readingHistory.chapters.chapterId')
+      .populate('equippedDecorations.avatar')
+      .populate('equippedDecorations.background')
+      .populate('equippedDecorations.card')
+      .lean()
+      .exec();
+
+    if (!targetUser) {
+      throw new NotFoundException('User not found');
+    }
+
+    const targetUserId = (targetUser._id as Types.ObjectId).toString();
+    const canViewProfile = this.canViewProfile(
+      targetUser.privacy ?? null,
+      viewerId,
+      isFriend,
+      targetUserId,
+    );
+
+    if (!canViewProfile) {
+      throw new ForbiddenException('This profile is private');
+    }
+
+    const isOwnProfile = viewerId === targetUserId;
+    const showExtendedProfile =
+      (targetUser.privacy?.profileVisibility === 'public' || isOwnProfile || isFriend);
+
+    const canViewHistory = this.canViewReadingHistory(
+      targetUser.privacy ?? null,
+      viewerId,
+      isFriend,
+      targetUserId,
+    );
+
+    const profile: Record<string, unknown> = {
+      _id: targetUser._id,
+      username: targetUser.username,
+      avatar: targetUser.avatar,
+      level: targetUser.level ?? 1,
+      experience: targetUser.experience ?? 0,
+      role: targetUser.role ?? 'user',
+      privacy: {
+        profileVisibility: targetUser.privacy?.profileVisibility ?? 'public',
+        readingHistoryVisibility:
+          targetUser.privacy?.readingHistoryVisibility ?? 'private',
+      },
+    };
+
+    if (showExtendedProfile) {
+      profile.firstName = targetUser.firstName;
+      profile.lastName = targetUser.lastName;
+      profile.bookmarks = targetUser.bookmarks;
+      profile.equippedDecorations = targetUser.equippedDecorations;
+      if (isOwnProfile) {
+        profile.email = targetUser.email;
+      }
+    }
+
+    if (canViewHistory) {
+      profile.readingHistory = targetUser.readingHistory;
+    }
+
+    return profile;
   }
 
   // 🔔 Notification Settings Methods

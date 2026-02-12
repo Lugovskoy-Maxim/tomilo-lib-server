@@ -22,6 +22,7 @@ import {
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { FileUploadInterceptor } from '../common/interceptors/file-upload.interceptor';
@@ -667,72 +668,29 @@ export class UsersController {
     }
   }
 
-  // 👥 Получить пользователя по ID (с учётом приватности)
+  // 👥 Получить профиль пользователя по ID (с учётом настроек приватности)
+  // Авторизация опциональна: без токена доступны только публичные профили
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(OptionalJwtAuthGuard)
   async getUserById(
     @Param('id') id: string,
-    @Request() req,
+    @Request() req: { user?: { userId: string } },
   ): Promise<ApiResponseDto<any>> {
     try {
-      const viewerId = req.user.userId;
-      const isOwnProfile = viewerId === id;
-
-      // Получаем полные данные пользователя (including privacy settings)
-      const targetUser = await this.usersService.findById(id);
-
-      // Проверяем видимость профиля
-      const canViewProfile = this.usersService.canViewProfile(
-        targetUser.privacy,
+      const viewerId = req.user?.userId;
+      const isFriend = false; // TODO: проверка дружбы, когда будет модуль друзей
+      const data = await this.usersService.getProfileWithPrivacy(
+        id,
         viewerId,
-        false, // TODO: добавить проверку дружбы если есть друзья
+        isFriend,
       );
-
-      if (!canViewProfile) {
-        throw new ForbiddenException('This profile is private');
-      }
-
-      // Формируем ответ в зависимости от настроек приватности
-      let data: any = {
-        _id: targetUser._id,
-        username: targetUser.username,
-        avatar: targetUser.avatar,
-        level: targetUser.level,
-        role: targetUser.role,
-        privacy: {
-          profileVisibility: targetUser.privacy?.profileVisibility,
-          readingHistoryVisibility:
-            targetUser.privacy?.readingHistoryVisibility,
-        },
-      };
-
-      // Если профиль публичный или владелец - добавляем больше данных
-      if (targetUser.privacy?.profileVisibility === 'public' || isOwnProfile) {
-        data = {
-          ...data,
-          firstName: targetUser.firstName,
-          lastName: targetUser.lastName,
-          bookmarks: targetUser.bookmarks,
-          equippedDecorations: targetUser.equippedDecorations,
-        };
-      }
-
-      // Проверяем видимость истории чтения
-      const canViewReadingHistory = this.usersService.canViewReadingHistory(
-        targetUser.privacy,
-        viewerId,
-        false,
-      );
-
-      if (canViewReadingHistory) {
-        data.readingHistory = targetUser.readingHistory;
-      }
-
       return {
         success: true,
         data,
+        message: 'Profile loaded',
         timestamp: new Date().toISOString(),
         path: `users/${id}`,
+        method: 'GET',
       };
     } catch (error) {
       if (error instanceof ForbiddenException) {
@@ -742,6 +700,17 @@ export class UsersController {
           errors: [error.message],
           timestamp: new Date().toISOString(),
           path: `users/${id}`,
+          method: 'GET',
+        };
+      }
+      if (error instanceof BadRequestException) {
+        return {
+          success: false,
+          message: 'Invalid user ID',
+          errors: [error.message],
+          timestamp: new Date().toISOString(),
+          path: `users/${id}`,
+          method: 'GET',
         };
       }
       return {
@@ -750,6 +719,7 @@ export class UsersController {
         errors: [error.message],
         timestamp: new Date().toISOString(),
         path: `users/${id}`,
+        method: 'GET',
       };
     }
   }
