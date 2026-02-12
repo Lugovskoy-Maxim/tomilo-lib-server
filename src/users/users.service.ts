@@ -15,6 +15,20 @@ import { FilesService } from '../files/files.service';
 import { ChaptersService } from '../chapters/chapters.service';
 import { LoggerService } from '../common/logger/logger.service';
 import { BotDetectionService } from '../common/services/bot-detection.service';
+/** Категории закладок: читаю, в планах, прочитано, избранное, брошено */
+export const BOOKMARK_CATEGORIES = [
+  'reading',
+  'planned',
+  'completed',
+  'favorites',
+  'dropped',
+] as const;
+export type BookmarkCategory = (typeof BOOKMARK_CATEGORIES)[number];
+
+/** Лимиты истории чтения: не более N тайтлов и M глав на тайтл (глав храним много — для отображения статуса «прочитано» на фронте) */
+const MAX_READING_HISTORY_TITLES = 500;
+const MAX_CHAPTERS_PER_TITLE_IN_HISTORY = 6000;
+
 // Interfaces for type safety in reading history operations
 interface ReadingHistoryEntry {
   titleId: Types.ObjectId;
@@ -105,7 +119,7 @@ export class UsersService {
     const user = await this.userModel
       .findById(new Types.ObjectId(id))
       .select('-password')
-      .populate('bookmarks')
+      .populate('bookmarks.titleId')
       .populate('readingHistory.titleId')
       .populate('readingHistory.chapters.chapterId')
       .populate('equippedDecorations.avatar')
@@ -135,7 +149,7 @@ export class UsersService {
     const user = await this.userModel
       .findById(new Types.ObjectId(id))
       .select('-password -readingHistory')
-      .populate('bookmarks')
+      .populate('bookmarks.titleId')
       .populate('equippedDecorations.avatar')
       .populate('equippedDecorations.background')
       .populate('equippedDecorations.card');
@@ -225,31 +239,82 @@ export class UsersService {
     this.logger.log(`User deleted successfully with ID: ${id}`);
   }
 
-  // 🔖 Методы для работы с закладками
-  async addBookmark(userId: string, titleId: string): Promise<User> {
-    this.logger.log(`Adding bookmark for user ${userId} to title ${titleId}`);
+  /**
+   * Нормализует закладки из старого формата (string[]) в новый ({ titleId, category, addedAt }).
+   * Возвращает true, если документ был изменён (нужно сохранить).
+   */
+  private normalizeBookmarksIfNeeded(user: UserDocument): boolean {
+    const raw = (user as any).bookmarks;
+    if (!raw || !Array.isArray(raw) || raw.length === 0) return false;
+    const hasOldFormat = raw.some((b: any) => typeof b === 'string');
+    if (!hasOldFormat) return false;
+    const normalized = raw.map((b: any) => {
+      if (typeof b === 'string') {
+        return {
+          titleId: new Types.ObjectId(b),
+          category: 'reading' as const,
+          addedAt: new Date(),
+        };
+      }
+      return {
+        titleId: b.titleId instanceof Types.ObjectId ? b.titleId : new Types.ObjectId(b.titleId),
+        category: BOOKMARK_CATEGORIES.includes(b.category) ? b.category : 'reading',
+        addedAt: b.addedAt ? new Date(b.addedAt) : new Date(),
+      };
+    });
+    user.bookmarks = normalized;
+    return true;
+  }
+
+  // 🔖 Методы для работы с закладками (по категориям: читаю, в планах, прочитано, избранное, брошено)
+  async addBookmark(
+    userId: string,
+    titleId: string,
+    category: BookmarkCategory = 'reading',
+  ): Promise<User> {
+    this.logger.log(
+      `Adding bookmark for user ${userId} to title ${titleId}, category ${category}`,
+    );
     if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
       this.logger.warn(`Invalid user ID ${userId} or title ID ${titleId}`);
       throw new BadRequestException('Invalid user ID or title ID');
     }
+    if (!BOOKMARK_CATEGORIES.includes(category)) {
+      throw new BadRequestException(
+        `Invalid category. Allowed: ${BOOKMARK_CATEGORIES.join(', ')}`,
+      );
+    }
 
-    const user = await this.userModel
-      .findByIdAndUpdate(
-        new Types.ObjectId(userId),
-        { $addToSet: { bookmarks: titleId } },
-        { new: true },
-      )
-      .select('-password');
-
+    const titleObjectId = new Types.ObjectId(titleId);
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
       this.logger.warn(`User not found with ID: ${userId}`);
       throw new NotFoundException('User not found');
     }
 
+    this.normalizeBookmarksIfNeeded(user as UserDocument);
+    const existingIndex = (user.bookmarks as any[]).findIndex(
+      (b: any) =>
+        (b.titleId?.toString?.() ?? (b.titleId as Types.ObjectId).toString()) === titleId,
+    );
+    const entry = {
+      titleId: titleObjectId,
+      category,
+      addedAt: new Date(),
+    };
+    if (existingIndex >= 0) {
+      (user.bookmarks as any[])[existingIndex] = entry;
+    } else {
+      (user.bookmarks as any[]).push(entry);
+    }
+    await user.save();
+
     this.logger.log(
       `Bookmark added successfully for user ${userId} to title ${titleId}`,
     );
-    return user;
+    return (await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('-password')) as User;
   }
 
   async removeBookmark(userId: string, titleId: string): Promise<User> {
@@ -257,36 +322,86 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID or title ID');
     }
 
-    const user = await this.userModel
-      .findByIdAndUpdate(
-        new Types.ObjectId(userId),
-        { $pull: { bookmarks: titleId } },
-        { new: true },
-      )
-      .select('-password');
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) throw new NotFoundException('User not found');
+    this.normalizeBookmarksIfNeeded(user as UserDocument);
 
-    if (!user) {
-      throw new NotFoundException('User not found');
+    const before = (user.bookmarks as any[]).length;
+    user.bookmarks = (user.bookmarks as any[]).filter(
+      (b: any) =>
+        (b.titleId?.toString?.() ?? (b.titleId as Types.ObjectId).toString()) !== titleId,
+    ) as any;
+    if (user.bookmarks.length === before) {
+      throw new NotFoundException('Bookmark not found');
     }
-
-    return user;
+    await user.save();
+    return (await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('-password')) as User;
   }
 
-  async getUserBookmarks(userId: string) {
+  async updateBookmarkCategory(
+    userId: string,
+    titleId: string,
+    category: BookmarkCategory,
+  ): Promise<User> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid user ID or title ID');
+    }
+    if (!BOOKMARK_CATEGORIES.includes(category)) {
+      throw new BadRequestException(
+        `Invalid category. Allowed: ${BOOKMARK_CATEGORIES.join(', ')}`,
+      );
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) throw new NotFoundException('User not found');
+    this.normalizeBookmarksIfNeeded(user as UserDocument);
+
+    const entry = (user.bookmarks as any[]).find(
+      (b: any) =>
+        (b.titleId?.toString?.() ?? (b.titleId as Types.ObjectId).toString()) === titleId,
+    );
+    if (!entry) throw new NotFoundException('Bookmark not found');
+    entry.category = category;
+    await user.save();
+    return (await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('-password')) as User;
+  }
+
+  async getUserBookmarks(
+    userId: string,
+    options?: { category?: BookmarkCategory; grouped?: boolean },
+  ) {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user ID');
     }
 
     const user = await this.userModel
       .findById(new Types.ObjectId(userId))
-      .populate('bookmarks')
+      .populate('bookmarks.titleId')
       .select('bookmarks');
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    return user.bookmarks;
+    const didMigrate = this.normalizeBookmarksIfNeeded(user as UserDocument);
+    if (didMigrate) await user.save();
+
+    let list = (user.bookmarks as any[]).slice();
+    if (options?.category) {
+      list = list.filter((b: any) => b.category === options.category);
+    }
+    if (options?.grouped) {
+      const byCategory: Record<string, any[]> = {};
+      for (const cat of BOOKMARK_CATEGORIES) {
+        byCategory[cat] = list.filter((b: any) => b.category === cat);
+      }
+      return byCategory;
+    }
+    return list;
   }
 
   // 🖼 Методы для работы с аватаром
@@ -447,6 +562,15 @@ export class UsersService {
           chapterTitle,
           readAt: currentTime,
         });
+        // Оставляем только последние N глав по тайтлу, чтобы не раздувать историю
+        if (existingEntry.chapters.length > MAX_CHAPTERS_PER_TITLE_IN_HISTORY) {
+          existingEntry.chapters = existingEntry.chapters
+            .sort(
+              (a, b) =>
+                new Date(b.readAt).getTime() - new Date(a.readAt).getTime(),
+            )
+            .slice(0, MAX_CHAPTERS_PER_TITLE_IN_HISTORY);
+        }
         this.logger.log(
           `Added new chapter to existing title in user ${userId}'s history`,
         );
@@ -469,10 +593,13 @@ export class UsersService {
         readAt: currentTime,
       };
 
-      // Добавляем в начало и ограничиваем размер
+      // Добавляем в начало и ограничиваем размер (не более N тайтлов)
       user.readingHistory.unshift(newEntry);
-      if (user.readingHistory.length > 10000) {
-        user.readingHistory = user.readingHistory.slice(0, 10000);
+      if (user.readingHistory.length > MAX_READING_HISTORY_TITLES) {
+        user.readingHistory = user.readingHistory.slice(
+          0,
+          MAX_READING_HISTORY_TITLES,
+        );
       }
       this.logger.log(`Added new title to user ${userId}'s reading history`);
     } // <- Добавлена закрывающая скобка для блока else
@@ -517,23 +644,76 @@ export class UsersService {
       .select('-password')) as User;
   }
 
-  async getReadingHistory(userId: string) {
+  async getReadingHistory(
+    userId: string,
+    options?: {
+      page?: number;
+      limit?: number;
+      /** Лёгкий формат: только тайтл + последняя глава + readAt, без полного списка глав */
+      light?: boolean;
+    },
+  ) {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user ID');
     }
 
-    const user = await this.userModel
+    const page = Math.max(1, options?.page ?? 1);
+    const limit = Math.min(100, Math.max(1, options?.limit ?? 50));
+    const light = options?.light ?? true;
+
+    let query = this.userModel
       .findById(new Types.ObjectId(userId))
       .populate('readingHistory.titleId')
-      .populate('readingHistory.chapters.chapterId')
       .select('readingHistory');
+    if (!light) {
+      query = query.populate('readingHistory.chapters.chapterId');
+    }
+    const user = await query;
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    // Возвращаем в обратном порядке (новые сначала)
-    return user.readingHistory.slice().reverse();
+    // В обратном порядке (новые сначала)
+    const fullList = user.readingHistory.slice().reverse();
+    const total = fullList.length;
+    const start = (page - 1) * limit;
+    const slice = fullList.slice(start, start + limit);
+
+    if (light) {
+      const lightList = slice.map((entry: any) => {
+        const lastChapter =
+          entry.chapters?.length > 0
+            ? entry.chapters.sort(
+                (a: any, b: any) =>
+                  new Date(b.readAt).getTime() - new Date(a.readAt).getTime(),
+              )[0]
+            : null;
+        return {
+          titleId: entry.titleId,
+          readAt: entry.readAt,
+          lastChapter: lastChapter
+            ? {
+                chapterId: lastChapter.chapterId,
+                chapterNumber: lastChapter.chapterNumber,
+                chapterTitle: lastChapter.chapterTitle,
+                readAt: lastChapter.readAt,
+              }
+            : null,
+          chaptersCount: entry.chapters?.length ?? 0,
+        };
+      });
+      return {
+        items: lightList,
+        pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+      };
+    }
+
+    const items = slice;
+    return {
+      items,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    };
   }
 
   async getTitleReadingHistory(userId: string, titleId: string) {
@@ -564,6 +744,38 @@ export class UsersService {
 
     // Возвращаем главы в обратном порядке (новые сначала)
     return populatedHistory.chapters.slice().reverse();
+  }
+
+  /**
+   * Лёгкий метод для фронта: только ID и номера прочитанных глав по тайтлу.
+   * Удобно для отображения статуса «прочитано» у каждой главы без загрузки полной истории.
+   */
+  async getTitleReadChapterIds(
+    userId: string,
+    titleId: string,
+  ): Promise<{ chapterIds: string[]; chapterNumbers: number[] }> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid user ID or title ID');
+    }
+
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('readingHistory');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const entry = user.readingHistory.find(
+      (e) => e.titleId.toString() === titleId,
+    );
+    if (!entry?.chapters?.length) {
+      return { chapterIds: [], chapterNumbers: [] };
+    }
+
+    const chapterIds = entry.chapters.map((c) => c.chapterId.toString());
+    const chapterNumbers = entry.chapters.map((c) => c.chapterNumber);
+    return { chapterIds, chapterNumbers };
   }
 
   async clearReadingHistory(userId: string): Promise<User> {
@@ -805,27 +1017,40 @@ export class UsersService {
       let userModified = false;
 
       // Clean bookmarks - remove references to non-existent titles
-      if (user.bookmarks && user.bookmarks.length > 0) {
-        const validBookmarks: string[] = [];
-        for (const bookmarkId of user.bookmarks) {
+      if (user.bookmarks && (user.bookmarks as any[]).length > 0) {
+        this.normalizeBookmarksIfNeeded(user as UserDocument);
+        const currentBookmarks = (user.bookmarks as any[]).slice();
+        const validBookmarks: any[] = [];
+        for (const bookmark of currentBookmarks) {
+          const idStr =
+            typeof bookmark === 'string'
+              ? bookmark
+              : bookmark?.titleId?.toString?.() ?? (bookmark?.titleId as Types.ObjectId)?.toString?.();
+          if (!idStr) continue;
           try {
-            // Check if title exists (we'll need to import Title model)
-            const titleExists = await this.checkTitleExists(bookmarkId);
+            const titleExists = await this.checkTitleExists(idStr);
             if (titleExists) {
-              validBookmarks.push(bookmarkId);
+              validBookmarks.push(
+                typeof bookmark === 'string'
+                  ? { titleId: new Types.ObjectId(bookmark), category: 'reading', addedAt: new Date() }
+                  : bookmark,
+              );
             } else {
               cleanedBookmarks++;
               this.logger.log(
-                `Removed orphaned bookmark ${bookmarkId} from user ${user._id.toString()}`,
+                `Removed orphaned bookmark ${idStr} from user ${user._id.toString()}`,
               );
             }
           } catch {
-            // If we can't check, keep the bookmark
-            validBookmarks.push(bookmarkId);
+            validBookmarks.push(
+              typeof bookmark === 'string'
+                ? { titleId: new Types.ObjectId(bookmark), category: 'reading', addedAt: new Date() }
+                : bookmark,
+            );
           }
         }
-        if (validBookmarks.length !== user.bookmarks.length) {
-          user.bookmarks = validBookmarks;
+        if (validBookmarks.length !== currentBookmarks.length) {
+          user.bookmarks = validBookmarks as any;
           userModified = true;
         }
       }
@@ -1079,7 +1304,7 @@ export class UsersService {
     const targetUser = await this.userModel
       .findById(new Types.ObjectId(userId))
       .select('-password')
-      .populate('bookmarks')
+      .populate('bookmarks.titleId')
       .populate('readingHistory.titleId')
       .populate('readingHistory.chapters.chapterId')
       .populate('equippedDecorations.avatar')

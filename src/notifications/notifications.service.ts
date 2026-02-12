@@ -160,10 +160,15 @@ export class NotificationsService {
     titleName: string,
   ): Promise<void> {
     // Находим всех пользователей, у которых этот тайтл в закладках
+    // Поддержка старого формата (bookmarks: [id]) и нового (bookmarks: [{ titleId }])
+    const titleObjectId = Types.ObjectId.isValid(titleId) ? new Types.ObjectId(titleId) : null;
     const usersWithBookmark = await this.notificationModel.db
       .collection('users')
       .find({
-        bookmarks: titleId,
+        $or: [
+          { bookmarks: titleId },
+          ...(titleObjectId ? [{ 'bookmarks.titleId': titleObjectId }] : []),
+        ],
       })
       .toArray();
 

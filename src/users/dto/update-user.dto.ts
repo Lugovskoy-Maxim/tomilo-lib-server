@@ -46,7 +46,7 @@ export class DisplaySettingsDto {
 export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   @IsArray()
-  bookmarks?: string[];
+  bookmarks?: Array<string | { titleId: string; category?: string; addedAt?: Date }>;
 
   @IsOptional()
   @IsString()

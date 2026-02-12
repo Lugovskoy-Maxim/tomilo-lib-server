@@ -842,19 +842,20 @@ export class TitlesService {
       // Собираем ID тайтлов для исключения
       const excludedTitleIds: Types.ObjectId[] = [];
 
-      // Обрабатываем bookmarks - собираем только валидные ObjectId
+      // Обрабатываем bookmarks (формат: string[] или { titleId, category, addedAt }[])
       if (user.bookmarks && Array.isArray(user.bookmarks)) {
         for (const bookmark of user.bookmarks) {
           let idStr: string | null = null;
-
           if (typeof bookmark === 'string') {
             idStr = bookmark;
           } else if (bookmark && typeof bookmark === 'object') {
-            // Используем Record для доступа к свойствам без ошибок типизации
             const obj = bookmark as Record<string, any>;
-            idStr = obj._id?.toString() || obj.id?.toString() || null;
+            idStr =
+              obj.titleId?.toString?.() ||
+              obj._id?.toString() ||
+              obj.id?.toString() ||
+              null;
           }
-
           if (idStr && Types.ObjectId.isValid(idStr)) {
             try {
               excludedTitleIds.push(new Types.ObjectId(idStr));

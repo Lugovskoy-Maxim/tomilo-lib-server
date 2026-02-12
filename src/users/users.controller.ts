@@ -211,12 +211,24 @@ export class UsersController {
     }
   }
 
-  // 📚 Закладки пользователя
+  // 📚 Закладки пользователя (по категориям: reading, planned, completed, favorites, dropped)
   @Get('profile/bookmarks')
   @UseGuards(JwtAuthGuard)
-  async getUserBookmarks(@Request() req): Promise<ApiResponseDto<any>> {
+  async getUserBookmarks(
+    @Request() req,
+    @Query('category') category?: string,
+    @Query('grouped') grouped?: string,
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.usersService.getUserBookmarks(req.user.userId);
+      const options: { category?: any; grouped?: boolean } = {};
+      if (category && ['reading', 'planned', 'completed', 'favorites', 'dropped'].includes(category)) {
+        options.category = category;
+      }
+      if (grouped === 'true' || grouped === '1') options.grouped = true;
+      const data = await this.usersService.getUserBookmarks(
+        req.user.userId,
+        Object.keys(options).length ? options : undefined,
+      );
 
       return {
         success: true,
@@ -235,17 +247,22 @@ export class UsersController {
     }
   }
 
-  // ➕ Добавить в закладки
+  // ➕ Добавить в закладки (query: ?category=reading|planned|completed|favorites|dropped)
   @Post('profile/bookmarks/:titleId')
   @UseGuards(JwtAuthGuard)
   async addBookmark(
     @Request() req,
     @Param('titleId') titleId: string,
+    @Query('category') category?: string,
   ): Promise<ApiResponseDto<any>> {
     try {
+      const cat = (category && ['reading', 'planned', 'completed', 'favorites', 'dropped'].includes(category))
+        ? category
+        : 'reading';
       const data = await this.usersService.addBookmark(
         req.user.userId,
         titleId,
+        cat as any,
       );
 
       return {
@@ -264,6 +281,45 @@ export class UsersController {
         timestamp: new Date().toISOString(),
         path: `users/profile/bookmarks/${titleId}`,
         method: 'POST',
+      };
+    }
+  }
+
+  // ✏️ Изменить категорию закладки
+  @Put('profile/bookmarks/:titleId')
+  @UseGuards(JwtAuthGuard)
+  async updateBookmarkCategory(
+    @Request() req,
+    @Param('titleId') titleId: string,
+    @Body('category') category: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      if (!category || !['reading', 'planned', 'completed', 'favorites', 'dropped'].includes(category)) {
+        throw new BadRequestException(
+          'Invalid category. Use: reading, planned, completed, favorites, dropped',
+        );
+      }
+      const data = await this.usersService.updateBookmarkCategory(
+        req.user.userId,
+        titleId,
+        category as any,
+      );
+      return {
+        success: true,
+        data,
+        message: 'Bookmark category updated',
+        timestamp: new Date().toISOString(),
+        path: `users/profile/bookmarks/${titleId}`,
+        method: 'PUT',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to update bookmark category',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `users/profile/bookmarks/${titleId}`,
+        method: 'PUT',
       };
     }
   }
@@ -301,12 +357,24 @@ export class UsersController {
     }
   }
 
-  // 📖 История чтения
+  // 📖 История чтения (query: ?page=1&limit=50&light=true — по умолчанию лёгкий формат с пагинацией)
   @Get('profile/history')
   @UseGuards(JwtAuthGuard)
-  async getReadingHistory(@Request() req): Promise<ApiResponseDto<any>> {
+  async getReadingHistory(
+    @Request() req,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('light') light?: string,
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.usersService.getReadingHistory(req.user.userId);
+      const options: { page?: number; limit?: number; light?: boolean } = {};
+      if (page != null) options.page = Math.max(1, parseInt(String(page), 10) || 1);
+      if (limit != null) options.limit = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50));
+      if (light !== undefined) options.light = light === 'true' || light === '1';
+      const data = await this.usersService.getReadingHistory(
+        req.user.userId,
+        Object.keys(options).length ? options : undefined,
+      );
       return {
         success: true,
         data,
@@ -324,13 +392,24 @@ export class UsersController {
     }
   }
 
-  // 📖 История чтения (альтернативный эндпоинт)
+  // 📖 История чтения (альтернативный эндпоинт, те же query: page, limit, light)
   @Get('history')
   @UseGuards(JwtAuthGuard)
-  async getReadingHistoryAlt(@Request() req): Promise<ApiResponseDto<any>> {
+  async getReadingHistoryAlt(
+    @Request() req,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('light') light?: string,
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.usersService.getReadingHistory(req.user.userId);
-
+      const options: { page?: number; limit?: number; light?: boolean } = {};
+      if (page != null) options.page = Math.max(1, parseInt(String(page), 10) || 1);
+      if (limit != null) options.limit = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50));
+      if (light !== undefined) options.light = light === 'true' || light === '1';
+      const data = await this.usersService.getReadingHistory(
+        req.user.userId,
+        Object.keys(options).length ? options : undefined,
+      );
       return {
         success: true,
         data,
@@ -348,7 +427,36 @@ export class UsersController {
     }
   }
 
-  // 📖 История чтения для конкретного тайтла
+  /** Только ID и номера прочитанных глав по тайтлу — для отображения статуса «прочитано» на фронте (лёгкий ответ). Маршрут объявлен выше :titleId. */
+  @Get('profile/history/:titleId/read-ids')
+  @UseGuards(JwtAuthGuard)
+  async getTitleReadChapterIds(
+    @Request() req,
+    @Param('titleId') titleId: string,
+  ): Promise<ApiResponseDto<{ chapterIds: string[]; chapterNumbers: number[] }>> {
+    try {
+      const data = await this.usersService.getTitleReadChapterIds(
+        req.user.userId,
+        titleId,
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `users/profile/history/${titleId}/read-ids`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch read chapter ids',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `users/profile/history/${titleId}/read-ids`,
+      };
+    }
+  }
+
+  // 📖 История чтения для конкретного тайтла (полный список глав с populate)
   @Get('profile/history/:titleId')
   @UseGuards(JwtAuthGuard)
   async getTitleReadingHistory(

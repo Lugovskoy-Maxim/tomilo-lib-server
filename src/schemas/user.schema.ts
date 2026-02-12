@@ -112,8 +112,26 @@ export class User {
     purchasedAt: Date;
   }[];
 
-  @Prop({ default: [] })
-  bookmarks: string[];
+  /** Закладки по категориям: читаю, в планах, прочитано, избранное, брошено */
+  @Prop({
+    type: [
+      {
+        titleId: { type: Types.ObjectId, ref: 'Title', required: true },
+        category: {
+          type: String,
+          enum: ['reading', 'planned', 'completed', 'favorites', 'dropped'],
+          default: 'reading',
+        },
+        addedAt: { type: Date, default: Date.now },
+      },
+    ],
+    default: [],
+  })
+  bookmarks: {
+    titleId: Types.ObjectId;
+    category: 'reading' | 'planned' | 'completed' | 'favorites' | 'dropped';
+    addedAt: Date;
+  }[];
 
   @Prop({
     type: [
@@ -249,4 +267,5 @@ export const UserSchema = SchemaFactory.createForClass(User);
 UserSchema.index({ 'readingHistory.titleId': 1 });
 UserSchema.index({ 'readingHistory.chapters.chapterId': 1 });
 UserSchema.index({ 'readingHistory.readAt': -1 });
+UserSchema.index({ 'bookmarks.titleId': 1 });
 UserSchema.index({ birthDate: 1 });

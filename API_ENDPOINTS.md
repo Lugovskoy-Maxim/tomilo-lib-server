@@ -29,11 +29,14 @@ Authorization: Bearer <jwt_token>
 - `PUT /users/profile` - Update current user profile
 - `PUT /users/admin/:id` - Update user by admin
 - `DELETE /users/admin/:id` - Delete user by admin
-- `GET /users/profile/bookmarks` - Get user bookmarks
-- `POST /users/profile/bookmarks/:titleId` - Add title to bookmarks
+- `GET /users/profile/bookmarks` - Get user bookmarks (query: `category=reading|planned|completed|favorites|dropped`, `grouped=true` для разбивки по категориям)
+- `POST /users/profile/bookmarks/:titleId` - Add title to bookmarks (query: `category=...`, по умолчанию `reading`)
+- `PUT /users/profile/bookmarks/:titleId` - Change bookmark category (body: `{ "category": "reading"|"planned"|"completed"|"favorites"|"dropped" }`)
 - `DELETE /users/profile/bookmarks/:titleId` - Remove title from bookmarks
-- `GET /users/profile/history` - Get reading history
-- `GET /users/history` - Alternative reading history endpoint
+- `GET /users/profile/history` - Get reading history (query: `page`, `limit`, `light=true` — по умолчанию лёгкий формат с пагинацией)
+- `GET /users/history` - Alternative reading history endpoint (same query params)
+- `GET /users/profile/history/:titleId/read-ids` - Только `chapterIds` и `chapterNumbers` прочитанных глав (для статуса «прочитано» на фронте, лёгкий ответ)
+- `GET /users/profile/history/:titleId` - Полная история по тайтлу (список глав с populate)
 - `POST /users/profile/history/:titleId/:chapterId` - Add to reading history
 - `DELETE /users/profile/history` - Clear reading history
 - `DELETE /users/profile/history/:titleId` - Remove title from history
