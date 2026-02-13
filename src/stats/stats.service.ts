@@ -459,4 +459,176 @@ export class StatsService {
 
     return years.map((y) => y._id);
   }
+
+  /**
+   * Обзорная статистика для главной админки
+   */
+  async getStats(options?: { includeHistory?: boolean; historyDays?: number }): Promise<any> {
+    const now = new Date();
+    const today = getStartOfDay(now);
+    const weekAgo = new Date(today);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+    const monthAgo = new Date(today);
+    monthAgo.setDate(monthAgo.getDate() - 30);
+
+    const [
+      totalTitles,
+      totalChapters,
+      totalUsers,
+      dailyStatsToday,
+      dailyStatsWeek,
+      dailyStatsMonth,
+    ] = await Promise.all([
+      this.titleModel.countDocuments({ isPublished: true }),
+      this.chapterModel.countDocuments({ isPublished: true }),
+      this.userModel.countDocuments(),
+      this.dailyStatsModel.findOne({ date: today, isRecorded: true }).lean(),
+      this.getStatsByDateRange(weekAgo, now),
+      this.getStatsByDateRange(monthAgo, now),
+    ]);
+    const totalCollections = 0;
+
+    const sumViews = (list: DailyStats[]) =>
+      list.reduce((s, d) => s + (d.titleViews || 0) + (d.chapterViews || 0), 0);
+    const sum = (list: DailyStats[], key: keyof DailyStats) =>
+      list.reduce((s, d) => s + Number(d[key] ?? 0), 0);
+
+    const daily = dailyStatsToday
+      ? {
+          views: (dailyStatsToday.titleViews || 0) + (dailyStatsToday.chapterViews || 0),
+          newUsers: dailyStatsToday.newUsers || 0,
+          newTitles: dailyStatsToday.newTitles || 0,
+          newChapters: dailyStatsToday.newChapters || 0,
+          chaptersRead: dailyStatsToday.chaptersRead || 0,
+        }
+      : { views: 0, newUsers: 0, newTitles: 0, newChapters: 0, chaptersRead: 0 };
+
+    const weekly = {
+      views: sumViews(dailyStatsWeek),
+      newUsers: sum(dailyStatsWeek, 'newUsers'),
+      newTitles: sum(dailyStatsWeek, 'newTitles'),
+      newChapters: sum(dailyStatsWeek, 'newChapters'),
+      chaptersRead: sum(dailyStatsWeek, 'chaptersRead'),
+    };
+
+    const monthly = {
+      views: sumViews(dailyStatsMonth),
+      newUsers: sum(dailyStatsMonth, 'newUsers'),
+      newTitles: sum(dailyStatsMonth, 'newTitles'),
+      newChapters: sum(dailyStatsMonth, 'newChapters'),
+      chaptersRead: sum(dailyStatsMonth, 'chaptersRead'),
+    };
+
+    const totalViews = await this.titleModel.aggregate([{ $group: { _id: null, total: { $sum: '$dayViews' } } }]).then((r) => r[0]?.total ?? 0);
+    const bookmarksAgg = await this.userModel
+      .aggregate([
+        { $project: { c: { $size: { $ifNull: ['$bookmarks', []] } } } },
+        { $group: { _id: null, total: { $sum: '$c' } } },
+      ] as any[])
+      .then((r) => r[0]?.total ?? 0);
+
+    let history: any[] | undefined;
+    if (options?.includeHistory && options?.historyDays) {
+      const hist = await this.getRecentDailyStats(options.historyDays);
+      history = hist.map((d) => ({
+        date: d.date.toISOString().split('T')[0],
+        views: (d.titleViews || 0) + (d.chapterViews || 0),
+        newUsers: d.newUsers,
+        newTitles: d.newTitles,
+        newChapters: d.newChapters,
+        chaptersRead: d.chaptersRead,
+        totalUsers,
+        totalTitles,
+        totalChapters,
+      }));
+    }
+
+    return {
+      totalTitles,
+      totalChapters,
+      totalUsers,
+      totalCollections,
+      totalViews,
+      totalBookmarks: bookmarksAgg,
+      daily,
+      weekly,
+      monthly,
+      popularTitles: dailyStatsToday?.popularTitles?.slice(0, 10) ?? [],
+      popularChapters: dailyStatsToday?.popularChapters?.slice(0, 10) ?? [],
+      activeUsersToday: dailyStatsToday?.activeUsers ?? 0,
+      newUsersThisMonth: monthly.newUsers,
+      totalRatings: 0,
+      averageRating: 0,
+      ongoingTitles: 0,
+      completedTitles: 0,
+      ...(history && { history }),
+    };
+  }
+
+  /**
+   * История для вкладки «Статистика»: daily | monthly | yearly
+   */
+  async getHistory(
+    type: 'daily' | 'monthly' | 'yearly',
+    opts: { days?: number; year?: number; month?: number },
+  ): Promise<{ type: string; data: any[]; total: number }> {
+    const year = opts.year ?? new Date().getFullYear();
+    const month = opts.month ?? new Date().getMonth() + 1;
+
+    if (type === 'daily') {
+      const days = opts.days ?? 30;
+      const list = await this.getRecentDailyStats(days);
+      const data = list.map((d) => ({
+        date: d.date.toISOString().split('T')[0],
+        views: (d.titleViews || 0) + (d.chapterViews || 0),
+        newUsers: d.newUsers,
+        newTitles: d.newTitles,
+        newChapters: d.newChapters,
+        chaptersRead: d.chaptersRead,
+        totalUsers: 0,
+        totalTitles: 0,
+        totalChapters: 0,
+      }));
+      return { type: 'daily', data, total: data.length };
+    }
+
+    if (type === 'monthly') {
+      const list = await this.getStatsByDateRange(
+        new Date(year, month - 1, 1),
+        new Date(year, month, 1),
+      );
+      const totals = list.reduce(
+        (acc, d) => ({
+          views: acc.views + (d.titleViews || 0) + (d.chapterViews || 0),
+          newUsers: acc.newUsers + d.newUsers,
+          newTitles: acc.newTitles + d.newTitles,
+          newChapters: acc.newChapters + d.newChapters,
+          chaptersRead: acc.chaptersRead + d.chaptersRead,
+        }),
+        { views: 0, newUsers: 0, newTitles: 0, newChapters: 0, chaptersRead: 0 },
+      );
+      const data = [{ year, month, ...totals }];
+      return { type: 'monthly', data, total: 1 };
+    }
+
+    if (type === 'yearly') {
+      const yrStats = await this.getYearlyStats(year);
+      const data = [
+        {
+          year,
+          views: (yrStats.yearlyTotals.totalTitleViews || 0) + (yrStats.yearlyTotals.totalChapterViews || 0),
+          newUsers: yrStats.yearlyTotals.totalNewUsers,
+          newTitles: yrStats.yearlyTotals.totalNewTitles,
+          newChapters: yrStats.yearlyTotals.totalNewChapters,
+          chaptersRead: yrStats.yearlyTotals.totalChaptersRead,
+          totalUsers: 0,
+          totalTitles: 0,
+          totalChapters: 0,
+        },
+      ];
+      return { type: 'yearly', data, total: 1 };
+    }
+
+    return { type, data: [], total: 0 };
+  }
 }

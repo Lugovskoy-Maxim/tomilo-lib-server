@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { StatsService } from './stats.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -8,6 +8,58 @@ import { ApiResponseDto } from '../common/dto/api-response.dto';
 @Controller('stats')
 export class StatsController {
   constructor(private readonly statsService: StatsService) {}
+
+  /**
+   * Обзорная статистика (для главной админки)
+   */
+  @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async getStats(
+    @Query('includeHistory') includeHistory?: string,
+    @Query('historyDays') historyDays?: string,
+  ): Promise<ApiResponseDto<any>> {
+    const stats = await this.statsService.getStats({
+      includeHistory: includeHistory === 'true',
+      historyDays: historyDays ? parseInt(historyDays, 10) : undefined,
+    });
+    return {
+      success: true,
+      data: stats,
+      timestamp: new Date().toISOString(),
+      path: '/stats',
+      method: 'GET',
+    };
+  }
+
+  /**
+   * История статистики (по дням / месяцам / годам)
+   */
+  @Get('history')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async getStatsHistory(
+    @Query('type') type: 'daily' | 'monthly' | 'yearly',
+    @Query('days') days?: string,
+    @Query('year') year?: string,
+    @Query('month') month?: string,
+  ): Promise<ApiResponseDto<{ type: string; data: any[]; total: number }>> {
+    const yearNum = year ? parseInt(year, 10) : new Date().getFullYear();
+    const monthNum = month ? parseInt(month, 10) : undefined;
+    const daysNum = days ? parseInt(days, 10) : 30;
+    const result = await this.statsService.getHistory(type, {
+      days: type === 'daily' ? daysNum : undefined,
+      year: type !== 'daily' ? yearNum : undefined,
+      month: type === 'monthly' ? monthNum : undefined,
+    });
+    return {
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString(),
+      path: '/stats/history',
+      method: 'GET',
+    };
+  }
 
   /**
    * Получить статистику за конкретный день
@@ -144,20 +196,33 @@ export class StatsController {
   }
 
   /**
-   * Записать статистику за сегодня (ручной запуск)
+   * Записать статистику за сегодня (ручной запуск). Поддерживаются GET и POST (клиент шлёт POST).
    */
   @Get('record')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
-  async recordTodayStats(): Promise<ApiResponseDto<any>> {
+  async recordTodayStatsGet(): Promise<ApiResponseDto<any>> {
     const stats = await this.statsService.recordDailyStats();
-
     return {
       success: true,
       data: stats,
       timestamp: new Date().toISOString(),
       path: '/stats/record',
       method: 'GET',
+    };
+  }
+
+  @Post('record')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async recordTodayStatsPost(): Promise<ApiResponseDto<any>> {
+    const stats = await this.statsService.recordDailyStats();
+    return {
+      success: true,
+      data: { success: true, message: 'OK', date: new Date().toISOString().split('T')[0], recorded: !!stats },
+      timestamp: new Date().toISOString(),
+      path: '/stats/record',
+      method: 'POST',
     };
   }
 }
