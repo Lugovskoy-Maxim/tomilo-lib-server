@@ -46,7 +46,7 @@ import { StatsModule } from './stats/stats.module';
     ThrottlerModule.forRoot([
       {
         ttl: 60000, // 1 minute
-        limit: 240, // 240 requests per minute for normal endpoints
+        limit: 1000, // 1000 requests per minute (raised from 240 to avoid 429 on heavy read usage)
       },
     ]),
     ConfigModule.forRoot(),

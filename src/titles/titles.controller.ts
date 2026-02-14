@@ -35,6 +35,7 @@ import { FilterOptionsResponseDto } from './dto/title-controller.dto';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { BotDetectionService } from '../common/services/bot-detection.service';
 import { UsersService } from '../users/users.service';
+import { SkipThrottle } from '@nestjs/throttler';
 
 // DTO для ответов API (определения типов для внутреннего использования)
 class CollectionResponseDto {
@@ -940,6 +941,7 @@ export class TitlesController {
     }
   }
 
+  @SkipThrottle() // Public read-only; skip rate limit to avoid 429 for frontends/scripts
   @Get('titles/slug/:slug')
   async findBySlug(
     @Param('slug') slug: string,
