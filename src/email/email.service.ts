@@ -23,7 +23,8 @@ export class EmailService {
 
   async sendRegistrationEmail(to: string, username: string) {
     const subject = 'Добро пожаловать в Tomilo Lib!';
-    const html = registrationTemplate(username);
+    const appUrl = this.configService.get('FRONTEND_URL') ?? '';
+    const html = registrationTemplate(username, appUrl);
 
     await this.sendEmail(to, subject, html);
   }

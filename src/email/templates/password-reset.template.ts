@@ -1,52 +1,71 @@
+import { EMAIL_STYLES, SITE_NAME, COPYRIGHT } from './shared.styles';
+
 export const passwordResetTemplate = (resetUrl: string) => `
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Сброс пароля</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="color-scheme" content="light">
+  <title>Сброс пароля — ${SITE_NAME}</title>
+  <!--[if mso]><noscript><xml><o:OfficeDocumentSettings><o:PixelsPerInch>96</o:PixelsPerInch></o:OfficeDocumentSettings></xml></noscript><![endif]-->
+  <style type="text/css">
+    @media only screen and (max-width: 620px) {
+      .wrapper { width: 100% !important; padding: 16px !important; }
+      .btn { width: 100% !important; box-sizing: border-box; }
+    }
+  </style>
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <div style="text-align: center; margin-bottom: 30px;">
-        <h1 style="color: #2196F3;">Сброс пароля</h1>
-    </div>
-    
-    <div style="background-color: #f9f9f9; padding: 20px; border-radius: 5px; margin-bottom: 20px;">
-        <p>Нажмите на кнопку ниже, чтобы сбросить свой пароль:</p>
-        <p style="color: #343a40; margin: 0 0 25px; font-size: 16px; line-height: 1.5;">
-            Эта ссылка позволит вам установить новый пароль для вашего аккаунта на Tomilo Lib.
-        </p>
-        <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetUrl}" 
-               style="background-color: #2196F3; color: white; padding: 12px 24px; 
-                      text-decoration: none; border-radius: 5px; display: inline-block;
-                      font-weight: bold;">
-                Сбросить пароль
+<body style="margin:0; padding:0; font-family: ${EMAIL_STYLES.fontFamily}; line-height: 1.5; color: ${EMAIL_STYLES.textColor}; background-color: #eceff1;">
+  <div style="display: none; max-height: 0; overflow: hidden;">Запрос на сброс пароля в ${SITE_NAME}. Перейдите по ссылке в течение 1 часа.</div>
+  <div class="wrapper" style="max-width: 600px; margin: 0 auto; padding: 24px;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #ffffff; border-radius: ${EMAIL_STYLES.borderRadius}; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden;">
+      <tr>
+        <td style="padding: 32px 28px 24px;">
+          <h1 style="margin: 0 0 8px; font-size: 22px; font-weight: 600; color: ${EMAIL_STYLES.primaryColor}; text-align: center;">
+            Сброс пароля
+          </h1>
+          <p style="margin: 0; font-size: 14px; color: ${EMAIL_STYLES.textMuted}; text-align: center;">${SITE_NAME}</p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding: 0 28px 28px;">
+          <p style="margin: 0 0 16px; font-size: 16px; color: ${EMAIL_STYLES.textColor};">
+            Вы запросили сброс пароля. Нажмите кнопку ниже, чтобы перейти к установке нового пароля для вашего аккаунта.
+          </p>
+          <div style="text-align: center; margin: 28px 0;">
+            <a href="${resetUrl}" class="btn" style="display: inline-block; background-color: ${EMAIL_STYLES.primaryColor}; color: #ffffff !important; padding: 14px 28px; text-decoration: none; border-radius: ${EMAIL_STYLES.borderRadius}; font-weight: 600; font-size: 15px;">
+              Сбросить пароль
             </a>
-        </div>
-
-        <!-- Ссылка для копирования -->
-        <div style="margin-bottom: 30px; padding: 20px; background-color: #f8f9fa; border-radius: 6px; border: 1px dashed #ced4da;">
-            <p style="color: #495057; margin: 0 0 10px; font-size: 14px; font-weight: 500;">
-                Если кнопка не работает, скопируйте ссылку:
+          </div>
+          <div style="margin: 24px 0; padding: 16px; background-color: ${EMAIL_STYLES.bgLinkBlock}; border-radius: 6px; border: 1px dashed ${EMAIL_STYLES.borderColor};">
+            <p style="margin: 0 0 8px; font-size: 13px; color: ${EMAIL_STYLES.textMuted}; font-weight: 500;">
+              Если кнопка не срабатывает, скопируйте ссылку:
             </p>
-            <div style="background-color: #ffffff; padding: 12px; border-radius: 4px; word-break: break-all; font-size: 13px; color: #495057; border: 1px solid #dee2e6;">
-                ${resetUrl}
+            <div style="word-break: break-all; font-size: 13px; color: ${EMAIL_STYLES.textColor}; padding: 10px; background: #fff; border-radius: 4px; border: 1px solid ${EMAIL_STYLES.borderColor};">
+              ${resetUrl}
             </div>
-        </div>
-
-        <p>Если вы не запрашивали сброс пароля, проигнорируйте это сообщение.</p>
-        <p style="color: #495057; font-size: 14px; margin-top: 20px;">
-            <strong>В целях безопасности:</strong> Эта ссылка будет действительна в течение 1 часа.
-        </p>
-    </div>
-    
-    <div style="text-align: center; margin-top: 30px; color: #888; font-size: 12px;">
-        <p>Это автоматическое сообщение, пожалуйста, не отвечайте на него.</p>
-        <p style="margin: 0;">
-            © 2025-2026 Tomilo Lib. Все права защищены.
-        </p>
-    </div>
+          </div>
+          <p style="margin: 20px 0 0; font-size: 14px; color: ${EMAIL_STYLES.textMuted};">
+            Если вы не запрашивали сброс пароля, проигнорируйте это письмо. Ваш пароль не изменится.
+          </p>
+          <p style="margin: 12px 0 0; font-size: 13px; color: ${EMAIL_STYLES.textMuted};">
+            <strong>Безопасность:</strong> ссылка действует в течение 1 часа.
+          </p>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding: 20px 28px; background-color: ${EMAIL_STYLES.bgCard}; border-top: 1px solid ${EMAIL_STYLES.borderColor}; text-align: center;">
+          <p style="margin: 0; font-size: 12px; color: ${EMAIL_STYLES.textMuted};">
+            Это автоматическое сообщение, не отвечайте на него.
+          </p>
+          <p style="margin: 6px 0 0; font-size: 12px; color: ${EMAIL_STYLES.textMuted};">
+            ${COPYRIGHT}
+          </p>
+        </td>
+      </tr>
+    </table>
+  </div>
 </body>
 </html>
 `;
