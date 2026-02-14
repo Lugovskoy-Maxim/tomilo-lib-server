@@ -10,6 +10,7 @@ import { LocalStrategy } from './strategies/local.strategy';
 import { YandexStrategy } from './strategies/yandex.strategy';
 import { YandexTokenStrategy } from './strategies/yandex-token.strategy';
 import { VkStrategy } from './strategies/vk.strategy';
+import { VkIdStrategy } from './strategies/vk-id.strategy';
 import { User, UserSchema } from '../schemas/user.schema';
 import { EmailModule } from '../email/email.module';
 
@@ -31,6 +32,7 @@ import { EmailModule } from '../email/email.module';
     YandexStrategy,
     YandexTokenStrategy,
     VkStrategy,
+    VkIdStrategy,
   ],
   controllers: [AuthController],
   exports: [AuthService],

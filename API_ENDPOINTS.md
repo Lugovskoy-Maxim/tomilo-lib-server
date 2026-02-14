@@ -20,7 +20,8 @@ Authorization: Bearer <jwt_token>
 - `POST /auth/login` - User login
 - `POST /auth/register` - User registration
 - `POST /auth/yandex` - Yandex OAuth login
-- `POST /auth/vk` - VK OAuth login
+- `POST /auth/vk` - VK OAuth login (oauth.vk.com)
+- `POST /auth/vk-id` - VK ID OAuth login (id.vk.ru, PKCE)
 - `POST /auth/change-password` - Change user password
 
 ### Users

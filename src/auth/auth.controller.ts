@@ -20,6 +20,7 @@ import { CreateUserDto } from '../users/dto/create-user.dto';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { AuthGuard } from '@nestjs/passport';
 import { OAuthLoginDto } from './dto/oauth-login.dto';
+import { VkIdLoginDto } from './dto/vk-id-login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 
@@ -206,6 +207,38 @@ export class AuthController {
         errors: [error.message],
         timestamp: new Date().toISOString(),
         path: 'auth/vk',
+        method: 'POST',
+      };
+    }
+  }
+
+  @UseGuards(AuthGuard('vk-id'))
+  @Post('vk-id')
+  @HttpCode(HttpStatus.OK)
+  vkIdLogin(
+    @Body() vkIdLoginDto: VkIdLoginDto,
+    @Request() req,
+    @Response({ passthrough: true }) res: express.Response,
+  ): ApiResponseDto<any> {
+    try {
+      const data = this.authService.login(req.user);
+      setAuthCookies(res, data.access_token, data.refresh_token);
+
+      return {
+        success: true,
+        data,
+        message: 'VK ID login successful',
+        timestamp: new Date().toISOString(),
+        path: 'auth/vk-id',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'VK ID login failed',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/vk-id',
         method: 'POST',
       };
     }
