@@ -618,7 +618,7 @@ export class MangaParserService {
     const parser = this.getParserForUrl(url);
     if (!parser) {
       throw new BadRequestException(
-        'Unsupported site. Only manga-shi.org, senkuro.me, and mangabuff.ru are supported.',
+        `Unsupported site. Supported: ${this.getSupportedSites().sites.join(', ')}`,
       );
     }
 
@@ -644,7 +644,11 @@ export class MangaParserService {
         customDescription || parsedData.description || `Imported from ${url}`,
       genres: customGenres || parsedData.genres || ['Unknown'],
       coverImage: parsedData.coverUrl,
-      type: customType,
+      type: customType ?? parsedData.type,
+      author: parsedData.author,
+      artist: parsedData.artist,
+      tags: parsedData.tags,
+      releaseYear: parsedData.releaseYear,
       isPublished: true,
     };
 
@@ -764,7 +768,7 @@ export class MangaParserService {
     const parser = this.getParserForUrl(url);
     if (!parser) {
       throw new BadRequestException(
-        'Unsupported site. Only manga-shi.org, senkuro.me, mangabuff.ru, and mangahub.cc are supported for chapter import.',
+        `Unsupported site for chapter import. Supported: ${this.getSupportedSites().sites.join(', ')}`,
       );
     }
 
@@ -904,7 +908,7 @@ export class MangaParserService {
     const parser = this.getParserForUrl(url);
     if (!parser) {
       throw new BadRequestException(
-        'Unsupported site. Only manga-shi.org, senkuro.me, and mangabuff.ru are supported.',
+        `Unsupported site. Supported: ${this.getSupportedSites().sites.join(', ')}`,
       );
     }
 
@@ -936,6 +940,44 @@ export class MangaParserService {
     return {
       title: parsedData.title,
       chapters,
+    };
+  }
+
+  /**
+   * Только парсинг метаданных тайтла (без импорта). Для проверки полей и отладки.
+   */
+  async parseMetadata(url: string): Promise<{
+    title: string;
+    alternativeTitles?: string[];
+    description?: string;
+    coverUrl?: string;
+    genres?: string[];
+    author?: string;
+    artist?: string;
+    tags?: string[];
+    releaseYear?: number;
+    type?: string;
+    chapterCount: number;
+  }> {
+    const parser = this.getParserForUrl(url);
+    if (!parser) {
+      throw new BadRequestException(
+        `Unsupported site. Supported: ${this.getSupportedSites().sites.join(', ')}`,
+      );
+    }
+    const data = await parser.parse(url);
+    return {
+      title: data.title,
+      alternativeTitles: data.alternativeTitles,
+      description: data.description,
+      coverUrl: data.coverUrl,
+      genres: data.genres,
+      author: data.author,
+      artist: data.artist,
+      tags: data.tags,
+      releaseYear: data.releaseYear,
+      type: data.type,
+      chapterCount: data.chapters.length,
     };
   }
 

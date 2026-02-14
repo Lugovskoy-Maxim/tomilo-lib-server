@@ -190,13 +190,19 @@ export class MangahubCcParser implements MangaParser {
   private getChapters(url: string, $: cheerio.Root): ChapterInfo[] {
     const chapters: ChapterInfo[] = [];
     const baseUrl = new URL(url).origin;
+    const mangaSlug = this.extractMangaSlugFromUrl(url);
 
     console.log(`Base URL for chapters: ${baseUrl}`);
 
     try {
-      // Извлекаем главы из .chapter_block
       $('.chapter_block').each((i, chapterElement) => {
-        this.parseChapterElement($(chapterElement), baseUrl, chapters, i);
+        this.parseChapterElement(
+          $(chapterElement),
+          baseUrl,
+          mangaSlug,
+          chapters,
+          i,
+        );
       });
 
       console.log(`Found ${chapters.length} chapters from .chapter_block`);
@@ -206,49 +212,48 @@ export class MangahubCcParser implements MangaParser {
 
     console.log(`Total chapters found: ${chapters.length}`);
 
-    // Сортируем по номеру главы (в порядке убывания - последняя глава первая)
     return chapters.sort((a, b) => (b.number || 0) - (a.number || 0));
+  }
+
+  private extractMangaSlugFromUrl(url: string): string | null {
+    const match = url.match(/mangahub\.cc\/manga\/([^/]+)/);
+    return match ? match[1] : null;
   }
 
   private parseChapterElement(
     chapter$: cheerio.Cheerio,
     baseUrl: string,
+    mangaSlug: string | null,
     chapters: ChapterInfo[],
     index: number,
   ): void {
     try {
-      // Извлекаем ссылку на главу
-      const chapterLink = chapter$.find('a.tap_highlight_remove');
-      const chapterHref = chapterLink.attr('href');
+      const chapterNumber = parseInt(
+        chapter$.attr('data-chapter-number') || '',
+        10,
+      );
+      const chapterText = chapter$.find('.chapter_number').text().trim();
+
+      if (!chapterNumber || isNaN(chapterNumber)) return;
+
+      let chapterHref: string | undefined = chapter$
+        .find('a.tap_highlight_remove')
+        .attr('href');
+      if (!chapterHref && mangaSlug) {
+        chapterHref = `/manga/${mangaSlug}/v1/c${chapterNumber}`;
+      }
 
       if (chapterHref) {
-        // Извлекаем номер главы из data-chapter-number
-        const chapterNumber = parseInt(
-          chapter$.attr('data-chapter-number') || '',
-          10,
-        );
-
-        // Извлекаем текст главы
-        const chapterText = chapter$.find('.chapter_number').text().trim();
-
-        if (chapterNumber && !isNaN(chapterNumber)) {
-          // Извлекаем slug из URL (например, /manga/SSS-level-Paladin-beyond-common-sense/v1/c94)
-          const urlMatch = chapterHref.match(/\/manga\/([^/]+)\/v\d+\/c\d+/);
-          const slug = urlMatch ? urlMatch[1] : null;
-
-          if (slug) {
-            chapters.push({
-              name: chapterText || `Глава ${chapterNumber}`,
-              slug: `${slug}-c${chapterNumber}`, // Создаем уникальный slug
-              number: chapterNumber,
-              url: chapterHref.startsWith('http')
-                ? chapterHref
-                : baseUrl + chapterHref,
-            });
-
-            console.log(`Parsed chapter: ${chapterNumber} - ${chapterText}`);
-          }
-        }
+        const slug =
+          chapterHref.match(/\/manga\/([^/]+)\/v\d+\/c\d+/)?.[1] || mangaSlug;
+        chapters.push({
+          name: chapterText || `Глава ${chapterNumber}`,
+          slug: slug ? `${slug}-c${chapterNumber}` : undefined,
+          number: chapterNumber,
+          url: chapterHref.startsWith('http')
+            ? chapterHref
+            : baseUrl + chapterHref,
+        });
       }
     } catch (error) {
       console.warn(`Error parsing chapter element at index ${index}:`, error);

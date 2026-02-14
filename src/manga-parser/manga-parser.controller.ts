@@ -15,12 +15,30 @@ import { MangaParserService } from './manga-parser.service';
 import { ParseTitleDto } from './dto/parse-title.dto';
 import { ParseChapterDto } from './dto/parse-chapter.dto';
 import { ParseChaptersInfoDto } from './dto/parse-chapters-info.dto';
+import { ParseMetadataDto } from './dto/parse-metadata.dto';
 
 @Controller('manga-parser')
 export class MangaParserController {
   private readonly logger = new Logger(MangaParserController.name);
 
   constructor(private readonly mangaParserService: MangaParserService) {}
+
+  @Post('parse-metadata')
+  async parseMetadata(@Body() dto: ParseMetadataDto) {
+    try {
+      this.logger.log(`Parsing metadata from: ${dto.url}`);
+      const result = await this.mangaParserService.parseMetadata(dto.url);
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Failed to parse metadata: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      throw new HttpException(
+        `Failed to parse metadata: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
 
   @Post('parse-title')
   async parseAndImportTitle(@Body() parseTitleDto: ParseTitleDto) {

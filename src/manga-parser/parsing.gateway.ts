@@ -166,108 +166,144 @@ export class ParsingGateway {
 
         const totalChapters = chapters.length;
 
-        // Override downloadChapterImages for progress tracking during title import
         const originalDownloadChapterImages = this.mangaParserService[
           'downloadChapterImages'
+        ].bind(this.mangaParserService);
+        const originalDownloadMangabuffChapterImages = this.mangaParserService[
+          'downloadMangabuffChapterImages'
+        ].bind(this.mangaParserService);
+        const originalDownloadMangaShiChapterImages = this.mangaParserService[
+          'downloadMangaShiChapterImages'
+        ].bind(this.mangaParserService);
+        const originalDownloadTelemangaChapterImages = this.mangaParserService[
+          'downloadTelemangaChapterImages'
         ].bind(this.mangaParserService);
 
         let currentChapterIndex = 0;
 
-        this.mangaParserService['downloadChapterImages'] = async (
+        const emitChapterProgress = (
           chapter: any,
-          chapterId: string,
-          domain: string,
+          message: string,
+          status: 'importing_chapters' = 'importing_chapters',
         ) => {
-          currentChapterIndex++;
-          const chapterData: ChapterImportData = {
-            chapterNumber: chapter.number || currentChapterIndex,
-            chapterName: chapter.name,
-            status: 'downloading',
-          };
-
+          const num = chapter?.number ?? currentChapterIndex;
+          const name = chapter?.name ?? `Глава ${num}`;
           this.emitProgress(sessionId, {
             type: 'title_import',
             sessionId,
             status: 'progress',
-            message: `Скачиваем главу ${chapterData.chapterNumber}: ${chapterData.chapterName}`,
+            message,
             data: {
               titleName: parsedData.title,
-              status: 'importing_chapters',
+              status,
               currentStep: 3,
               totalSteps: 4,
               chapterProgress: {
                 current: currentChapterIndex,
                 total: totalChapters,
-                percentage: Math.round(
-                  (currentChapterIndex / totalChapters) * 100,
-                ),
+                percentage:
+                  totalChapters > 0
+                    ? Math.round((currentChapterIndex / totalChapters) * 100)
+                    : 0,
               },
             } as TitleImportData,
           });
+        };
 
-          try {
-            const result = await originalDownloadChapterImages(
+        const wrapChapterDownload = <T>(
+          chapter: any,
+          fn: () => Promise<T>,
+        ): Promise<T> => {
+          currentChapterIndex++;
+          const chapterNum = chapter?.number ?? currentChapterIndex;
+          const chapterName = chapter?.name ?? `Глава ${chapterNum}`;
+          emitChapterProgress(
+            chapter,
+            `Скачиваем главу ${chapterNum}: ${chapterName}`,
+          );
+          return fn()
+            .then((result) => {
+              emitChapterProgress(
+                chapter,
+                `Глава ${chapterNum} скачана`,
+              );
+              return result;
+            })
+            .catch((error) => {
+              this.emitProgress(sessionId, {
+                type: 'title_import',
+                sessionId,
+                status: 'progress',
+                message: `Ошибка при скачивании главы ${chapterNum}`,
+                data: {
+                  titleName: parsedData.title,
+                  status: 'importing_chapters',
+                  currentStep: 3,
+                  totalSteps: 4,
+                  chapterProgress: {
+                    current: currentChapterIndex,
+                    total: totalChapters,
+                    percentage:
+                      totalChapters > 0
+                        ? Math.round(
+                            (currentChapterIndex / totalChapters) * 100,
+                          )
+                        : 0,
+                  },
+                } as TitleImportData,
+              });
+              throw error;
+            });
+        };
+
+        this.mangaParserService['downloadChapterImages'] = async (
+          chapter: any,
+          chapterId: string,
+          domain: string,
+        ) =>
+          wrapChapterDownload(chapter, () =>
+            originalDownloadChapterImages(chapter, chapterId, domain),
+          );
+
+        this.mangaParserService['downloadMangabuffChapterImages'] = async (
+          chapter: any,
+          chapterId: string,
+        ) =>
+          wrapChapterDownload(chapter, () =>
+            originalDownloadMangabuffChapterImages(chapter, chapterId),
+          );
+
+        this.mangaParserService['downloadMangaShiChapterImages'] = async (
+          chapter: any,
+          chapterId: string,
+        ) =>
+          wrapChapterDownload(chapter, () =>
+            originalDownloadMangaShiChapterImages(chapter, chapterId),
+          );
+
+        this.mangaParserService['downloadTelemangaChapterImages'] = async (
+          chapter: any,
+          chapterId: string,
+          mangaSlug: string,
+        ) =>
+          wrapChapterDownload(chapter, () =>
+            originalDownloadTelemangaChapterImages(
               chapter,
               chapterId,
-              domain,
-            );
-
-            chapterData.status = 'completed';
-            this.emitProgress(sessionId, {
-              type: 'title_import',
-              sessionId,
-              status: 'progress',
-              message: `Глава ${chapterData.chapterNumber} скачана`,
-              data: {
-                titleName: parsedData.title,
-                status: 'importing_chapters',
-                currentStep: 3,
-                totalSteps: 4,
-                chapterProgress: {
-                  current: currentChapterIndex,
-                  total: totalChapters,
-                  percentage: Math.round(
-                    (currentChapterIndex / totalChapters) * 100,
-                  ),
-                },
-              } as TitleImportData,
-            });
-
-            return result;
-          } catch (error) {
-            chapterData.status = 'error';
-            chapterData.error =
-              error instanceof Error ? error.message : 'Unknown error';
-
-            this.emitProgress(sessionId, {
-              type: 'title_import',
-              sessionId,
-              status: 'progress',
-              message: `Ошибка при скачивании главы ${chapterData.chapterNumber}`,
-              data: {
-                titleName: parsedData.title,
-                status: 'importing_chapters',
-                currentStep: 3,
-                totalSteps: 4,
-                chapterProgress: {
-                  current: currentChapterIndex,
-                  total: totalChapters,
-                  percentage: Math.round(
-                    (currentChapterIndex / totalChapters) * 100,
-                  ),
-                },
-              } as TitleImportData,
-            });
-
-            throw error;
-          }
-        };
+              mangaSlug,
+            ),
+          );
 
         const result = await originalParseAndImportTitle(parseTitleDto);
 
-        // Restore original method
         this.mangaParserService['downloadChapterImages'] =
           originalDownloadChapterImages;
+        this.mangaParserService['downloadMangabuffChapterImages'] =
+          originalDownloadMangabuffChapterImages;
+        this.mangaParserService['downloadMangaShiChapterImages'] =
+          originalDownloadMangaShiChapterImages;
+        this.mangaParserService['downloadTelemangaChapterImages'] =
+          originalDownloadTelemangaChapterImages;
 
         // Emit completion
         this.emitProgress(sessionId, {

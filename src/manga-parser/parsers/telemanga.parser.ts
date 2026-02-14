@@ -97,13 +97,24 @@ export class TelemangaParser implements MangaParser {
         );
       }
 
-      const mangaData = mangaResponse.data.manga;
+      const mangaData = mangaResponse.data?.manga;
+      if (!mangaData) {
+        throw new BadRequestException(
+          'Invalid API response: missing manga object',
+        );
+      }
 
-      // Extract genres and themes
+      // Extract genres, themes, formats (защита от null/undefined)
+      const safeNames = (arr: unknown[] | undefined): string[] =>
+        Array.isArray(arr)
+          ? (arr as { name?: string }[])
+              .map((x) => x?.name)
+              .filter((n): n is string => typeof n === 'string')
+          : [];
       const genres: string[] = [
-        ...mangaData.genres.map((g) => g.name),
-        ...mangaData.themes.map((t) => t.name),
-        ...mangaData.formats.map((f) => f.name),
+        ...safeNames(mangaData.genres),
+        ...safeNames(mangaData.themes),
+        ...safeNames(mangaData.formats),
       ];
 
       // Build alternative titles
@@ -111,6 +122,10 @@ export class TelemangaParser implements MangaParser {
       if (mangaData.titleEn) {
         alternativeTitles.push(mangaData.titleEn);
       }
+
+      // Author(s) и artist(s) из API
+      const author = this.joinNames(mangaData.authors);
+      const artist = this.joinNames(mangaData.artists);
 
       // Extract chapters
       const chapters = await this.fetchChapters(slug);
@@ -122,6 +137,13 @@ export class TelemangaParser implements MangaParser {
         description: mangaData.description || undefined,
         coverUrl: mangaData.cover || undefined,
         genres: genres.length > 0 ? genres : undefined,
+        author: author || undefined,
+        artist: artist || undefined,
+        releaseYear:
+          typeof mangaData.year === 'number' && mangaData.year > 0
+            ? mangaData.year
+            : undefined,
+        type: mangaData.type || undefined,
         chapters,
       };
     } catch (error) {
@@ -134,6 +156,25 @@ export class TelemangaParser implements MangaParser {
         `Failed to parse telemanga.me: ${error instanceof Error ? error.message : 'Unknown error'}`,
       );
     }
+  }
+
+  /**
+   * Собирает строку имён из массива авторов/художников API (name или content).
+   */
+  private joinNames(items: unknown[] | undefined): string {
+    if (!Array.isArray(items) || items.length === 0) return '';
+    const names = items
+      .map((item: unknown) => {
+        if (item && typeof item === 'object') {
+          const o = item as Record<string, unknown>;
+          if (typeof o.name === 'string') return o.name;
+          if (typeof o.content === 'string') return o.content;
+          if (typeof o.title === 'string') return o.title;
+        }
+        return '';
+      })
+      .filter(Boolean);
+    return names.join(', ');
   }
 
   private extractSlug(url: string): string | null {

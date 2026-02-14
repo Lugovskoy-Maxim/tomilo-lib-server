@@ -4,6 +4,16 @@ export interface ParsedMangaData {
   description?: string;
   coverUrl?: string;
   genres?: string[];
+  /** Author(s) - может быть несколько через запятую */
+  author?: string;
+  /** Artist(s) - может быть несколько через запятую */
+  artist?: string;
+  /** Теги (отдельно от жанров, если источник различает) */
+  tags?: string[];
+  /** Год выхода */
+  releaseYear?: number;
+  /** Тип издания: манга, манхва, комикс и т.д. */
+  type?: string;
   chapters: ChapterInfo[];
 }
 
