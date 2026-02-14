@@ -244,6 +244,39 @@ export class AuthController {
     }
   }
 
+  /** Alias for vk-id: POST /api/auth/vk-token (same body: code, code_verifier, device_id, state). */
+  @UseGuards(AuthGuard('vk-id'))
+  @Post('vk-token')
+  @HttpCode(HttpStatus.OK)
+  vkTokenLogin(
+    @Body() vkIdLoginDto: VkIdLoginDto,
+    @Request() req,
+    @Response({ passthrough: true }) res: express.Response,
+  ): ApiResponseDto<any> {
+    try {
+      const data = this.authService.login(req.user);
+      setAuthCookies(res, data.access_token, data.refresh_token);
+
+      return {
+        success: true,
+        data,
+        message: 'VK ID login successful',
+        timestamp: new Date().toISOString(),
+        path: 'auth/vk-token',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'VK ID login failed',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/vk-token',
+        method: 'POST',
+      };
+    }
+  }
+
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(
