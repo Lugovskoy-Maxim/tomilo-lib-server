@@ -34,9 +34,10 @@ function setAuthCookies(
   refreshToken: string,
 ) {
   const isProduction = process.env.NODE_ENV === 'production';
+  // В production: SameSite=None и Secure для отправки cookies при cross-origin (фронт и API на разных поддоменах/портах)
   const cookieOptions = {
     httpOnly: true,
-    sameSite: 'lax' as const,
+    sameSite: (isProduction ? 'none' : 'lax') as 'lax' | 'none',
     secure: isProduction,
   };
   res.cookie(COOKIE_ACCESS_TOKEN, accessToken, {

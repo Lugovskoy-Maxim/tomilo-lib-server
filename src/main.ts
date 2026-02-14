@@ -40,7 +40,7 @@ async function bootstrap() {
     ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
-    allowedHeaders: 'Authorization, Content-Type',
+    allowedHeaders: 'Authorization, Content-Type, Accept',
   });
   // app.enableCors();
 
