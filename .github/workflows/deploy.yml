@@ -161,7 +161,7 @@ jobs:
             echo "🔄 Starting application with PM2..."
             pm2 stop tomilo-lib-server 2>/dev/null || true
             pm2 delete tomilo-lib-server 2>/dev/null || true
-            pm2 start dist/src/main.js --name "tomilo-lib-server"
+            pm2 start dist/main.js --name "tomilo-lib-server"
             pm2 save
 
             # Вывод версии Node и состояние pm2
