@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
+import { Cron } from '@nestjs/schedule';
 import { DailyStats, DailyStatsDocument } from '../schemas/daily-stats.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
@@ -28,6 +29,89 @@ export class StatsService {
     @InjectModel(Comment.name) private commentModel: Model<CommentDocument>,
   ) {
     this.logger.setContext(StatsService.name);
+  }
+
+  /**
+   * Фиксируем завершенный предыдущий день сразу после полуночи.
+   * Это заполняет историю без ручного вызова /stats/record.
+   */
+  @Cron('5 0 * * *')
+  async recordPreviousDayStatsCron(): Promise<void> {
+    const targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() - 1);
+
+    try {
+      await this.recordDailyStats(targetDate);
+      this.logger.log(
+        `Scheduled daily stats recorded for ${getStartOfDay(targetDate).toISOString()}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to record scheduled daily stats: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  private async getLiveDailySnapshot(date: Date): Promise<{
+    titleViews: number;
+    chapterViews: number;
+    views: number;
+    newUsers: number;
+    newTitles: number;
+    newChapters: number;
+    chaptersRead: number;
+    activeUsers: number;
+  }> {
+    const startOfDay = getStartOfDay(date);
+    const endOfDay = new Date(startOfDay);
+    endOfDay.setDate(endOfDay.getDate() + 1);
+
+    const [
+      titleViewsResult,
+      chapterViewsResult,
+      newUsers,
+      newTitles,
+      newChapters,
+      chaptersRead,
+      activeUsers,
+    ] = await Promise.all([
+      this.titleModel.aggregate([
+        { $match: { lastDayReset: { $gte: startOfDay } } },
+        { $group: { _id: null, total: { $sum: '$dayViews' } } },
+      ]),
+      this.chapterModel.aggregate([
+        {
+          $match: {
+            lastViewedAt: { $gte: startOfDay, $lt: endOfDay },
+          },
+        },
+        { $group: { _id: null, total: { $sum: '$views' } } },
+      ]),
+      this.userModel.countDocuments({ createdAt: { $gte: startOfDay, $lt: endOfDay } }),
+      this.titleModel.countDocuments({ createdAt: { $gte: startOfDay, $lt: endOfDay } }),
+      this.chapterModel.countDocuments({
+        createdAt: { $gte: startOfDay, $lt: endOfDay },
+      }),
+      this.chapterModel.countDocuments({
+        lastViewedAt: { $gte: startOfDay, $lt: endOfDay },
+      }),
+      this.userModel.countDocuments({
+        lastActivityAt: { $gte: startOfDay, $lt: endOfDay },
+      }),
+    ]);
+
+    const titleViews = titleViewsResult[0]?.total || 0;
+    const chapterViews = chapterViewsResult[0]?.total || 0;
+    return {
+      titleViews,
+      chapterViews,
+      views: titleViews + chapterViews,
+      newUsers,
+      newTitles,
+      newChapters,
+      chaptersRead,
+      activeUsers,
+    };
   }
 
   /**
@@ -439,8 +523,37 @@ export class StatsService {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - days);
+    const stats = await this.getStatsByDateRange(startDate, endDate);
 
-    return this.getStatsByDateRange(startDate, endDate);
+    const today = getStartOfDay(new Date());
+    const hasToday = stats.some(
+      (entry) => getStartOfDay(entry.date).getTime() === today.getTime(),
+    );
+
+    if (!hasToday) {
+      const liveToday = await this.getLiveDailySnapshot(today);
+      stats.push({
+        date: today,
+        newUsers: liveToday.newUsers,
+        activeUsers: liveToday.activeUsers,
+        uniqueVisitors: 0,
+        newTitles: liveToday.newTitles,
+        newChapters: liveToday.newChapters,
+        chaptersRead: liveToday.chaptersRead,
+        titleViews: liveToday.titleViews,
+        chapterViews: liveToday.chapterViews,
+        comments: 0,
+        ratings: 0,
+        bookmarks: 0,
+        popularTitles: [],
+        popularChapters: [],
+        isRecorded: false,
+        recordedAt: undefined,
+      } as DailyStats);
+      stats.sort((a, b) => a.date.getTime() - b.date.getTime());
+    }
+
+    return stats;
   }
 
   /**
@@ -493,6 +606,20 @@ export class StatsService {
     const sum = (list: DailyStats[], key: keyof DailyStats) =>
       list.reduce((s, d) => s + Number(d[key] ?? 0), 0);
 
+    let liveTodaySnapshot:
+      | {
+          views: number;
+          newUsers: number;
+          newTitles: number;
+          newChapters: number;
+          chaptersRead: number;
+          activeUsers: number;
+        }
+      | undefined;
+    if (!dailyStatsToday) {
+      liveTodaySnapshot = await this.getLiveDailySnapshot(today);
+    }
+
     const daily = dailyStatsToday
       ? {
           views: (dailyStatsToday.titleViews || 0) + (dailyStatsToday.chapterViews || 0),
@@ -501,7 +628,13 @@ export class StatsService {
           newChapters: dailyStatsToday.newChapters || 0,
           chaptersRead: dailyStatsToday.chaptersRead || 0,
         }
-      : { views: 0, newUsers: 0, newTitles: 0, newChapters: 0, chaptersRead: 0 };
+      : {
+          views: liveTodaySnapshot?.views || 0,
+          newUsers: liveTodaySnapshot?.newUsers || 0,
+          newTitles: liveTodaySnapshot?.newTitles || 0,
+          newChapters: liveTodaySnapshot?.newChapters || 0,
+          chaptersRead: liveTodaySnapshot?.chaptersRead || 0,
+        };
 
     const weekly = {
       views: sumViews(dailyStatsWeek),
@@ -555,7 +688,7 @@ export class StatsService {
       monthly,
       popularTitles: dailyStatsToday?.popularTitles?.slice(0, 10) ?? [],
       popularChapters: dailyStatsToday?.popularChapters?.slice(0, 10) ?? [],
-      activeUsersToday: dailyStatsToday?.activeUsers ?? 0,
+      activeUsersToday: dailyStatsToday?.activeUsers ?? liveTodaySnapshot?.activeUsers ?? 0,
       newUsersThisMonth: monthly.newUsers,
       totalRatings: 0,
       averageRating: 0,
@@ -589,6 +722,26 @@ export class StatsService {
         totalTitles: 0,
         totalChapters: 0,
       }));
+
+      // Если за сегодня записи еще нет (или история пустая), отдаем live-слепок за сегодня.
+      const todayStr = getStartOfDay(new Date()).toISOString().split('T')[0];
+      const hasToday = data.some((d) => d.date === todayStr);
+      if (!hasToday) {
+        const liveToday = await this.getLiveDailySnapshot(new Date());
+        data.push({
+          date: todayStr,
+          views: liveToday.views,
+          newUsers: liveToday.newUsers,
+          newTitles: liveToday.newTitles,
+          newChapters: liveToday.newChapters,
+          chaptersRead: liveToday.chaptersRead,
+          totalUsers: 0,
+          totalTitles: 0,
+          totalChapters: 0,
+        });
+      }
+
+      data.sort((a, b) => a.date.localeCompare(b.date));
       return { type: 'daily', data, total: data.length };
     }
 
