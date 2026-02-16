@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  Logger,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Cron, CronExpression } from '@nestjs/schedule';
@@ -14,7 +19,7 @@ import { TitlesService } from '../titles/titles.service';
 import { ChaptersService } from '../chapters/chapters.service';
 
 @Injectable()
-export class AutoParsingService {
+export class AutoParsingService implements OnModuleInit {
   private readonly logger = new Logger(AutoParsingService.name);
 
   constructor(
@@ -24,6 +29,46 @@ export class AutoParsingService {
     private titlesService: TitlesService,
     private chaptersService: ChaptersService,
   ) {}
+
+  async onModuleInit() {
+    await this.backfillMissingScheduleHours();
+  }
+
+  private getDeterministicScheduleHour(seed: string): number {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+    }
+    return hash % 24;
+  }
+
+  private async backfillMissingScheduleHours() {
+    const legacyJobs = await this.autoParsingJobModel
+      .find({
+        $or: [{ scheduleHour: { $exists: false } }, { scheduleHour: null }],
+      })
+      .select('_id titleId')
+      .lean();
+
+    if (legacyJobs.length === 0) {
+      return;
+    }
+
+    const bulkOperations = legacyJobs.map((job) => {
+      const seed = `${job.titleId?.toString?.() ?? ''}-${job._id.toString()}`;
+      return {
+        updateOne: {
+          filter: { _id: job._id },
+          update: { $set: { scheduleHour: this.getDeterministicScheduleHour(seed) } },
+        },
+      };
+    });
+
+    await this.autoParsingJobModel.bulkWrite(bulkOperations);
+    this.logger.log(
+      `Backfilled scheduleHour for ${legacyJobs.length} auto-parsing job(s)`,
+    );
+  }
 
   /**
    * Get sources array from job, handling backward compatibility with single URL
@@ -92,6 +137,9 @@ export class AutoParsingService {
     const createdJob = new this.autoParsingJobModel({
       ...createAutoParsingJobDto,
       sources: sourceArray,
+      scheduleHour:
+        createAutoParsingJobDto.scheduleHour ??
+        this.getDeterministicScheduleHour(createAutoParsingJobDto.titleId),
       // Clear the deprecated url field when using sources
       url: sources && sources.length > 0 ? undefined : url,
     });
@@ -127,6 +175,15 @@ export class AutoParsingService {
       const existingJob = await this.autoParsingJobModel.findById(id);
       if (existingJob) {
         updateData.sources = existingJob.sources;
+        if (
+          updateData.scheduleHour === undefined &&
+          (existingJob.scheduleHour === undefined ||
+            existingJob.scheduleHour === null)
+        ) {
+          updateData.scheduleHour = this.getDeterministicScheduleHour(
+            `${existingJob.titleId?.toString?.() ?? ''}-${existingJob._id.toString()}`,
+          );
+        }
       }
     }
 
