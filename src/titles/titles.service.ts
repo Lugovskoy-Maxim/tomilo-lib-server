@@ -14,6 +14,10 @@ import { LoggerService } from '../common/logger/logger.service';
 /** Макс. кол-во тайтлов в кеше (покрывает limit до ~20) */
 const POPULAR_CACHE_FETCH_LIMIT = 60;
 const CACHE_KEY_PREFIX = 'popular_titles';
+const CACHE_FILTER_OPTIONS = 'filter_options';
+const CACHE_COLLECTIONS_PREFIX = 'collections';
+const CACHE_CHAPTERS_COUNT_PREFIX = 'chapters_count';
+const CACHE_TITLES_LIST_PREFIX = 'titles_list';
 
 @Injectable()
 export class TitlesService {
@@ -60,6 +64,23 @@ export class TitlesService {
     populateChapters?: boolean;
     canViewAdult?: boolean;
   }) {
+    const isDefaultFirstPage =
+      page === 1 &&
+      !search &&
+      !genres?.length &&
+      !types?.length &&
+      !status &&
+      !releaseYears?.length &&
+      !ageLimits?.length &&
+      !tags?.length &&
+      sortBy === 'createdAt' &&
+      sortOrder === 'desc';
+    if (isDefaultFirstPage) {
+      const cacheKey = `${CACHE_TITLES_LIST_PREFIX}:${limit}:${canViewAdult}`;
+      const cached = await this.cacheManager.get(cacheKey);
+      if (cached) return cached as Awaited<ReturnType<typeof this.findAll>>;
+    }
+
     const skip = (page - 1) * limit;
     const query: any = {};
 
@@ -134,7 +155,7 @@ export class TitlesService {
       this.titleModel.countDocuments(query),
     ]);
 
-    return {
+    const result = {
       titles,
       pagination: {
         page,
@@ -143,9 +164,17 @@ export class TitlesService {
         pages: Math.ceil(total / limit),
       },
     };
+    if (isDefaultFirstPage) {
+      const cacheKey = `${CACHE_TITLES_LIST_PREFIX}:${limit}:${canViewAdult}`;
+      await this.cacheManager.set(cacheKey, result);
+    }
+    return result;
   }
 
   async getFilterOptions() {
+    const cached = await this.cacheManager.get(CACHE_FILTER_OPTIONS);
+    if (cached) return cached as Awaited<ReturnType<typeof this.getFilterOptions>>;
+
     // Получаем все тайтлы для извлечения уникальных значений
     const titles = await this.titleModel.find().exec();
 
@@ -188,7 +217,7 @@ export class TitlesService {
       }
     });
 
-    return {
+    const result = {
       genres: Array.from(genres).sort(),
       types: Array.from(types).sort(),
       status: Array.from(status).sort(),
@@ -208,6 +237,8 @@ export class TitlesService {
         'releaseYear',
       ],
     };
+    await this.cacheManager.set(CACHE_FILTER_OPTIONS, result);
+    return result;
   }
 
   async findById(
@@ -659,8 +690,13 @@ export class TitlesService {
   }
 
   async getChaptersCount(titleId: string): Promise<{ count: number }> {
+    const cacheKey = `${CACHE_CHAPTERS_COUNT_PREFIX}:${titleId}`;
+    const cached = (await this.cacheManager.get(cacheKey)) as { count: number } | undefined;
+    if (cached) return cached;
     const count = await this.chapterModel.countDocuments({ titleId });
-    return { count };
+    const result = { count };
+    await this.cacheManager.set(cacheKey, result);
+    return result;
   }
 
   async removeChapter(
@@ -777,7 +813,12 @@ export class TitlesService {
   }
 
   async getCollections(limit = 10): Promise<CollectionDocument[]> {
-    return this.collectionModel.find().limit(limit).exec();
+    const cacheKey = `${CACHE_COLLECTIONS_PREFIX}:${limit}`;
+    const cached = (await this.cacheManager.get(cacheKey)) as CollectionDocument[] | undefined;
+    if (cached !== undefined && Array.isArray(cached)) return cached;
+    const collections = await this.collectionModel.find().limit(limit).exec();
+    await this.cacheManager.set(cacheKey, collections);
+    return collections;
   }
 
   async getRandomTitles(

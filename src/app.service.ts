@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Title, TitleDocument } from './schemas/title.schema';
@@ -36,6 +37,8 @@ export class AppService {
     @InjectModel(Collection.name)
     private collectionModel: Model<CollectionDocument>,
     private readonly statsService: StatsService,
+    @Inject(CACHE_MANAGER)
+    private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown) => Promise<void> },
   ) {
     this.logger.setContext(AppService.name);
   }
@@ -46,6 +49,10 @@ export class AppService {
   }
 
   async getStats(): Promise<StatsResponseDto> {
+    const cacheKey = 'stats';
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached as StatsResponseDto;
+
     this.logger.log('Fetching application statistics');
 
     const { today, weekAgo, monthAgo } = getDateBoundaries();
@@ -307,6 +314,7 @@ export class AppService {
     this.logger.log(
       `Statistics fetched successfully: ${JSON.stringify(stats)}`,
     );
+    await this.cacheManager.set(cacheKey, stats);
     return stats;
   }
 
@@ -321,20 +329,35 @@ export class AppService {
    * Получить историческую статистику за последние 30 дней
    */
   async getRecentStats(days: number = 30) {
-    return this.statsService.getRecentDailyStats(days);
+    const cacheKey = `stats:recent:${days}`;
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached as Awaited<ReturnType<StatsService['getRecentDailyStats']>>;
+    const data = await this.statsService.getRecentDailyStats(days);
+    await this.cacheManager.set(cacheKey, data);
+    return data;
   }
 
   /**
    * Получить статистику за месяц
    */
   async getMonthlyStats(year: number, month: number) {
-    return this.statsService.getMonthlyStats(year, month);
+    const cacheKey = `stats:monthly:${year}:${month}`;
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached as Awaited<ReturnType<StatsService['getMonthlyStats']>>;
+    const data = await this.statsService.getMonthlyStats(year, month);
+    await this.cacheManager.set(cacheKey, data);
+    return data;
   }
 
   /**
    * Получить статистику за год
    */
   async getYearlyStats(year: number) {
-    return this.statsService.getYearlyStats(year);
+    const cacheKey = `stats:yearly:${year}`;
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached as Awaited<ReturnType<StatsService['getYearlyStats']>>;
+    const data = await this.statsService.getYearlyStats(year);
+    await this.cacheManager.set(cacheKey, data);
+    return data;
   }
 }

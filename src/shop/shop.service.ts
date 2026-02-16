@@ -1,8 +1,10 @@
 import {
   Injectable,
+  Inject,
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -32,12 +34,18 @@ export class ShopService {
     @InjectModel(CardDecoration.name)
     private cardDecorationModel: Model<CardDecorationDocument>,
     private usersService: UsersService,
+    @Inject(CACHE_MANAGER)
+    private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown) => Promise<void> },
   ) {
     this.logger.setContext(ShopService.name);
   }
 
   // Get all available decorations
   async getAllDecorations() {
+    const cacheKey = 'shop:decorations:all';
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached as Awaited<ReturnType<ShopService['getAllDecorations']>>;
+
     this.logger.log('Fetching all available decorations');
 
     const [avatars, backgrounds, cards] = await Promise.all([
@@ -46,15 +54,21 @@ export class ShopService {
       this.cardDecorationModel.find({ isAvailable: true }),
     ]);
 
-    return {
+    const result = {
       avatars,
       backgrounds,
       cards,
     };
+    await this.cacheManager.set(cacheKey, result);
+    return result;
   }
 
   // Get decorations by type
   async getDecorationsByType(type: 'avatar' | 'background' | 'card') {
+    const cacheKey = `shop:decorations:${type}`;
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached as Awaited<ReturnType<ShopService['getDecorationsByType']>>;
+
     this.logger.log(`Fetching ${type} decorations`);
 
     let decorations;
@@ -78,6 +92,7 @@ export class ShopService {
         throw new BadRequestException('Invalid decoration type');
     }
 
+    await this.cacheManager.set(cacheKey, decorations);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return decorations;
   }

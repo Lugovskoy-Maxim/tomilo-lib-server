@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { CacheModule } from '@nestjs/cache-manager';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MongooseModule } from '@nestjs/mongoose';
@@ -35,8 +36,11 @@ import { AutoParsingModule } from './auto-parsing/auto-parsing.module';
 import { EmailModule } from './email/email.module';
 import { StatsModule } from './stats/stats.module';
 
+const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
+
 @Module({
   imports: [
+    CacheModule.register({ ttl: STATS_CACHE_TTL_MS }),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

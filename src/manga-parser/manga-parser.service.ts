@@ -1,4 +1,5 @@
-import { Injectable, BadRequestException, Logger } from '@nestjs/common';
+import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import axios, { AxiosInstance } from 'axios';
 import * as cheerio from 'cheerio';
 import { TitlesService } from '../titles/titles.service';
@@ -52,6 +53,8 @@ export class MangaParserService {
     private titlesService: TitlesService,
     private chaptersService: ChaptersService,
     private filesService: FilesService,
+    @Inject(CACHE_MANAGER)
+    private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown) => Promise<void> },
   ) {
     this.session = axios.create({
       timeout: 20000,
@@ -617,8 +620,9 @@ export class MangaParserService {
 
     const parser = this.getParserForUrl(url);
     if (!parser) {
+      const { sites } = await this.getSupportedSites();
       throw new BadRequestException(
-        `Unsupported site. Supported: ${this.getSupportedSites().sites.join(', ')}`,
+        `Unsupported site. Supported: ${sites.join(', ')}`,
       );
     }
 
@@ -767,8 +771,9 @@ export class MangaParserService {
 
     const parser = this.getParserForUrl(url);
     if (!parser) {
+      const { sites } = await this.getSupportedSites();
       throw new BadRequestException(
-        `Unsupported site for chapter import. Supported: ${this.getSupportedSites().sites.join(', ')}`,
+        `Unsupported site for chapter import. Supported: ${sites.join(', ')}`,
       );
     }
 
@@ -907,8 +912,9 @@ export class MangaParserService {
 
     const parser = this.getParserForUrl(url);
     if (!parser) {
+      const { sites } = await this.getSupportedSites();
       throw new BadRequestException(
-        `Unsupported site. Supported: ${this.getSupportedSites().sites.join(', ')}`,
+        `Unsupported site. Supported: ${sites.join(', ')}`,
       );
     }
 
@@ -961,8 +967,9 @@ export class MangaParserService {
   }> {
     const parser = this.getParserForUrl(url);
     if (!parser) {
+      const { sites } = await this.getSupportedSites();
       throw new BadRequestException(
-        `Unsupported site. Supported: ${this.getSupportedSites().sites.join(', ')}`,
+        `Unsupported site. Supported: ${sites.join(', ')}`,
       );
     }
     const data = await parser.parse(url);
@@ -981,8 +988,11 @@ export class MangaParserService {
     };
   }
 
-  getSupportedSites(): { sites: string[] } {
-    return {
+  async getSupportedSites(): Promise<{ sites: string[] }> {
+    const cacheKey = 'manga-parser:supported-sites';
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached as { sites: string[] };
+    const result = {
       sites: [
         'manga-shi.org',
         'senkuro.me',
@@ -993,6 +1003,8 @@ export class MangaParserService {
         'telemanga.me',
       ],
     };
+    await this.cacheManager.set(cacheKey, result);
+    return result;
   }
 
   /**
