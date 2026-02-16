@@ -5,6 +5,9 @@ import {
   IsBoolean,
   IsArray,
   ArrayMinSize,
+  IsInt,
+  Min,
+  Max,
 } from 'class-validator';
 import { ParsingFrequency } from '../../schemas/auto-parsing-job.schema';
 
@@ -32,6 +35,16 @@ export class CreateAutoParsingJobDto {
   @IsOptional()
   @IsEnum(ParsingFrequency)
   frequency?: ParsingFrequency;
+
+  /**
+   * Hour of day (0-23) to run the job. If not set, job runs at default cron times.
+   * Use to spread parsing load across hours.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(23)
+  scheduleHour?: number;
 
   @IsOptional()
   @IsBoolean()

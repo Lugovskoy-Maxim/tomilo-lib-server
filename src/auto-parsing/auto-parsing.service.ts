@@ -350,27 +350,77 @@ export class AutoParsingService {
     }
   }
 
+  /** Jobs without scheduleHour: run at 0, 6, 12, 18 (unchanged for existing jobs). */
   @Cron(CronExpression.EVERY_6_HOURS)
   async handleDailyJobs() {
-    this.logger.log('Starting daily auto-parsing jobs');
-    await this.processJobsByFrequency(ParsingFrequency.DAILY);
-    this.logger.log('Completed daily auto-parsing jobs');
+    this.logger.log('Starting daily auto-parsing jobs (legacy schedule)');
+    await this.processJobsByFrequency(ParsingFrequency.DAILY, {
+      onlyWithoutScheduleHour: true,
+    });
+    this.logger.log('Completed daily auto-parsing jobs (legacy schedule)');
   }
 
   @Cron(CronExpression.EVERY_WEEK)
   async handleWeeklyJobs() {
-    await this.processJobsByFrequency(ParsingFrequency.WEEKLY);
+    await this.processJobsByFrequency(ParsingFrequency.WEEKLY, {
+      onlyWithoutScheduleHour: true,
+    });
   }
 
   @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
   async handleMonthlyJobs() {
-    await this.processJobsByFrequency(ParsingFrequency.MONTHLY);
+    await this.processJobsByFrequency(ParsingFrequency.MONTHLY, {
+      onlyWithoutScheduleHour: true,
+    });
   }
 
-  private async processJobsByFrequency(frequency: ParsingFrequency) {
-    const jobs = await this.autoParsingJobModel
-      .find({ frequency, enabled: true })
-      .exec();
+  /** Every hour: run jobs that have scheduleHour set to current hour (spreads load). */
+  @Cron(CronExpression.EVERY_HOUR)
+  async handleScheduledByHourJobs() {
+    const now = new Date();
+    const hour = now.getUTCHours();
+    const dayOfWeek = now.getUTCDay(); // 0 = Sunday
+    const dayOfMonth = now.getUTCDate();
+
+    // Daily: run at scheduleHour every day
+    await this.processJobsByFrequency(ParsingFrequency.DAILY, {
+      scheduleHour: hour,
+    });
+
+    // Weekly: run at scheduleHour on Sunday (same day as EVERY_WEEK)
+    if (dayOfWeek === 0) {
+      await this.processJobsByFrequency(ParsingFrequency.WEEKLY, {
+        scheduleHour: hour,
+      });
+    }
+
+    // Monthly: run at scheduleHour on 1st
+    if (dayOfMonth === 1) {
+      await this.processJobsByFrequency(ParsingFrequency.MONTHLY, {
+        scheduleHour: hour,
+      });
+    }
+  }
+
+  private async processJobsByFrequency(
+    frequency: ParsingFrequency,
+    options?: {
+      onlyWithoutScheduleHour?: boolean;
+      scheduleHour?: number;
+    },
+  ) {
+    const query: Record<string, unknown> = { frequency, enabled: true };
+
+    if (options?.onlyWithoutScheduleHour) {
+      query.$or = [
+        { scheduleHour: { $exists: false } },
+        { scheduleHour: null },
+      ];
+    } else if (options?.scheduleHour !== undefined) {
+      query.scheduleHour = options.scheduleHour;
+    }
+
+    const jobs = await this.autoParsingJobModel.find(query).exec();
 
     for (const job of jobs) {
       try {

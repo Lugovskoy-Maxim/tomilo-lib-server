@@ -49,6 +49,14 @@ export class AutoParsingJob {
   })
   frequency: ParsingFrequency;
 
+  /**
+   * Hour of day (0-23) to run the job. If not set, job runs at default cron times
+   * (daily: every 6h, weekly: once per week, monthly: 1st of month).
+   * Allows spreading load across hours; does not affect existing jobs without this field.
+   */
+  @Prop({ type: Number, min: 0, max: 23, required: false })
+  scheduleHour?: number;
+
   @Prop()
   lastChecked: Date;
 
@@ -61,3 +69,4 @@ export const AutoParsingJobSchema =
 
 AutoParsingJobSchema.index({ titleId: 1 });
 AutoParsingJobSchema.index({ enabled: 1 });
+AutoParsingJobSchema.index({ frequency: 1, scheduleHour: 1, enabled: 1 });
