@@ -1,9 +1,5 @@
-import {
-  Injectable,
-  NotFoundException,
-  ConflictException,
-  BadRequestException,
-} from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Title, TitleDocument, TitleStatus } from '../schemas/title.schema';
@@ -14,6 +10,10 @@ import { UpdateTitleDto } from './dto/update-title.dto';
 import { FilesService } from '../files/files.service';
 import { UsersService } from '../users/users.service';
 import { LoggerService } from '../common/logger/logger.service';
+
+/** Макс. кол-во тайтлов в кеше (покрывает limit до ~20) */
+const POPULAR_CACHE_FETCH_LIMIT = 60;
+const CACHE_KEY_PREFIX = 'popular_titles';
 
 @Injectable()
 export class TitlesService {
@@ -26,6 +26,7 @@ export class TitlesService {
     private collectionModel: Model<CollectionDocument>,
     private readonly filesService: FilesService,
     private readonly usersService: UsersService,
+    @Inject(CACHE_MANAGER) private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown) => Promise<void> },
   ) {
     this.logger.setContext(TitlesService.name);
   }
@@ -442,9 +443,16 @@ export class TitlesService {
     limit = 10,
     canViewAdult = true,
   ): Promise<TitleDocument[]> {
-    const query: any = {};
+    const cacheKey = `${CACHE_KEY_PREFIX}:${canViewAdult}`;
 
-    // Фильтрация взрослого контента
+    // Пытаемся получить из кеша
+    const cached = (await this.cacheManager.get(cacheKey)) as any[] | undefined;
+    if (cached && Array.isArray(cached) && cached.length > 0) {
+      return this.applyPopularShuffle(cached, limit) as TitleDocument[];
+    }
+
+    // Кеш промах — запрос в БД
+    const query: any = {};
     if (!canViewAdult) {
       query.$or = [
         { ageLimit: { $lt: 18 } },
@@ -453,21 +461,30 @@ export class TitlesService {
       ];
     }
 
-    // Получаем больше тайтлов для возможности перемешивания (3x limit)
-    const fetchLimit = limit * 3;
     const titles = await this.titleModel
       .find(query)
-      .sort({ weekViews: -1, rating: -1 })
-      .limit(fetchLimit)
-      .populate('chapters')
+      .sort({ weekViews: -1, averageRating: -1 })
+      .limit(POPULAR_CACHE_FETCH_LIMIT)
+      .lean()
       .exec();
 
-    // Разделяем тайтлы на взрослые (18+) и обычные
-    const adultTitles: TitleDocument[] = [];
-    const nonAdultTitles: TitleDocument[] = [];
+    if (titles.length > 0) {
+      await this.cacheManager.set(cacheKey, titles);
+    }
+
+    return this.applyPopularShuffle(titles as any[], limit) as TitleDocument[];
+  }
+
+  /** Применяет логику shuffle/limit к списку тайтлов (из кеша или БД). */
+  private applyPopularShuffle(
+    titles: Array<{ ageLimit?: number | null; [k: string]: any }>,
+    limit: number,
+  ): Array<{ ageLimit?: number | null; [k: string]: any }> {
+    const adultTitles: typeof titles = [];
+    const nonAdultTitles: typeof titles = [];
 
     for (const title of titles) {
-      const isAdult = title.ageLimit !== undefined && title.ageLimit >= 18;
+      const isAdult = (title.ageLimit ?? 0) >= 18;
       if (isAdult) {
         adultTitles.push(title);
       } else {
@@ -475,27 +492,19 @@ export class TitlesService {
       }
     }
 
-    // Максимальное количество взрослых тайтлов (50% от лимита)
     const maxAdultCount = Math.floor(limit * 0.5);
     const adultCount = Math.min(adultTitles.length, maxAdultCount);
     const nonAdultCount = limit - adultCount;
 
-    // Берем нужное количество из каждой группы
     const selectedAdult = adultTitles.slice(0, adultCount);
     const selectedNonAdult = nonAdultTitles.slice(0, nonAdultCount);
 
-    // Первые 2 позиции должны быть НЕ взрослыми тайтлами
-    // Если мало обычных тайтлов, заполняем из взрослых (но не первые 2 позиции)
-    const result: TitleDocument[] = [];
-
-    // Позиции 1-2: самые популярные НЕ взрослые тайтлы
+    const result: typeof titles = [];
     result.push(...selectedNonAdult.slice(0, 2));
 
-    // Остальные позиции: перемешиваем оставшиеся не-взрослые и взрослые тайтлы
     const remainingNonAdult = selectedNonAdult.slice(2);
     const remainingTitles = [...remainingNonAdult, ...selectedAdult];
 
-    // Перемешиваем оставшиеся тайтлы (Fisher-Yates shuffle)
     for (let i = remainingTitles.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [remainingTitles[i], remainingTitles[j]] = [
@@ -504,7 +513,6 @@ export class TitlesService {
       ];
     }
 
-    // Добавляем перемешанные тайтлы, пока не заполним лимит
     for (const title of remainingTitles) {
       if (result.length < limit) {
         result.push(title);
