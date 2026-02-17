@@ -40,7 +40,7 @@ const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 
 @Module({
   imports: [
-    CacheModule.register({ ttl: STATS_CACHE_TTL_MS }),
+    CacheModule.register({ ttl: STATS_CACHE_TTL_MS, isGlobal: true }),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
