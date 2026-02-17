@@ -96,6 +96,7 @@ export class ReportsService {
     id: string,
     isResolved: boolean,
     resolvedById: string,
+    resolutionMessage?: string,
   ): Promise<ReportDocument> {
     const report = await this.reportModel.findById(id);
 
@@ -104,13 +105,16 @@ export class ReportsService {
     }
 
     const wasPreviouslyResolved = report.isResolved;
+    const normalizedResolutionMessage = resolutionMessage?.trim();
     report.isResolved = isResolved;
     if (isResolved) {
       report.resolvedBy = new Types.ObjectId(resolvedById);
       report.resolvedAt = new Date();
+      report.resolutionMessage = normalizedResolutionMessage || null;
     } else {
       report.resolvedBy = null;
       report.resolvedAt = null;
+      report.resolutionMessage = null;
     }
 
     const savedReport = await report.save();
@@ -121,14 +125,19 @@ export class ReportsService {
         userId: report.creatorId,
         type: NotificationType.REPORT_RESOLVED,
         title: 'Ваша жалоба рассмотрена',
-        message: `Жалоба на ${
-          report.entityType || 'контент'
-        } была рассмотрена и закрыта.`,
+        message: normalizedResolutionMessage
+          ? `Жалоба на ${
+              report.entityType || 'контент'
+            } была рассмотрена и закрыта. Ответ модератора: ${normalizedResolutionMessage}`
+          : `Жалоба на ${
+              report.entityType || 'контент'
+            } была рассмотрена и закрыта.`,
         metadata: {
           reportId: report._id,
           reportType: report.reportType,
           entityType: report.entityType,
           entityId: report.entityId,
+          resolutionMessage: normalizedResolutionMessage || null,
         },
       });
     }

@@ -45,6 +45,9 @@ export class Report {
 
   @Prop({ type: Date, default: null })
   resolvedAt: Date | null;
+
+  @Prop({ type: String, default: null, maxlength: 2000 })
+  resolutionMessage: string | null;
 }
 
 export const ReportSchema = SchemaFactory.createForClass(Report);

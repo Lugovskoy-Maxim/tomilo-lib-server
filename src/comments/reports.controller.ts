@@ -21,6 +21,7 @@ import { ReportsService } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ReportType } from '../schemas/report.schema';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
+import { UpdateReportStatusDto } from './dto/update-report-status.dto';
 
 @Controller('reports')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
@@ -129,14 +130,16 @@ export class ReportsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   async updateStatus(
     @Param('id') id: string,
-    @Body('isResolved') isResolved: boolean,
+    @Body() updateReportStatusDto: UpdateReportStatusDto,
     @Request() req,
   ): Promise<ApiResponseDto<any>> {
     try {
+      const { isResolved, resolutionMessage } = updateReportStatusDto;
       const data = await this.reportsService.updateStatus(
         id,
         isResolved,
         req.user.userId,
+        resolutionMessage,
       );
 
       return {

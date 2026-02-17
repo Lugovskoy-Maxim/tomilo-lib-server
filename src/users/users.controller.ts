@@ -776,6 +776,54 @@ export class UsersController {
     }
   }
 
+  // 🏠 Пользователи для главной страницы (активные за последнюю неделю)
+  @Get('homepage/active')
+  async getHomepageActiveUsers(
+    @Query('limit') limit?: string,
+    @Query('days') days?: string,
+    @Query('sortBy') sortBy?: string,
+    @Query('sortOrder') sortOrder?: string,
+    @Query('verification') verification?: string,
+    @Query('requireAvatar') requireAvatar?: string,
+    @Query('format') format?: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getHomepageActiveUsers({
+        limit: limit != null ? parseInt(String(limit), 10) : undefined,
+        days: days != null ? parseInt(String(days), 10) : undefined,
+        sortBy:
+          sortBy === 'level' || sortBy === 'createdAt' || sortBy === 'lastActivityAt'
+            ? sortBy
+            : undefined,
+        sortOrder: sortOrder === 'asc' || sortOrder === 'desc' ? sortOrder : undefined,
+        verification:
+          verification === 'email' || verification === 'oauth' || verification === 'any'
+            ? verification
+            : undefined,
+        requireAvatar:
+          requireAvatar != null
+            ? requireAvatar === 'true' || requireAvatar === '1'
+            : undefined,
+        responseFormat: format === 'extended' || format === 'compact' ? format : undefined,
+      });
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/homepage/active',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch active users for homepage',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/homepage/active',
+      };
+    }
+  }
+
   // 👥 Получить профиль пользователя по ID (с учётом настроек приватности)
   // Авторизация опциональна: без токена доступны только публичные профили
   @Get(':id')

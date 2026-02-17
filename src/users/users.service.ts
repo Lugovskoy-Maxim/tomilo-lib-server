@@ -1,11 +1,13 @@
 import { Model, Types } from 'mongoose';
 import {
   Injectable,
+  Inject,
   NotFoundException,
   ConflictException,
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
@@ -28,6 +30,22 @@ export type BookmarkCategory = (typeof BOOKMARK_CATEGORIES)[number];
 /** Лимиты истории чтения: не более N тайтлов и M глав на тайтл (глав храним много — для отображения статуса «прочитано» на фронте) */
 const MAX_READING_HISTORY_TITLES = 500;
 const MAX_CHAPTERS_PER_TITLE_IN_HISTORY = 6000;
+const HOMEPAGE_ACTIVE_USERS_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+
+type HomepageActiveUsersSortBy = 'lastActivityAt' | 'level' | 'createdAt';
+type HomepageActiveUsersSortOrder = 'asc' | 'desc';
+type HomepageActiveUsersVerification = 'any' | 'email' | 'oauth';
+type HomepageActiveUsersResponseFormat = 'compact' | 'extended';
+
+interface HomepageActiveUsersOptions {
+  limit?: number;
+  days?: number;
+  sortBy?: HomepageActiveUsersSortBy;
+  sortOrder?: HomepageActiveUsersSortOrder;
+  verification?: HomepageActiveUsersVerification;
+  requireAvatar?: boolean;
+  responseFormat?: HomepageActiveUsersResponseFormat;
+}
 
 // Interfaces for type safety in reading history operations
 interface ReadingHistoryEntry {
@@ -61,6 +79,11 @@ export class UsersService {
     private filesService: FilesService,
     private chaptersService: ChaptersService,
     private botDetectionService: BotDetectionService,
+    @Inject(CACHE_MANAGER)
+    private cacheManager: {
+      get: (k: string) => Promise<unknown>;
+      set: (k: string, v: unknown, ttl?: number | { ttl: number }) => Promise<void>;
+    },
   ) {
     this.logger.setContext(UsersService.name);
   }
@@ -107,6 +130,77 @@ export class UsersService {
         pages: Math.ceil(total / limit),
       },
     };
+  }
+
+  async getHomepageActiveUsers(
+    options: HomepageActiveUsersOptions = {},
+  ): Promise<any[]> {
+    const safeLimit = Math.min(50, Math.max(1, Number(options.limit) || 10));
+    const safeDays = Math.min(30, Math.max(1, Number(options.days) || 7));
+    const sortBy: HomepageActiveUsersSortBy = options.sortBy || 'lastActivityAt';
+    const sortOrder: HomepageActiveUsersSortOrder =
+      options.sortOrder === 'asc' ? 'asc' : 'desc';
+    const verification: HomepageActiveUsersVerification =
+      options.verification || 'any';
+    const requireAvatar = options.requireAvatar !== false;
+    const responseFormat: HomepageActiveUsersResponseFormat =
+      options.responseFormat === 'extended' ? 'extended' : 'compact';
+
+    const cacheKey = [
+      'users:homepage:active',
+      `limit:${safeLimit}`,
+      `days:${safeDays}`,
+      `sortBy:${sortBy}`,
+      `sortOrder:${sortOrder}`,
+      `verification:${verification}`,
+      `requireAvatar:${requireAvatar ? 1 : 0}`,
+      `format:${responseFormat}`,
+    ].join(':');
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) {
+      return cached as any[];
+    }
+
+    const activitySince = new Date();
+    activitySince.setDate(activitySince.getDate() - safeDays);
+
+    const verificationFilter =
+      verification === 'email'
+        ? { emailVerified: true }
+        : verification === 'oauth'
+          ? { 'oauth.providerId': { $exists: true, $nin: ['', null] } }
+          : {
+              $or: [
+                { emailVerified: true },
+                { 'oauth.providerId': { $exists: true, $nin: ['', null] } },
+              ],
+            };
+
+    const avatarFilter = requireAvatar
+      ? { avatar: { $exists: true, $nin: ['', null] } }
+      : {};
+
+    const projection =
+      responseFormat === 'extended'
+        ? '_id username avatar level role firstName lastName lastActivityAt createdAt'
+        : '_id username avatar lastActivityAt level';
+
+    const users = await this.userModel
+      .find({
+        lastActivityAt: { $gte: activitySince },
+        ...verificationFilter,
+        ...avatarFilter,
+      })
+      .sort({ [sortBy]: sortOrder === 'asc' ? 1 : -1, _id: -1 })
+      .limit(safeLimit)
+      .select(projection)
+      .lean();
+
+    await this.cacheManager.set(cacheKey, users, {
+      ttl: HOMEPAGE_ACTIVE_USERS_CACHE_TTL_MS,
+    });
+
+    return users;
   }
 
   async findById(id: string): Promise<User> {
