@@ -11,9 +11,15 @@ import {
   UsePipes,
   ValidationPipe,
   ParseEnumPipe,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
 import { ShopService } from './shop.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { FileUploadInterceptor } from '../common/interceptors/file-upload.interceptor';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 
 export enum DecorationType {
@@ -168,6 +174,65 @@ export class ShopController {
         timestamp: new Date().toISOString(),
         path: `shop/equip/${type}/${decorationId}`,
         method: 'PUT',
+      };
+    }
+  }
+
+  // Admin: upload decoration (avatar, background, card)
+  @Post('admin/decorations/upload')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @UseInterceptors(
+    FileUploadInterceptor.create('image', {
+      destination: './uploads/decorations',
+      fileTypes: /\/(jpg|jpeg|png|webp|gif)$/,
+      fileSize: 5 * 1024 * 1024, // 5MB
+      filenamePrefix: 'decoration',
+    }),
+  )
+  async uploadDecoration(
+    @Body()
+    body: {
+      type: DecorationType;
+      name: string;
+      price: number;
+      rarity: 'common' | 'rare' | 'epic' | 'legendary';
+      description?: string;
+      isAvailable?: string;
+    },
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      if (!file) {
+        throw new BadRequestException('Image file is required');
+      }
+      const data = await this.shopService.uploadDecoration(
+        body.type,
+        file,
+        {
+          name: body.name,
+          price: Number(body.price),
+          rarity: body.rarity,
+          description: body.description,
+          isAvailable: body.isAvailable === 'true' || body.isAvailable === undefined,
+        },
+      );
+      return {
+        success: true,
+        data,
+        message: 'Decoration uploaded successfully',
+        timestamp: new Date().toISOString(),
+        path: 'shop/admin/decorations/upload',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to upload decoration',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'shop/admin/decorations/upload',
+        method: 'POST',
       };
     }
   }

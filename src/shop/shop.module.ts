@@ -1,5 +1,7 @@
-import { Module } from '@nestjs/common';
+import { Module, OnModuleInit } from '@nestjs/common';
 import { CacheModule } from '@nestjs/cache-manager';
+import * as fs from 'fs';
+import * as path from 'path';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ShopController } from './shop.controller';
 import { ShopService } from './shop.service';
@@ -33,4 +35,11 @@ const DECORATIONS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
   providers: [ShopService],
   exports: [ShopService],
 })
-export class ShopModule {}
+export class ShopModule implements OnModuleInit {
+  onModuleInit() {
+    const dir = path.join(process.cwd(), 'uploads', 'decorations');
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+  }
+}

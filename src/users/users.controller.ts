@@ -785,6 +785,7 @@ export class UsersController {
     @Query('sortOrder') sortOrder?: string,
     @Query('verification') verification?: string,
     @Query('requireAvatar') requireAvatar?: string,
+    @Query('requireRecentActivity') requireRecentActivity?: string,
     @Query('format') format?: string,
   ): Promise<ApiResponseDto<any>> {
     try {
@@ -797,12 +798,19 @@ export class UsersController {
             : undefined,
         sortOrder: sortOrder === 'asc' || sortOrder === 'desc' ? sortOrder : undefined,
         verification:
-          verification === 'email' || verification === 'oauth' || verification === 'any'
+          verification === 'email' ||
+          verification === 'oauth' ||
+          verification === 'any' ||
+          verification === 'none'
             ? verification
             : undefined,
         requireAvatar:
           requireAvatar != null
             ? requireAvatar === 'true' || requireAvatar === '1'
+            : undefined,
+        requireRecentActivity:
+          requireRecentActivity != null
+            ? requireRecentActivity === 'true' || requireRecentActivity === '1'
             : undefined,
         responseFormat: format === 'extended' || format === 'compact' ? format : undefined,
       });

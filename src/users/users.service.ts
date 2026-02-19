@@ -34,7 +34,7 @@ const HOMEPAGE_ACTIVE_USERS_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 
 type HomepageActiveUsersSortBy = 'lastActivityAt' | 'level' | 'createdAt';
 type HomepageActiveUsersSortOrder = 'asc' | 'desc';
-type HomepageActiveUsersVerification = 'any' | 'email' | 'oauth';
+type HomepageActiveUsersVerification = 'any' | 'email' | 'oauth' | 'none';
 type HomepageActiveUsersResponseFormat = 'compact' | 'extended';
 
 interface HomepageActiveUsersOptions {
@@ -44,6 +44,7 @@ interface HomepageActiveUsersOptions {
   sortOrder?: HomepageActiveUsersSortOrder;
   verification?: HomepageActiveUsersVerification;
   requireAvatar?: boolean;
+  requireRecentActivity?: boolean;
   responseFormat?: HomepageActiveUsersResponseFormat;
 }
 
@@ -141,7 +142,7 @@ export class UsersService {
     const sortOrder: HomepageActiveUsersSortOrder =
       options.sortOrder === 'asc' ? 'asc' : 'desc';
     const verification: HomepageActiveUsersVerification =
-      options.verification || 'any';
+      options.verification === 'none' ? 'any' : (options.verification || 'any');
     const requireAvatar = options.requireAvatar !== false;
     const responseFormat: HomepageActiveUsersResponseFormat =
       options.responseFormat === 'extended' ? 'extended' : 'compact';

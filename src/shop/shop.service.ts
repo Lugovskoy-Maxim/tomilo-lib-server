@@ -35,7 +35,11 @@ export class ShopService {
     private cardDecorationModel: Model<CardDecorationDocument>,
     private usersService: UsersService,
     @Inject(CACHE_MANAGER)
-    private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown) => Promise<void> },
+    private cacheManager: {
+      get: (k: string) => Promise<unknown>;
+      set: (k: string, v: unknown) => Promise<void>;
+      del?: (k: string) => Promise<void>;
+    },
   ) {
     this.logger.setContext(ShopService.name);
   }
@@ -265,6 +269,61 @@ export class ShopService {
       message: 'Decoration unequipped successfully',
       equippedDecorations: user.equippedDecorations,
     };
+  }
+
+  // Admin: upload new decoration
+  async uploadDecoration(
+    type: 'avatar' | 'background' | 'card',
+    file: Express.Multer.File,
+    payload: {
+      name: string;
+      price: number;
+      rarity: 'common' | 'rare' | 'epic' | 'legendary';
+      description?: string;
+      isAvailable?: boolean;
+    },
+  ) {
+    if (!file || !file.filename) {
+      throw new BadRequestException('Image file is required');
+    }
+
+    const imageUrl = `/uploads/decorations/${file.filename}`;
+
+    const doc = {
+      name: payload.name,
+      imageUrl,
+      price: Number(payload.price),
+      rarity: payload.rarity,
+      description: payload.description ?? '',
+      isAvailable: payload.isAvailable !== false,
+    };
+
+    let decoration;
+    switch (type) {
+      case 'avatar':
+        decoration = await this.avatarDecorationModel.create(doc);
+        break;
+      case 'background':
+        decoration = await this.backgroundDecorationModel.create(doc);
+        break;
+      case 'card':
+        decoration = await this.cardDecorationModel.create(doc);
+        break;
+      default:
+        throw new BadRequestException('Invalid decoration type');
+    }
+
+    await this.cacheManager.set('shop:decorations:all', undefined as unknown);
+    await this.cacheManager.set(`shop:decorations:${type}`, undefined as unknown);
+    if (typeof this.cacheManager.del === 'function') {
+      await this.cacheManager.del('shop:decorations:all');
+      await this.cacheManager.del(`shop:decorations:${type}`);
+    }
+
+    this.logger.log(
+      `Admin uploaded ${type} decoration: ${decoration._id} (${payload.name})`,
+    );
+    return decoration;
   }
 
   // Get user's owned decorations (bulk fetch to avoid N+1 queries)
