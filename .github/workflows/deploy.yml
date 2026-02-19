@@ -94,6 +94,27 @@ jobs:
             npm install
             npm run build
 
+            # Убеждаемся что Docker daemon запущен (на home server он может быть выключен)
+            echo "🐳 Ensuring Docker daemon is running..."
+            if ! docker info &>/dev/null; then
+              echo "Docker not responding, attempting to start..."
+              sudo systemctl start docker 2>/dev/null || sudo service docker start 2>/dev/null || true
+              echo "Waiting for Docker to be ready..."
+              for i in $(seq 1 30); do
+                if docker info &>/dev/null; then
+                  echo "✅ Docker is ready"
+                  break
+                fi
+                if [ "$i" -eq 30 ]; then
+                  echo "❌ Docker failed to start after 30s"
+                  exit 1
+                fi
+                sleep 1
+              done
+            else
+              echo "✅ Docker is already running"
+            fi
+
             # Убиваем процессы докера 
             echo "🛑 Stopping existing MongoDB containers..."
             docker stop mongo 2>/dev/null || true
