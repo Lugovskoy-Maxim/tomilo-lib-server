@@ -82,4 +82,9 @@ export class UpdateTitleDto extends PartialType(CreateTitleDto) {
   @IsOptional()
   @IsBoolean()
   isPublished?: boolean;
+
+  /** Главы удалены по просьбе правообладателя — при true главы не возвращаются в API */
+  @IsOptional()
+  @IsBoolean()
+  chaptersRemovedByCopyrightHolder?: boolean;
 }

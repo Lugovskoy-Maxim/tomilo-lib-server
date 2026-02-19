@@ -27,6 +27,7 @@ import { Title, TitleSchema } from './schemas/title.schema';
 import { Chapter, ChapterSchema } from './schemas/chapter.schema';
 import { User, UserSchema } from './schemas/user.schema';
 import { Collection, CollectionSchema } from './schemas/collection.schema';
+import { Character, CharacterSchema } from './schemas/character.schema';
 import {
   AutoParsingJob,
   AutoParsingJobSchema,
@@ -60,6 +61,7 @@ const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
       { name: Chapter.name, schema: ChapterSchema },
       { name: User.name, schema: UserSchema },
       { name: Collection.name, schema: CollectionSchema },
+      { name: Character.name, schema: CharacterSchema },
       { name: AutoParsingJob.name, schema: AutoParsingJobSchema },
       { name: IPActivity.name, schema: IPActivitySchema },
     ]),

@@ -38,6 +38,21 @@ export class ChaptersService {
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
   }) {
+    // Если запрашивают главы по тайтлу — не возвращать главы, если они удалены по просьбе правообладателя
+    if (titleId && Types.ObjectId.isValid(titleId)) {
+      const title = await this.titleModel
+        .findById(titleId)
+        .select('chaptersRemovedByCopyrightHolder')
+        .lean()
+        .exec();
+      if (title?.chaptersRemovedByCopyrightHolder) {
+        return {
+          chapters: [],
+          pagination: { page, limit, total: 0, pages: 0 },
+        };
+      }
+    }
+
     const skip = (page - 1) * limit;
     const query: any = {};
 
@@ -93,6 +108,11 @@ export class ChaptersService {
       throw new NotFoundException('Chapter not found');
     }
 
+    const title = chapter.titleId as { chaptersRemovedByCopyrightHolder?: boolean } | null;
+    if (title?.chaptersRemovedByCopyrightHolder) {
+      throw new NotFoundException('Chapter not found');
+    }
+
     return chapter;
   }
 
@@ -102,6 +122,15 @@ export class ChaptersService {
   ): Promise<ChapterDocument | null> {
     if (!Types.ObjectId.isValid(titleId)) {
       throw new BadRequestException('Invalid title ID');
+    }
+
+    const title = await this.titleModel
+      .findById(titleId)
+      .select('chaptersRemovedByCopyrightHolder')
+      .lean()
+      .exec();
+    if (title?.chaptersRemovedByCopyrightHolder) {
+      return null;
     }
 
     const query: any = {};
@@ -132,6 +161,15 @@ export class ChaptersService {
   async getLatestChapter(titleId: string): Promise<ChapterDocument | null> {
     if (!Types.ObjectId.isValid(titleId)) {
       throw new BadRequestException('Invalid title ID');
+    }
+
+    const title = await this.titleModel
+      .findById(titleId)
+      .select('chaptersRemovedByCopyrightHolder')
+      .lean()
+      .exec();
+    if (title?.chaptersRemovedByCopyrightHolder) {
+      return null;
     }
 
     const query: any = {};

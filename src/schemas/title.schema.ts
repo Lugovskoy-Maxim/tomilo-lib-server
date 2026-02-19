@@ -86,6 +86,13 @@ export class Title {
   @Prop({ type: [{ type: Types.ObjectId, ref: 'Chapter' }] })
   chapters: Types.ObjectId[];
 
+  /** Главы удалены по просьбе правообладателя — при true не возвращать главы в API */
+  @Prop({ default: false })
+  chaptersRemovedByCopyrightHolder: boolean;
+
+  @Prop({ type: [{ type: Types.ObjectId, ref: 'Character' }], default: [] })
+  characters: Types.ObjectId[];
+
   @Prop()
   isPublished: boolean;
 

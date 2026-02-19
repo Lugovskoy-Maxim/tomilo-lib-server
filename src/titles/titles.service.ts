@@ -155,6 +155,10 @@ export class TitlesService {
       this.titleModel.countDocuments(query),
     ]);
 
+    for (const t of titles) {
+      if (t.chaptersRemovedByCopyrightHolder) t.chapters = [];
+    }
+
     const result = {
       titles,
       pagination: {
@@ -279,6 +283,7 @@ export class TitlesService {
       throw new NotFoundException('Title not found');
     }
 
+    if (title.chaptersRemovedByCopyrightHolder) title.chapters = [];
     return title;
   }
 
@@ -310,7 +315,9 @@ export class TitlesService {
       });
     }
 
-    return findQuery.exec();
+    const title = await findQuery.exec();
+    if (title?.chaptersRemovedByCopyrightHolder) title.chapters = [];
+    return title;
   }
 
   async findByName(name: string): Promise<TitleDocument | null> {
@@ -571,7 +578,7 @@ export class TitlesService {
       ];
     }
 
-    return this.titleModel
+    const titles = await this.titleModel
       .find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
@@ -580,6 +587,10 @@ export class TitlesService {
         select: '-pages',
       })
       .exec();
+    for (const t of titles) {
+      if (t.chaptersRemovedByCopyrightHolder) t.chapters = [];
+    }
+    return titles;
   }
 
   async getTitlesWithRecentChapters(
@@ -603,6 +614,11 @@ export class TitlesService {
       if (chapter.titleId) {
         const title = chapter.titleId as any;
         const ageLimit = title.ageLimit;
+
+        // Не показывать тайтлы, у которых главы удалены по просьбе правообладателя
+        if (title.chaptersRemovedByCopyrightHolder) {
+          continue;
+        }
 
         // Фильтрация взрослого контента на этапе группировки
         // Если пользователь не может видеть взрослый контент, пропускаем взрослые тайтлы
@@ -648,33 +664,37 @@ export class TitlesService {
       .slice(skip, skip + limit);
 
     // Возвращаем массив с информацией о тайтлах и диапазонах глав
-    return titlesWithChapters.map((item) => ({
-      // Явно перечисляем свойства вместо использования toObject()
-      _id: item.title._id,
-      name: item.title.name,
-      slug: item.title.slug,
-      altNames: item.title.altNames,
-      description: item.title.description,
-      genres: item.title.genres,
-      tags: item.title.tags,
-      artist: item.title.artist,
-      coverImage: item.title.coverImage,
-      status: item.title.status,
-      author: item.title.author,
-      views: item.title.views,
-      totalChapters: item.title.totalChapters,
-      rating: item.title.rating,
-      releaseYear: item.title.releaseYear,
-      ageLimit: item.title.ageLimit,
-      chapters: item.title.chapters,
-      isPublished: item.title.isPublished,
-      type: item.title.type,
-      createdAt: item.title.createdAt,
-      updatedAt: item.title.updatedAt,
-      latestChapter: item.chapters[0],
-      minChapter: item.minChapter,
-      maxChapter: item.maxChapter,
-    }));
+    return titlesWithChapters.map((item) => {
+      const hideChapters = item.title.chaptersRemovedByCopyrightHolder;
+      return {
+        // Явно перечисляем свойства вместо использования toObject()
+        _id: item.title._id,
+        name: item.title.name,
+        slug: item.title.slug,
+        altNames: item.title.altNames,
+        description: item.title.description,
+        genres: item.title.genres,
+        tags: item.title.tags,
+        artist: item.title.artist,
+        coverImage: item.title.coverImage,
+        status: item.title.status,
+        author: item.title.author,
+        views: item.title.views,
+        totalChapters: item.title.totalChapters,
+        rating: item.title.rating,
+        releaseYear: item.title.releaseYear,
+        ageLimit: item.title.ageLimit,
+        chaptersRemovedByCopyrightHolder: item.title.chaptersRemovedByCopyrightHolder,
+        chapters: hideChapters ? [] : item.title.chapters,
+        isPublished: item.title.isPublished,
+        type: item.title.type,
+        createdAt: item.title.createdAt,
+        updatedAt: item.title.updatedAt,
+        latestChapter: hideChapters ? undefined : item.chapters[0],
+        minChapter: hideChapters ? undefined : item.minChapter,
+        maxChapter: hideChapters ? undefined : item.maxChapter,
+      };
+    });
   }
 
   async addChapter(titleId: string, chapterId: Types.ObjectId): Promise<void> {
@@ -693,6 +713,14 @@ export class TitlesService {
   }
 
   async getChaptersCount(titleId: string): Promise<{ count: number }> {
+    const title = await this.titleModel
+      .findById(titleId)
+      .select('chaptersRemovedByCopyrightHolder')
+      .lean()
+      .exec();
+    if (title?.chaptersRemovedByCopyrightHolder) {
+      return { count: 0 };
+    }
     const cacheKey = `${CACHE_CHAPTERS_COUNT_PREFIX}:${titleId}`;
     const cached = (await this.cacheManager.get(cacheKey)) as { count: number } | undefined;
     if (cached) return cached;
@@ -763,6 +791,10 @@ export class TitlesService {
         select: '-pages',
       })
       .exec();
+
+    for (const t of titles) {
+      if (t.chaptersRemovedByCopyrightHolder) t.chapters = [];
+    }
 
     // Разделяем тайтлы на взрослые (18+) и обычные
     const adultTitles: TitleDocument[] = [];

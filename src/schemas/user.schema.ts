@@ -112,6 +112,13 @@ export class User {
     purchasedAt: Date;
   }[];
 
+  /** Избранные персонажи (отображаются в профиле) */
+  @Prop({
+    type: [{ type: Types.ObjectId, ref: 'Character' }],
+    default: [],
+  })
+  favoriteCharacters: Types.ObjectId[];
+
   /** Закладки по категориям: читаю, в планах, прочитано, избранное, брошено */
   @Prop({
     type: [

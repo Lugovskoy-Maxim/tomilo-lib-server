@@ -75,4 +75,9 @@ export class CreateTitleDto {
   @IsBoolean()
   @IsOptional()
   isPublished?: boolean;
+
+  /** Главы удалены по просьбе правообладателя — при true главы не возвращаются в API */
+  @IsBoolean()
+  @IsOptional()
+  chaptersRemovedByCopyrightHolder?: boolean;
 }
