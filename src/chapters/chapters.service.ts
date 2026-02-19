@@ -227,8 +227,11 @@ export class ChaptersService {
       throw new NotFoundException('Chapter not found');
     }
 
-    // Удаляем файлы главы
-    await this.filesService.deleteChapterPages(id);
+    // Удаляем файлы главы (новая и старая структура папок)
+    await this.filesService.deleteChapterPages(
+      id,
+      chapter.titleId?.toString(),
+    );
 
     // Удаляем главу из тайтла
     await this.titleModel.findByIdAndUpdate(chapter.titleId, {
@@ -506,6 +509,7 @@ export class ChaptersService {
       const pagePaths = await this.filesService.saveChapterPages(
         files,
         savedChapter.id.toString(),
+        String(titleId),
       );
       this.logger.log(
         `Сохранено ${pagePaths.length} страниц для главы ${savedChapter.id.toString()}`,
@@ -556,6 +560,7 @@ export class ChaptersService {
     const pagePaths = await this.filesService.saveChapterPages(
       files,
       chapterId,
+      String(chapter.titleId),
     );
     this.logger.log(
       `Добавлено ${pagePaths.length} страниц к главе ${chapterId}`,

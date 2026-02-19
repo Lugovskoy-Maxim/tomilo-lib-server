@@ -13,17 +13,18 @@ export class FilesService {
   async saveChapterPages(
     files: Express.Multer.File[],
     chapterId: string,
+    titleId: string,
   ): Promise<string[]> {
     this.logger.log(`=== НАЧАЛО saveChapterPages ===`);
     this.logger.log(`Получено файлов: ${files?.length || 0}`);
-    this.logger.log(`Chapter ID: ${chapterId}`);
+    this.logger.log(`Chapter ID: ${chapterId}, Title ID: ${titleId}`);
 
     if (!files || files.length === 0) {
       this.logger.error('Нет файлов для загрузки - выбрасываем исключение');
       throw new BadRequestException('Нет файлов для загрузки');
     }
 
-    const chapterDir = `chapters/${chapterId}`;
+    const chapterDir = `titles/${titleId}/chapters/${chapterId}`;
     const uploadPath = join('uploads', chapterDir);
     this.logger.log(`Путь для сохранения: ${uploadPath}`);
 
@@ -144,13 +145,26 @@ export class FilesService {
     }
   }
 
-  async deleteChapterPages(chapterId: string): Promise<void> {
-    const chapterDir = join('uploads', 'chapters', chapterId);
-
-    try {
-      await fs.rm(chapterDir, { recursive: true, force: true });
-    } catch (error) {
-      console.error(`Ошибка при удалении директории: ${error}`);
+  /**
+   * Удаляет файлы главы. Поддерживает старую структуру (chapters/id) и новую (titles/id/chapters/id).
+   * @param titleId — при указании удаляются обе возможные папки; без него — только chapters/chapterId (для старых/сиротских глав)
+   */
+  async deleteChapterPages(chapterId: string, titleId?: string): Promise<void> {
+    const dirsToRemove: string[] = [join('uploads', 'chapters', chapterId)];
+    if (titleId) {
+      dirsToRemove.unshift(
+        join('uploads', 'titles', titleId, 'chapters', chapterId),
+      );
+    }
+    for (const dir of dirsToRemove) {
+      try {
+        await fs.rm(dir, { recursive: true, force: true });
+        this.logger.log(`Удалена директория глав: ${dir}`);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+          this.logger.error(`Ошибка при удалении директории ${dir}: ${error}`);
+        }
+      }
     }
   }
   async saveUserAvatar(
@@ -287,6 +301,7 @@ export class FilesService {
     imageUrl: string,
     chapterId: string,
     pageNumber: number,
+    titleId: string,
     options?: {
       headers?: {
         Referer?: string;
@@ -299,7 +314,7 @@ export class FilesService {
   ): Promise<string> {
     this.logger.log(`=== НАЧАЛО downloadImageFromUrl ===`);
     this.logger.log(`URL: ${imageUrl}`);
-    this.logger.log(`Chapter ID: ${chapterId}`);
+    this.logger.log(`Chapter ID: ${chapterId}, Title ID: ${titleId}`);
     this.logger.log(`Page Number: ${pageNumber}`);
 
     try {
@@ -313,7 +328,7 @@ export class FilesService {
         },
       });
 
-      const chapterDir = `chapters/${chapterId}`;
+      const chapterDir = `titles/${titleId}/chapters/${chapterId}`;
       const uploadPath = join('uploads', chapterDir);
 
       // Создаем директорию для главы

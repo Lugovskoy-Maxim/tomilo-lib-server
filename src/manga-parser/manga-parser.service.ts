@@ -172,6 +172,7 @@ export class MangaParserService {
   private async downloadMangabuffChapterImages(
     chapter: ChapterInfo,
     chapterId: string,
+    titleId: string,
   ): Promise<string[]> {
     if (!chapter.url) {
       throw new BadRequestException('Chapter URL is required for downloading');
@@ -296,6 +297,7 @@ export class MangaParserService {
             imgUrl,
             chapterId,
             i + 1,
+            titleId,
             {
               // Добавляем заголовки для обхода возможных ограничений
               headers: {
@@ -328,6 +330,16 @@ export class MangaParserService {
                 alternativeUrl,
                 chapterId,
                 i + 1,
+                titleId,
+                {
+                  headers: {
+                    Referer: 'https://mangabuff.ru/',
+                    Accept: 'image/webp,image/apng,image/*,*/*;q=0.8',
+                    'Sec-Fetch-Dest': 'image',
+                    'Sec-Fetch-Mode': 'no-cors',
+                    'Sec-Fetch-Site': 'cross-site',
+                  },
+                },
               );
               pagePaths.push(altPagePath);
               this.logger.debug(
@@ -370,6 +382,7 @@ export class MangaParserService {
   private async downloadMangaShiChapterImages(
     chapter: ChapterInfo,
     chapterId: string,
+    titleId: string,
   ): Promise<string[]> {
     if (!chapter.url) {
       throw new BadRequestException('Chapter URL is required for downloading');
@@ -416,7 +429,8 @@ export class MangaParserService {
             imgUrl,
             chapterId,
             i + 1,
-            {}, // Добавляем пустой объект для опций, чтобы соответствовать сигнатуре метода
+            titleId,
+            {},
           );
           pagePaths.push(pagePath);
         } catch (imageError) {
@@ -447,7 +461,8 @@ export class MangaParserService {
   private async downloadChapterImages(
     chapter: ChapterInfo,
     chapterId: string,
-    domain: string = 'senkuro.me',
+    domain: string,
+    titleId: string,
   ): Promise<string[]> {
     if (!chapter.slug) {
       throw new BadRequestException('Chapter slug is required for downloading');
@@ -517,6 +532,7 @@ export class MangaParserService {
           imgUrl,
           chapterId,
           page.number,
+          titleId,
         );
         pagePaths.push(pagePath);
 
@@ -539,6 +555,7 @@ export class MangaParserService {
     chapter: ChapterInfo,
     chapterId: string,
     mangaSlug: string,
+    titleId: string,
   ): Promise<string[]> {
     if (!chapter.number) {
       throw new BadRequestException(
@@ -574,6 +591,7 @@ export class MangaParserService {
             imgUrl,
             chapterId,
             i + 1,
+            titleId,
             {
               headers: {
                 Referer: 'https://telemanga.me/',
@@ -705,16 +723,19 @@ export class MangaParserService {
                 chapter,
                 createdChapter._id.toString(),
                 domain,
+                createdTitle._id.toString(),
               );
             } else if (domain.includes('manga-shi.org')) {
               pagePaths = await this.downloadMangaShiChapterImages(
                 chapter,
                 createdChapter._id.toString(),
+                createdTitle._id.toString(),
               );
             } else if (domain.includes('mangabuff.ru')) {
               pagePaths = await this.downloadMangabuffChapterImages(
                 chapter,
                 createdChapter._id.toString(),
+                createdTitle._id.toString(),
               );
             } else if (domain.includes('mangahub.one')) {
               // MangaHub использует JavaScript для загрузки изображений
@@ -727,6 +748,7 @@ export class MangaParserService {
                 chapter,
                 createdChapter._id.toString(),
                 mangaSlug,
+                createdTitle._id.toString(),
               );
             } else {
               throw new BadRequestException(`Unsupported domain: ${domain}`);
@@ -828,16 +850,19 @@ export class MangaParserService {
                 chapter,
                 createdChapter._id.toString(),
                 domain,
+                titleId,
               );
             } else if (domain.includes('manga-shi.org')) {
               pagePaths = await this.downloadMangaShiChapterImages(
                 chapter,
                 createdChapter._id.toString(),
+                titleId,
               );
             } else if (domain.includes('mangabuff.ru')) {
               pagePaths = await this.downloadMangabuffChapterImages(
                 chapter,
                 createdChapter._id.toString(),
+                titleId,
               );
             } else if (domain.includes('mangahub.one')) {
               // MangaHub использует JavaScript для загрузки изображений
@@ -850,6 +875,7 @@ export class MangaParserService {
                 chapter,
                 createdChapter._id.toString(),
                 mangaSlug,
+                titleId,
               );
             } else {
               throw new BadRequestException(`Unsupported domain: ${domain}`);

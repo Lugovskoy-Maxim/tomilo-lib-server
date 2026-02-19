@@ -260,37 +260,55 @@ export class ParsingGateway {
           chapter: any,
           chapterId: string,
           domain: string,
+          titleId: string,
         ) =>
           wrapChapterDownload(chapter, () =>
-            originalDownloadChapterImages(chapter, chapterId, domain),
+            originalDownloadChapterImages(
+              chapter,
+              chapterId,
+              domain,
+              titleId,
+            ),
           );
 
         this.mangaParserService['downloadMangabuffChapterImages'] = async (
           chapter: any,
           chapterId: string,
+          titleId: string,
         ) =>
           wrapChapterDownload(chapter, () =>
-            originalDownloadMangabuffChapterImages(chapter, chapterId),
+            originalDownloadMangabuffChapterImages(
+              chapter,
+              chapterId,
+              titleId,
+            ),
           );
 
         this.mangaParserService['downloadMangaShiChapterImages'] = async (
           chapter: any,
           chapterId: string,
+          titleId: string,
         ) =>
           wrapChapterDownload(chapter, () =>
-            originalDownloadMangaShiChapterImages(chapter, chapterId),
+            originalDownloadMangaShiChapterImages(
+              chapter,
+              chapterId,
+              titleId,
+            ),
           );
 
         this.mangaParserService['downloadTelemangaChapterImages'] = async (
           chapter: any,
           chapterId: string,
           mangaSlug: string,
+          titleId: string,
         ) =>
           wrapChapterDownload(chapter, () =>
             originalDownloadTelemangaChapterImages(
               chapter,
               chapterId,
               mangaSlug,
+              titleId,
             ),
           );
 
@@ -386,6 +404,7 @@ export class ParsingGateway {
         chapter: any,
         chapterId: string,
         domain: string,
+        titleId: string,
       ) => {
         currentChapterIndex++;
         const chapterData: ChapterImportData = {
@@ -412,6 +431,7 @@ export class ParsingGateway {
             chapter,
             chapterId,
             domain,
+            titleId,
           );
 
           chapterData.status = 'completed';
@@ -458,6 +478,7 @@ export class ParsingGateway {
       this.mangaParserService['downloadMangabuffChapterImages'] = async (
         chapter: any,
         chapterId: string,
+        titleId: string,
       ) => {
         currentChapterIndex++;
         const chapterData: ChapterImportData = {
@@ -483,6 +504,7 @@ export class ParsingGateway {
           const result = await originalDownloadMangabuffChapterImages(
             chapter,
             chapterId,
+            titleId,
           );
 
           chapterData.status = 'completed';
@@ -529,6 +551,7 @@ export class ParsingGateway {
       this.mangaParserService['downloadMangaShiChapterImages'] = async (
         chapter: any,
         chapterId: string,
+        titleId: string,
       ) => {
         currentChapterIndex++;
         const chapterData: ChapterImportData = {
@@ -554,6 +577,7 @@ export class ParsingGateway {
           const result = await originalDownloadMangaShiChapterImages(
             chapter,
             chapterId,
+            titleId,
           );
 
           chapterData.status = 'completed';

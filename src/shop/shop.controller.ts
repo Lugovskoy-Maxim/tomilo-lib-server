@@ -183,10 +183,10 @@ export class ShopController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @UseInterceptors(
-    FileUploadInterceptor.create('image', {
+    FileUploadInterceptor.create('file', {
       destination: './uploads/decorations',
       fileTypes: /\/(jpg|jpeg|png|webp|gif)$/,
-      fileSize: 5 * 1024 * 1024, // 5MB
+      fileSize: 20 * 1024 * 1024, // 20MB (GIF can be large)
       filenamePrefix: 'decoration',
     }),
   )

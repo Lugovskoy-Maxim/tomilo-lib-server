@@ -372,10 +372,13 @@ export class TitlesService {
       throw new NotFoundException('Title not found');
     }
 
-    // Delete chapter pages for each chapter
+    // Delete chapter pages for each chapter (новая и старая структура папок)
     if (title.chapters && title.chapters.length > 0) {
       for (const chapter of title.chapters) {
-        await this.filesService.deleteChapterPages(chapter._id.toString());
+        await this.filesService.deleteChapterPages(
+          chapter._id.toString(),
+          id,
+        );
       }
     }
 
