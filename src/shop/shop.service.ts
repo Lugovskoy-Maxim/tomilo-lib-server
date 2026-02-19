@@ -326,6 +326,61 @@ export class ShopService {
     return decoration;
   }
 
+  // Admin: update decoration by id (searches avatar, background, card)
+  async updateDecoration(
+    id: string,
+    updates: Partial<{
+      name: string;
+      imageUrl: string;
+      price: number;
+      rarity: 'common' | 'rare' | 'epic' | 'legendary';
+      description: string;
+      isAvailable: boolean;
+    }>,
+  ) {
+    const oid = new Types.ObjectId(id);
+    let decoration:
+      | AvatarDecorationDocument
+      | BackgroundDecorationDocument
+      | CardDecorationDocument
+      | null = await this.avatarDecorationModel.findById(oid);
+    let type: 'avatar' | 'background' | 'card' = 'avatar';
+    if (!decoration) {
+      decoration = await this.backgroundDecorationModel.findById(oid);
+      type = 'background';
+    }
+    if (!decoration) {
+      decoration = await this.cardDecorationModel.findById(oid);
+      type = 'card';
+    }
+    if (!decoration) {
+      throw new NotFoundException('Decoration not found');
+    }
+    if (updates.name !== undefined) decoration.name = updates.name;
+    if (updates.imageUrl !== undefined) decoration.imageUrl = updates.imageUrl;
+    if (updates.price !== undefined) decoration.price = updates.price;
+    if (updates.rarity !== undefined) decoration.rarity = updates.rarity;
+    if (updates.description !== undefined)
+      decoration.description = updates.description;
+    if (updates.isAvailable !== undefined)
+      decoration.isAvailable = updates.isAvailable;
+    await decoration.save();
+
+    await this.cacheManager.set('shop:decorations:all', undefined as unknown);
+    await this.cacheManager.set(
+      `shop:decorations:${type}`,
+      undefined as unknown,
+    );
+    if (typeof this.cacheManager.del === 'function') {
+      await this.cacheManager.del('shop:decorations:all');
+      await this.cacheManager.del(`shop:decorations:${type}`);
+    }
+    this.logger.log(
+      `Admin updated ${type} decoration: ${decoration._id}`,
+    );
+    return decoration;
+  }
+
   // Get user's owned decorations (bulk fetch to avoid N+1 queries)
   async getUserDecorations(userId: string) {
     this.logger.log(`Fetching owned decorations for user ${userId}`);

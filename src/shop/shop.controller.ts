@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Param,
   Body,
@@ -174,6 +175,51 @@ export class ShopController {
         timestamp: new Date().toISOString(),
         path: `shop/equip/${type}/${decorationId}`,
         method: 'PUT',
+      };
+    }
+  }
+
+  // Admin: update decoration by id (avatar, background, or card)
+  @Patch('admin/decorations/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async updateDecoration(
+    @Param('id') id: string,
+    @Body()
+    body: {
+      name?: string;
+      imageUrl?: string;
+      price?: number;
+      rarity?: 'common' | 'rare' | 'epic' | 'legendary';
+      description?: string;
+      isAvailable?: boolean;
+    },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.shopService.updateDecoration(id, {
+        name: body.name,
+        imageUrl: body.imageUrl,
+        price: body.price !== undefined ? Number(body.price) : undefined,
+        rarity: body.rarity,
+        description: body.description,
+        isAvailable: body.isAvailable,
+      });
+      return {
+        success: true,
+        data,
+        message: 'Decoration updated successfully',
+        timestamp: new Date().toISOString(),
+        path: `shop/admin/decorations/${id}`,
+        method: 'PATCH',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to update decoration',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `shop/admin/decorations/${id}`,
+        method: 'PATCH',
       };
     }
   }
