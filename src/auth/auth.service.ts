@@ -180,8 +180,16 @@ export class AuthService {
       { upsert: true, new: true },
     );
 
-    await this.emailService.sendEmailVerificationCode(email, username, code);
-    this.logger.log(`Registration code sent to ${email}`);
+    this.emailService.sendEmailVerificationCodeBackground(
+      email,
+      username,
+      code,
+      (err) =>
+        this.logger.error(
+          `Failed to send registration code to ${email}: ${err?.message ?? err}`,
+        ),
+    );
+    this.logger.log(`Registration code queued for ${email}`);
     return { message: 'Код отправлен на email' };
   }
 

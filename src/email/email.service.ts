@@ -19,6 +19,9 @@ export class EmailService {
         user: this.configService.get('YANDEX_EMAIL'),
         pass: this.configService.get('YANDEX_PASSWORD'),
       },
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
     });
   }
 
@@ -42,6 +45,18 @@ export class EmailService {
     const subject = 'Код подтверждения регистрации — Tomilo Lib';
     const html = emailVerificationCodeTemplate(username, code);
     await this.sendEmail(to, subject, html);
+  }
+
+  /** Отправка кода в фоне, без ожидания (ответ API возвращается сразу). */
+  sendEmailVerificationCodeBackground(
+    to: string,
+    username: string,
+    code: string,
+    onError?: (err: Error) => void,
+  ): void {
+    this.sendEmailVerificationCode(to, username, code).catch((err) => {
+      onError?.(err);
+    });
   }
 
   async sendPasswordReset(to: string, resetToken: string) {
