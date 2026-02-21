@@ -329,19 +329,26 @@ export class AuthController {
     }
   }
 
-  /** Привязать ВКонтакте к текущему аккаунту (JWT). Тело: { code } или при конфликте { code, resolve: 'use_existing'|'link_here'|'merge' }. */
+  /** Привязать ВКонтакте к текущему аккаунту (JWT). Тело: { code [, redirect_uri ] } или при конфликте { code, resolve: 'use_existing'|'link_here'|'merge' }. */
   @UseGuards(JwtAuthGuard)
   @Post('link/vk')
   @HttpCode(HttpStatus.OK)
   async linkVk(
     @Request() req,
     @Response({ passthrough: true }) res: express.Response,
-    @Body() body: { code: string; resolve?: 'use_existing' | 'link_here' | 'merge' },
+    @Body() body: {
+      code: string;
+      redirect_uri?: string;
+      resolve?: 'use_existing' | 'link_here' | 'merge';
+    },
   ): Promise<ApiResponseDto<any>> {
     if (!body?.code) {
       throw new UnauthorizedException('Authorization code is required');
     }
-    const providerId = await this.authService.getVkProviderId(body.code);
+    const providerId = await this.authService.getVkProviderId(
+      body.code,
+      body.redirect_uri,
+    );
     const userId = String(req.user?.userId ?? req.user?._id ?? '');
 
     if (body.resolve) {

@@ -431,20 +431,39 @@ export class AuthService {
 
   /**
    * Получить providerId ВКонтакте по коду авторизации (для привязки аккаунта без учёта email).
+   * redirect_uri должен совпадать с тем, что использовался при получении code.
    */
-  async getVkProviderId(code: string): Promise<string> {
-    const tokenResponse = await axios.get(
-      `https://oauth.vk.com/access_token?` +
-        `client_id=${process.env.VK_CLIENT_ID || ''}&` +
-        `client_secret=${process.env.VK_CLIENT_SECRET || ''}&` +
-        `redirect_uri=${process.env.VK_REDIRECT_URI || ''}&` +
-        `code=${code}`,
-    );
-    const vkUserId = tokenResponse.data.user_id;
-    if (!vkUserId) {
-      throw new UnauthorizedException('Invalid VK authorization code');
+  async getVkProviderId(
+    code: string,
+    redirectUri?: string,
+  ): Promise<string> {
+    const redirect =
+      redirectUri?.trim() || process.env.VK_REDIRECT_URI || '';
+    try {
+      const tokenResponse = await axios.get(
+        `https://oauth.vk.com/access_token?` +
+          `client_id=${encodeURIComponent(process.env.VK_CLIENT_ID || '')}&` +
+          `client_secret=${encodeURIComponent(process.env.VK_CLIENT_SECRET || '')}&` +
+          `redirect_uri=${encodeURIComponent(redirect)}&` +
+          `code=${encodeURIComponent(code)}`,
+      );
+      const vkUserId = tokenResponse.data.user_id;
+      if (!vkUserId) {
+        throw new UnauthorizedException('Invalid VK authorization code');
+      }
+      return String(vkUserId);
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedException) throw err;
+      const msg =
+        axios.isAxiosError(err) && err.response?.data?.error_description
+          ? String(err.response.data.error_description)
+          : axios.isAxiosError(err) && err.response?.data?.error
+            ? `VK error: ${String(err.response.data.error)}`
+            : err instanceof Error
+              ? err.message
+              : 'VK token exchange failed';
+      throw new UnauthorizedException(msg);
     }
-    return String(vkUserId);
   }
 
   /**
