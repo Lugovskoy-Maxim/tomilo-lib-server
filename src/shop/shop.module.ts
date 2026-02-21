@@ -18,6 +18,10 @@ import {
   CardDecoration,
   CardDecorationSchema,
 } from '../schemas/card-decoration.schema';
+import {
+  AvatarFrameDecoration,
+  AvatarFrameDecorationSchema,
+} from '../schemas/avatar-frame-decoration.schema';
 import { UsersModule } from '../users/users.module';
 
 const DECORATIONS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -27,6 +31,10 @@ const DECORATIONS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
     CacheModule.register({ ttl: DECORATIONS_CACHE_TTL_MS }),
     MongooseModule.forFeature([
       { name: AvatarDecoration.name, schema: AvatarDecorationSchema },
+      {
+        name: AvatarFrameDecoration.name,
+        schema: AvatarFrameDecorationSchema,
+      },
       { name: BackgroundDecoration.name, schema: BackgroundDecorationSchema },
       { name: CardDecoration.name, schema: CardDecorationSchema },
     ]),

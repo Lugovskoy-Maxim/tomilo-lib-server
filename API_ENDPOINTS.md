@@ -91,8 +91,8 @@ Authorization: Bearer <jwt_token>
 - `GET /search` - Search titles
 
 ### Shop
-- `GET /shop/decorations` - Get all available decorations (avatar, background, card)
-- `GET /shop/decorations/:type` - Get decorations by type (`avatar` | `background` | `card`)
+- `GET /shop/decorations` - Get all available decorations (avatar, frame, background, card)
+- `GET /shop/decorations/:type` - Get decorations by type (`avatar` | `frame` | `background` | `card`)
 - `GET /shop/profile/decorations` - Get current user's owned and equipped decorations (auth required)
 - `POST /shop/purchase/:type/:decorationId` - Purchase decoration (auth required)
 - `PUT /shop/equip/:type/:decorationId` - Equip owned decoration (auth required)

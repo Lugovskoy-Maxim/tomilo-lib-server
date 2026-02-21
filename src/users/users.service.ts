@@ -239,6 +239,7 @@ export class UsersService {
       .populate('readingHistory.titleId')
       .populate('readingHistory.chapters.chapterId')
       .populate('equippedDecorations.avatar')
+      .populate('equippedDecorations.frame')
       .populate('equippedDecorations.background')
       .populate('equippedDecorations.card');
 
@@ -267,6 +268,7 @@ export class UsersService {
       .select('-password -readingHistory')
       .populate('bookmarks.titleId')
       .populate('equippedDecorations.avatar')
+      .populate('equippedDecorations.frame')
       .populate('equippedDecorations.background')
       .populate('equippedDecorations.card');
 
@@ -1583,6 +1585,7 @@ export class UsersService {
       .populate('readingHistory.titleId')
       .populate('readingHistory.chapters.chapterId')
       .populate('equippedDecorations.avatar')
+      .populate('equippedDecorations.frame')
       .populate('equippedDecorations.background')
       .populate('equippedDecorations.card')
       .lean()

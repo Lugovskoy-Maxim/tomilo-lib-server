@@ -21,6 +21,7 @@ import { ApiResponseDto } from '../common/dto/api-response.dto';
 
 export enum DecorationType {
   avatar = 'avatar',
+  frame = 'frame',
   background = 'background',
   card = 'card',
 }

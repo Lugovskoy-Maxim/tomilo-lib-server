@@ -73,6 +73,11 @@ export class User {
         ref: 'AvatarDecoration',
         default: null,
       },
+      frame: {
+        type: Types.ObjectId,
+        ref: 'AvatarFrameDecoration',
+        default: null,
+      },
       background: {
         type: Types.ObjectId,
         ref: 'BackgroundDecoration',
@@ -84,10 +89,11 @@ export class User {
         default: null,
       },
     },
-    default: { avatar: null, background: null, card: null },
+    default: { avatar: null, frame: null, background: null, card: null },
   })
   equippedDecorations: {
     avatar: Types.ObjectId | null;
+    frame: Types.ObjectId | null;
     background: Types.ObjectId | null;
     card: Types.ObjectId | null;
   };
@@ -97,7 +103,7 @@ export class User {
       {
         decorationType: {
           type: String,
-          enum: ['avatar', 'background', 'card'],
+          enum: ['avatar', 'frame', 'background', 'card'],
           required: true,
         },
         decorationId: { type: Types.ObjectId, required: true },

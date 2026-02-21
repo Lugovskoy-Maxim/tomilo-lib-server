@@ -19,6 +19,10 @@ import {
   CardDecoration,
   CardDecorationDocument,
 } from '../schemas/card-decoration.schema';
+import {
+  AvatarFrameDecoration,
+  AvatarFrameDecorationDocument,
+} from '../schemas/avatar-frame-decoration.schema';
 import { UsersService } from '../users/users.service';
 import { LoggerService } from '../common/logger/logger.service';
 
@@ -29,6 +33,8 @@ export class ShopService {
   constructor(
     @InjectModel(AvatarDecoration.name)
     private avatarDecorationModel: Model<AvatarDecorationDocument>,
+    @InjectModel(AvatarFrameDecoration.name)
+    private avatarFrameDecorationModel: Model<AvatarFrameDecorationDocument>,
     @InjectModel(BackgroundDecoration.name)
     private backgroundDecorationModel: Model<BackgroundDecorationDocument>,
     @InjectModel(CardDecoration.name)
@@ -52,14 +58,16 @@ export class ShopService {
 
     this.logger.log('Fetching all available decorations');
 
-    const [avatars, backgrounds, cards] = await Promise.all([
+    const [avatars, frames, backgrounds, cards] = await Promise.all([
       this.avatarDecorationModel.find({ isAvailable: true }),
+      this.avatarFrameDecorationModel.find({ isAvailable: true }),
       this.backgroundDecorationModel.find({ isAvailable: true }),
       this.cardDecorationModel.find({ isAvailable: true }),
     ]);
 
     const result = {
       avatars,
+      frames,
       backgrounds,
       cards,
     };
@@ -68,7 +76,9 @@ export class ShopService {
   }
 
   // Get decorations by type
-  async getDecorationsByType(type: 'avatar' | 'background' | 'card') {
+  async getDecorationsByType(
+    type: 'avatar' | 'frame' | 'background' | 'card',
+  ) {
     const cacheKey = `shop:decorations:${type}`;
     const cached = await this.cacheManager.get(cacheKey);
     if (cached) return cached as Awaited<ReturnType<ShopService['getDecorationsByType']>>;
@@ -79,6 +89,11 @@ export class ShopService {
     switch (type) {
       case 'avatar':
         decorations = await this.avatarDecorationModel.find({
+          isAvailable: true,
+        });
+        break;
+      case 'frame':
+        decorations = await this.avatarFrameDecorationModel.find({
           isAvailable: true,
         });
         break;
@@ -104,7 +119,7 @@ export class ShopService {
   // Purchase decoration
   async purchaseDecoration(
     userId: string,
-    decorationType: 'avatar' | 'background' | 'card',
+    decorationType: 'avatar' | 'frame' | 'background' | 'card',
     decorationId: string,
   ) {
     this.logger.log(
@@ -149,6 +164,16 @@ export class ShopService {
         if (!decoration || !decoration.isAvailable) {
           throw new NotFoundException(
             'Background decoration not found or not available',
+          );
+        }
+        price = decoration.price;
+        break;
+      case 'frame':
+        decoration =
+          await this.avatarFrameDecorationModel.findById(decorationId);
+        if (!decoration || !decoration.isAvailable) {
+          throw new NotFoundException(
+            'Avatar frame decoration not found or not available',
           );
         }
         price = decoration.price;
@@ -204,7 +229,7 @@ export class ShopService {
   // Equip decoration
   async equipDecoration(
     userId: string,
-    decorationType: 'avatar' | 'background' | 'card',
+    decorationType: 'avatar' | 'frame' | 'background' | 'card',
     decorationId: string,
   ) {
     this.logger.log(
@@ -251,7 +276,7 @@ export class ShopService {
   // Unequip decoration
   async unequipDecoration(
     userId: string,
-    decorationType: 'avatar' | 'background' | 'card',
+    decorationType: 'avatar' | 'frame' | 'background' | 'card',
   ) {
     this.logger.log(`User ${userId} unequipping ${decorationType} decoration`);
 
@@ -279,7 +304,7 @@ export class ShopService {
 
   // Admin: upload new decoration
   async uploadDecoration(
-    type: 'avatar' | 'background' | 'card',
+    type: 'avatar' | 'frame' | 'background' | 'card',
     file: Express.Multer.File,
     payload: {
       name: string;
@@ -309,6 +334,9 @@ export class ShopService {
       case 'avatar':
         decoration = await this.avatarDecorationModel.create(doc);
         break;
+      case 'frame':
+        decoration = await this.avatarFrameDecorationModel.create(doc);
+        break;
       case 'background':
         decoration = await this.backgroundDecorationModel.create(doc);
         break;
@@ -332,7 +360,7 @@ export class ShopService {
     return decoration;
   }
 
-  // Admin: update decoration by id (searches avatar, background, card)
+  // Admin: update decoration by id (searches avatar, frame, background, card)
   async updateDecoration(
     id: string,
     updates: Partial<{
@@ -347,10 +375,15 @@ export class ShopService {
     const oid = new Types.ObjectId(id);
     let decoration:
       | AvatarDecorationDocument
+      | AvatarFrameDecorationDocument
       | BackgroundDecorationDocument
       | CardDecorationDocument
       | null = await this.avatarDecorationModel.findById(oid);
-    let type: 'avatar' | 'background' | 'card' = 'avatar';
+    let type: 'avatar' | 'frame' | 'background' | 'card' = 'avatar';
+    if (!decoration) {
+      decoration = await this.avatarFrameDecorationModel.findById(oid);
+      type = 'frame';
+    }
     if (!decoration) {
       decoration = await this.backgroundDecorationModel.findById(oid);
       type = 'background';
@@ -396,6 +429,9 @@ export class ShopService {
     const avatarIds = user.ownedDecorations
       .filter((o) => o.decorationType === 'avatar')
       .map((o) => o.decorationId);
+    const frameIds = user.ownedDecorations
+      .filter((o) => o.decorationType === 'frame')
+      .map((o) => o.decorationId);
     const backgroundIds = user.ownedDecorations
       .filter((o) => o.decorationType === 'background')
       .map((o) => o.decorationId);
@@ -403,9 +439,12 @@ export class ShopService {
       .filter((o) => o.decorationType === 'card')
       .map((o) => o.decorationId);
 
-    const [avatars, backgrounds, cards] = await Promise.all([
+    const [avatars, frames, backgrounds, cards] = await Promise.all([
       avatarIds.length > 0
         ? this.avatarDecorationModel.find({ _id: { $in: avatarIds } })
+        : [],
+      frameIds.length > 0
+        ? this.avatarFrameDecorationModel.find({ _id: { $in: frameIds } })
         : [],
       backgroundIds.length > 0
         ? this.backgroundDecorationModel.find({ _id: { $in: backgroundIds } })
@@ -419,6 +458,12 @@ export class ShopService {
       (avatars as AvatarDecorationDocument[]).map((a) => [
         a._id.toString(),
         a,
+      ]),
+    );
+    const frameMap = new Map<string, AvatarFrameDecorationDocument>(
+      (frames as AvatarFrameDecorationDocument[]).map((f) => [
+        f._id.toString(),
+        f,
       ]),
     );
     const backgroundMap = new Map<string, BackgroundDecorationDocument>(
@@ -437,6 +482,16 @@ export class ShopService {
         const avatar = avatarMap.get(owned.decorationId.toString());
         return avatar
           ? { ...avatar.toObject(), purchasedAt: owned.purchasedAt }
+          : null;
+      })
+      .filter(Boolean);
+
+    const ownedFrames = user.ownedDecorations
+      .filter((o) => o.decorationType === 'frame')
+      .map((owned) => {
+        const frame = frameMap.get(owned.decorationId.toString());
+        return frame
+          ? { ...frame.toObject(), purchasedAt: owned.purchasedAt }
           : null;
       })
       .filter(Boolean);
@@ -463,6 +518,7 @@ export class ShopService {
 
     return {
       ownedAvatars,
+      ownedFrames,
       ownedBackgrounds,
       ownedCards,
       equippedDecorations: user.equippedDecorations,

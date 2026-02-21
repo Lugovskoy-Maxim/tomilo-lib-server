@@ -63,6 +63,7 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   equippedDecorations?: {
     avatar: Types.ObjectId | null;
+    frame: Types.ObjectId | null;
     background: Types.ObjectId | null;
     card: Types.ObjectId | null;
   };
