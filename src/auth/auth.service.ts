@@ -144,7 +144,7 @@ export class AuthService {
     });
     if (existing) {
       throw new ConflictException(
-        'User with this email or username already exists',
+        'Этот email или имя пользователя уже заняты. Если у вас есть аккаунт — войдите.',
       );
     }
 
@@ -227,7 +227,7 @@ export class AuthService {
     if (existing) {
       await this.pendingRegistrationModel.deleteOne({ email });
       throw new ConflictException(
-        'User with this email or username already exists',
+        'Этот email или имя пользователя уже заняты. Если у вас есть аккаунт — войдите.',
       );
     }
 
