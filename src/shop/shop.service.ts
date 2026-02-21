@@ -468,7 +468,8 @@ export class ShopService {
     if (updates.isAvailable !== undefined)
       decoration.isAvailable = updates.isAvailable;
     if (updates.quantity !== undefined)
-      decoration.quantity = updates.quantity;
+      decoration.quantity =
+        updates.quantity === null ? undefined : updates.quantity;
     await decoration.save();
 
     await this.cacheManager.set('shop:decorations:all', undefined as unknown);
@@ -582,12 +583,53 @@ export class ShopService {
       })
       .filter(Boolean);
 
+    const equippedFrameId = user.equippedDecorations?.frame?.toString() ?? null;
+    const equippedAvatarId = user.equippedDecorations?.avatar?.toString() ?? null;
+    const equippedBackgroundId =
+      user.equippedDecorations?.background?.toString() ?? null;
+    const equippedCardId = user.equippedDecorations?.card?.toString() ?? null;
+
+    const toDecorationItem = (
+      type: 'avatar' | 'frame' | 'background' | 'card',
+      doc: { _id: Types.ObjectId; imageUrl?: string },
+    ) => {
+      const id = doc._id.toString();
+      const equipped =
+        (type === 'frame' && id === equippedFrameId) ||
+        (type === 'avatar' && id === equippedAvatarId) ||
+        (type === 'background' && id === equippedBackgroundId) ||
+        (type === 'card' && id === equippedCardId);
+      return {
+        id,
+        type,
+        imageUrl: doc.imageUrl ?? '',
+        isEquipped: equipped,
+      };
+    };
+
+    const decorations = [
+      ...(ownedAvatars as Array<{ _id: Types.ObjectId; imageUrl?: string }>).map(
+        (d) => toDecorationItem('avatar', d),
+      ),
+      ...(ownedFrames as Array<{ _id: Types.ObjectId; imageUrl?: string }>).map(
+        (d) => toDecorationItem('frame', d),
+      ),
+      ...(ownedBackgrounds as Array<{
+        _id: Types.ObjectId;
+        imageUrl?: string;
+      }>).map((d) => toDecorationItem('background', d)),
+      ...(ownedCards as Array<{ _id: Types.ObjectId; imageUrl?: string }>).map(
+        (d) => toDecorationItem('card', d),
+      ),
+    ];
+
     return {
       ownedAvatars,
       ownedFrames,
       ownedBackgrounds,
       ownedCards,
       equippedDecorations: user.equippedDecorations,
+      decorations,
     };
   }
 }

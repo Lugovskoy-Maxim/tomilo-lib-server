@@ -93,7 +93,7 @@ Authorization: Bearer <jwt_token>
 ### Shop
 - `GET /shop/decorations` - Get all available decorations (avatar, frame, background, card)
 - `GET /shop/decorations/:type` - Get decorations by type (`avatar` | `frame` | `background` | `card`)
-- `GET /shop/profile/decorations` - Get current user's owned and equipped decorations (auth required)
+- `GET /shop/profile/decorations` - Get current user's owned and equipped decorations (auth required). Response includes `decorations` array with `id`, `type`, `imageUrl`, `isEquipped` for use by the client (e.g. resolving frame/avatar URL by ID).
 - `POST /shop/purchase/:type/:decorationId` - Purchase decoration (auth required)
 - `PUT /shop/equip/:type/:decorationId` - Equip owned decoration (auth required)
 - `DELETE /shop/equip/:type` - Unequip decoration by type (auth required)

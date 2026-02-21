@@ -85,10 +85,19 @@ export class CommentsService {
       query.entityId = new Types.ObjectId(entityId);
     }
 
+    const authorPopulate = {
+      path: 'userId',
+      select: 'username avatar equippedDecorations',
+      populate: [
+        { path: 'equippedDecorations.frame', select: 'imageUrl' },
+        { path: 'equippedDecorations.avatar', select: 'imageUrl' },
+      ],
+    };
+
     const [comments, total] = await Promise.all([
       this.commentModel
         .find(query)
-        .populate('userId', 'username avatar')
+        .populate(authorPopulate)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -111,7 +120,7 @@ export class CommentsService {
             parentId: { $in: parentIds },
             isVisible: true,
           })
-          .populate('userId', 'username avatar')
+          .populate(authorPopulate)
           .sort({ createdAt: 1 })
           .lean();
 
@@ -165,7 +174,14 @@ export class CommentsService {
   async findOne(id: string): Promise<CommentDocument> {
     const comment = await this.commentModel
       .findById(id)
-      .populate('userId', 'username avatar')
+      .populate({
+        path: 'userId',
+        select: 'username avatar equippedDecorations',
+        populate: [
+          { path: 'equippedDecorations.frame', select: 'imageUrl' },
+          { path: 'equippedDecorations.avatar', select: 'imageUrl' },
+        ],
+      })
       .populate('parentId')
       .exec();
 
