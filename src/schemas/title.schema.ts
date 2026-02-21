@@ -68,14 +68,30 @@ export class Title {
   @Prop({ default: 0 })
   totalChapters: number;
 
-  @Prop([Number])
-  ratings: number[];
+  /** Оценки пользователей: один пользователь — одна оценка на тайтл (при повторной — обновляется) */
+  @Prop({
+    type: [
+      {
+        userId: { type: Types.ObjectId, ref: 'User', required: true },
+        rating: { type: Number, required: true, min: 0, max: 10 },
+      },
+    ],
+    default: [],
+  })
+  ratings: { userId: Types.ObjectId; rating: number }[];
 
   @Prop({ default: 0 })
   totalRatings: number;
 
   @Prop({ default: 0 })
   averageRating: number;
+
+  /** Сохранённые сводки старых оценок (массив чисел до миграции), чтобы не обнулять рейтинг */
+  @Prop({ default: 0 })
+  legacyRatingCount: number;
+
+  @Prop({ default: 0 })
+  legacyRatingSum: number;
 
   @Prop({ min: 1900, max: new Date().getFullYear() })
   releaseYear: number;
@@ -106,5 +122,5 @@ TitleSchema.index({ name: 'text', altNames: 'text', description: 'text' });
 TitleSchema.index({ slug: 1 });
 TitleSchema.index({ genres: 1 });
 TitleSchema.index({ status: 1 });
-TitleSchema.index({ rating: -1 });
+TitleSchema.index({ averageRating: -1 });
 TitleSchema.index({ views: -1 });

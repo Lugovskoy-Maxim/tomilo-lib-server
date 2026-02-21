@@ -10,6 +10,7 @@ import {
   Comment,
   CommentDocument,
   CommentEntityType,
+  ALLOWED_REACTION_EMOJIS,
 } from '../schemas/comment.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
@@ -87,7 +88,7 @@ export class CommentsService {
 
     const authorPopulate = {
       path: 'userId',
-      select: 'username avatar equippedDecorations',
+      select: 'username avatar role equippedDecorations',
       populate: [
         { path: 'equippedDecorations.frame', select: 'imageUrl' },
         { path: 'equippedDecorations.avatar', select: 'imageUrl' },
@@ -156,11 +157,16 @@ export class CommentsService {
         comment.replies = repliesMap.get(comment._id.toString()) || [];
       });
     } else {
-      // Если replies не запрашиваются, инициализируем пустой массив
       comments.forEach((comment: any) => {
         comment.replies = [];
       });
     }
+
+    const mapReactionsRecursive = (c: any) => {
+      this.mapCommentReactions(c);
+      (c.replies || []).forEach(mapReactionsRecursive);
+    };
+    comments.forEach(mapReactionsRecursive);
 
     return {
       comments,
@@ -176,7 +182,7 @@ export class CommentsService {
       .findById(id)
       .populate({
         path: 'userId',
-        select: 'username avatar equippedDecorations',
+        select: 'username avatar role equippedDecorations',
         populate: [
           { path: 'equippedDecorations.frame', select: 'imageUrl' },
           { path: 'equippedDecorations.avatar', select: 'imageUrl' },
@@ -189,7 +195,9 @@ export class CommentsService {
       throw new NotFoundException('Comment not found');
     }
 
-    return comment;
+    const lean = comment.toObject ? comment.toObject() : comment;
+    this.mapCommentReactions(lean);
+    return lean as CommentDocument;
   }
 
   async update(
@@ -230,91 +238,123 @@ export class CommentsService {
     await comment.save();
   }
 
-  async likeComment(id: string, userId: string): Promise<CommentDocument> {
-    const comment = await this.commentModel.findById(id);
+  /**
+   * Реакции как в Telegram: один пользователь может поставить несколько эмодзи.
+   * Переключение: если уже поставил этот эмодзи — снимаем, иначе — добавляем.
+   */
+  async toggleReaction(
+    id: string,
+    userId: string,
+    emoji: string,
+  ): Promise<CommentDocument> {
+    if (!ALLOWED_REACTION_EMOJIS.includes(emoji as any)) {
+      throw new BadRequestException(
+        `Invalid emoji. Allowed: ${ALLOWED_REACTION_EMOJIS.join(', ')}`,
+      );
+    }
 
+    const comment = await this.commentModel.findById(id);
     if (!comment) {
       throw new NotFoundException('Comment not found');
     }
 
     const userIdObj = new Types.ObjectId(userId);
-    const hasLiked = comment.likedBy.some((id) => id.toString() === userId);
-    const hasDisliked = comment.dislikedBy.some(
-      (id) => id.toString() === userId,
-    );
+    const reactions = Array.isArray(comment.reactions) ? comment.reactions : [];
+    let entry = reactions.find((r) => r.emoji === emoji);
 
-    if (hasLiked) {
-      // Unlike
-      comment.likedBy = comment.likedBy.filter(
-        (id) => id.toString() !== userId,
-      );
-      comment.likes = Math.max(0, comment.likes - 1);
+    if (!entry) {
+      entry = { emoji, userIds: [] };
+      reactions.push(entry);
+    }
+
+    const idx = entry.userIds.findIndex((oid) => oid.toString() === userId);
+    if (idx >= 0) {
+      entry.userIds.splice(idx, 1);
     } else {
-      // Like
-      comment.likedBy.push(userIdObj);
-      comment.likes += 1;
-
-      // Remove dislike if exists
-      if (hasDisliked) {
-        comment.dislikedBy = comment.dislikedBy.filter(
-          (id) => id.toString() !== userId,
-        );
-        comment.dislikes = Math.max(0, comment.dislikes - 1);
-      }
+      entry.userIds.push(userIdObj);
     }
-
-    return comment.save();
-  }
-
-  async dislikeComment(id: string, userId: string): Promise<CommentDocument> {
-    const comment = await this.commentModel.findById(id);
-
-    if (!comment) {
-      throw new NotFoundException('Comment not found');
-    }
-
-    const userIdObj = new Types.ObjectId(userId);
-    const hasDisliked = comment.dislikedBy.some(
-      (id) => id.toString() === userId,
-    );
-    const hasLiked = comment.likedBy.some((id) => id.toString() === userId);
-
-    if (hasDisliked) {
-      // Remove dislike
-      comment.dislikedBy = comment.dislikedBy.filter(
-        (id) => id.toString() !== userId,
-      );
-      comment.dislikes = Math.max(0, comment.dislikes - 1);
-    } else {
-      // Dislike
-      comment.dislikedBy.push(userIdObj);
-      comment.dislikes += 1;
-
-      // Remove like if exists
-      if (hasLiked) {
-        comment.likedBy = comment.likedBy.filter(
-          (id) => id.toString() !== userId,
-        );
-        comment.likes = Math.max(0, comment.likes - 1);
-      }
-    }
-
+    comment.reactions = reactions.filter((r) => (r.userIds?.length ?? 0) > 0);
     return comment.save();
   }
 
   async getReactionsCount(
     id: string,
-  ): Promise<{ likes: number; dislikes: number }> {
-    const comment = await this.commentModel.findById(id);
-
+  ): Promise<{ reactions: { emoji: string; count: number }[] }> {
+    const comment = await this.commentModel.findById(id).lean();
     if (!comment) {
       throw new NotFoundException('Comment not found');
     }
-
+    const list = this.normalizeReactions(comment as any);
     return {
-      likes: comment.likes,
-      dislikes: comment.dislikes,
+      reactions: list.map((r) => ({ emoji: r.emoji, count: r.count })),
     };
+  }
+
+  /**
+   * Собирает реакции из нового поля и из legacy likedBy/dislikedBy для обратной совместимости.
+   */
+  normalizeReactions(comment: {
+    reactions?: { emoji: string; userIds?: Types.ObjectId[] }[];
+    likedBy?: Types.ObjectId[];
+    dislikedBy?: Types.ObjectId[];
+    likes?: number;
+    dislikes?: number;
+  }): { emoji: string; count: number; userIds: Types.ObjectId[] }[] {
+    const out: { emoji: string; count: number; userIds: Types.ObjectId[] }[] = [];
+    const seen = new Set<string>();
+
+    for (const r of comment.reactions || []) {
+      const userIds = r.userIds || [];
+      if (userIds.length > 0) {
+        out.push({ emoji: r.emoji, count: userIds.length, userIds });
+        seen.add(r.emoji);
+      }
+    }
+    if (
+      (comment.likedBy?.length ?? 0) > 0 &&
+      !seen.has('👍')
+    ) {
+      out.push({
+        emoji: '👍',
+        count: comment.likes ?? comment.likedBy!.length,
+        userIds: comment.likedBy!,
+      });
+    }
+    if (
+      (comment.dislikedBy?.length ?? 0) > 0 &&
+      !seen.has('👎')
+    ) {
+      out.push({
+        emoji: '👎',
+        count: comment.dislikes ?? comment.dislikedBy!.length,
+        userIds: comment.dislikedBy!,
+      });
+    }
+    return out;
+  }
+
+  /** Добавляет к комментарию поле reactions и опционально myReactions для текущего пользователя */
+  mapCommentReactions(comment: any, currentUserId?: string): void {
+    const list = this.normalizeReactions(comment);
+    comment.reactions = list.map((r) => ({
+      emoji: r.emoji,
+      count: r.count,
+    }));
+    if (currentUserId && list.length > 0) {
+      comment.myReactions = list
+        .filter((r) =>
+          r.userIds.some((id) => id.toString() === currentUserId),
+        )
+        .map((r) => r.emoji);
+    }
+  }
+
+  async likeComment(id: string, userId: string): Promise<CommentDocument> {
+    return this.toggleReaction(id, userId, '👍');
+  }
+
+  async dislikeComment(id: string, userId: string): Promise<CommentDocument> {
+    return this.toggleReaction(id, userId, '👎');
   }
 
   private async validateEntity(

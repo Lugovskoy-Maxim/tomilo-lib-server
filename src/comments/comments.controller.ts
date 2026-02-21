@@ -22,8 +22,12 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
+import { ToggleReactionDto } from './dto/toggle-reaction.dto';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
-import { CommentEntityType } from '../schemas/comment.schema';
+import {
+  CommentEntityType,
+  ALLOWED_REACTION_EMOJIS,
+} from '../schemas/comment.schema';
 
 @Controller('comments')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
@@ -106,6 +110,16 @@ export class CommentsController {
         path: 'comments',
       };
     }
+  }
+
+  @Get('reactions/emojis')
+  async getReactionEmojis(): Promise<ApiResponseDto<{ emojis: string[] }>> {
+    return {
+      success: true,
+      data: { emojis: [...ALLOWED_REACTION_EMOJIS] },
+      timestamp: new Date().toISOString(),
+      path: 'comments/reactions/emojis',
+    };
   }
 
   @Get(':id')
@@ -194,6 +208,41 @@ export class CommentsController {
     }
   }
 
+  /** Реакция как в Telegram: передайте { "emoji": "👍" }. Повторный запрос снимает реакцию. */
+  @Post(':id/reactions')
+  @UseGuards(JwtAuthGuard)
+  async toggleReaction(
+    @Param('id') id: string,
+    @Body() dto: ToggleReactionDto,
+    @Request() req,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.commentsService.toggleReaction(
+        id,
+        req.user.userId,
+        dto.emoji,
+      );
+
+      return {
+        success: true,
+        data,
+        message: 'Reaction toggled',
+        timestamp: new Date().toISOString(),
+        path: `comments/${id}/reactions`,
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to toggle reaction',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `comments/${id}/reactions`,
+        method: 'POST',
+      };
+    }
+  }
+
   @Post(':id/like')
   @UseGuards(JwtAuthGuard)
   async likeComment(
@@ -201,7 +250,11 @@ export class CommentsController {
     @Request() req,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.commentsService.likeComment(id, req.user.userId);
+      const data = await this.commentsService.toggleReaction(
+        id,
+        req.user.userId,
+        '👍',
+      );
 
       return {
         success: true,
@@ -230,9 +283,10 @@ export class CommentsController {
     @Request() req,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.commentsService.dislikeComment(
+      const data = await this.commentsService.toggleReaction(
         id,
         req.user.userId,
+        '👎',
       );
 
       return {

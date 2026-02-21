@@ -459,23 +459,45 @@ export class TitlesService {
     return updatedTitle;
   }
 
-  async updateRating(id: string, newRating: number): Promise<TitleDocument> {
+  async updateRating(id: string, userId: string, newRating: number): Promise<TitleDocument> {
     const title = await this.titleModel.findById(id).exec();
 
     if (!title) {
       throw new NotFoundException('Title not found');
     }
 
-    // Add the new rating to the ratings array
-    title.ratings.push(newRating);
+    const userObjectId = new Types.ObjectId(userId);
+    const rawRatings = title.ratings || [];
+    const ratings: { userId: Types.ObjectId; rating: number }[] = rawRatings.filter(
+      (r): r is { userId: Types.ObjectId; rating: number } =>
+        r && typeof r === 'object' && r.userId != null && typeof r.rating === 'number',
+    );
 
-    // Update total ratings count
-    title.totalRatings = title.ratings.length;
+    // Миграция: старый формат (массив чисел) — переносим в legacy, чтобы рейтинг не обнулялся
+    const legacyNumbers = rawRatings.filter((r): r is number => typeof r === 'number');
+    if (legacyNumbers.length > 0) {
+      title.legacyRatingCount = (title.legacyRatingCount || 0) + legacyNumbers.length;
+      title.legacyRatingSum = (title.legacyRatingSum || 0) + legacyNumbers.reduce((s, n) => s + n, 0);
+    }
 
-    // Calculate average rating
-    title.averageRating =
-      title.ratings.reduce((sum, rating) => sum + rating, 0) /
-      title.ratings.length;
+    const existingIndex = ratings.findIndex(
+      (r) => r.userId && r.userId.toString() === userObjectId.toString(),
+    );
+
+    if (existingIndex >= 0) {
+      ratings[existingIndex].rating = newRating;
+    } else {
+      ratings.push({ userId: userObjectId, rating: newRating });
+    }
+
+    const legacyCount = title.legacyRatingCount ?? 0;
+    const legacySum = title.legacyRatingSum ?? 0;
+    const newSum = ratings.reduce((sum, r) => sum + r.rating, 0);
+    const totalCount = legacyCount + ratings.length;
+
+    title.ratings = ratings;
+    title.totalRatings = totalCount;
+    title.averageRating = totalCount > 0 ? (legacySum + newSum) / totalCount : 0;
 
     await title.save();
 

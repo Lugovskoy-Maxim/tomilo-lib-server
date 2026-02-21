@@ -1020,12 +1020,14 @@ export class TitlesController {
   }
 
   @Post('titles/:id/rating')
+  @UseGuards(JwtAuthGuard)
   async updateRating(
     @Param('id') id: string,
     @Body('rating', ParseFloatPipe) rating: number,
+    @Req() req: { user: { userId: string } },
   ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.titlesService.updateRating(id, rating);
+      const data = await this.titlesService.updateRating(id, req.user.userId, rating);
 
       return {
         success: true,

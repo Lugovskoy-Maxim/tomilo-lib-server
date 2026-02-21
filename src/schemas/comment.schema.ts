@@ -3,6 +3,20 @@ import { Document, Types } from 'mongoose';
 
 export type CommentDocument = Comment & Document;
 
+/** Разрешённые эмодзи для реакций (как в Telegram) */
+export const ALLOWED_REACTION_EMOJIS = [
+  '👍',
+  '👎',
+  '❤️',
+  '🔥',
+  '😂',
+  '😮',
+  '😢',
+  '🎉',
+  '👏',
+] as const;
+export type ReactionEmoji = (typeof ALLOWED_REACTION_EMOJIS)[number];
+
 export enum CommentEntityType {
   TITLE = 'title',
   CHAPTER = 'chapter',
@@ -27,15 +41,31 @@ export class Comment {
   @Prop({ type: Types.ObjectId, ref: 'Comment', default: null })
   parentId: Types.ObjectId | null;
 
+  /** Реакции как в Telegram: эмодзи + пользователи */
+  @Prop({
+    type: [
+      {
+        emoji: { type: String, required: true },
+        userIds: [{ type: Types.ObjectId, ref: 'User' }],
+      },
+    ],
+    default: [],
+  })
+  reactions: { emoji: string; userIds: Types.ObjectId[] }[];
+
+  /** @deprecated Используйте reactions. Оставлено для обратной совместимости. */
   @Prop({ default: 0 })
   likes: number;
 
+  /** @deprecated Используйте reactions. Оставлено для обратной совместимости. */
   @Prop({ default: 0 })
   dislikes: number;
 
+  /** @deprecated Используйте reactions. Оставлено для обратной совместимости. */
   @Prop({ type: [{ type: Types.ObjectId, ref: 'User' }], default: [] })
   likedBy: Types.ObjectId[];
 
+  /** @deprecated Используйте reactions. Оставлено для обратной совместимости. */
   @Prop({ type: [{ type: Types.ObjectId, ref: 'User' }], default: [] })
   dislikedBy: Types.ObjectId[];
 
