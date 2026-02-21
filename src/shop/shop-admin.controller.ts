@@ -40,6 +40,7 @@ export class ShopAdminController {
       rarity?: 'common' | 'rare' | 'epic' | 'legendary';
       description?: string;
       isAvailable?: boolean;
+      quantity?: number | null;
     },
   ): Promise<ApiResponseDto<any>> {
     try {
@@ -50,6 +51,7 @@ export class ShopAdminController {
         rarity: body.rarity,
         description: body.description,
         isAvailable: body.isAvailable,
+        quantity: body.quantity,
       });
       return {
         success: true,
@@ -91,6 +93,7 @@ export class ShopAdminController {
       rarity: 'common' | 'rare' | 'epic' | 'legendary';
       description?: string;
       isAvailable?: string;
+      quantity?: number | string | null;
     },
     @UploadedFile() file: Express.Multer.File,
   ): Promise<ApiResponseDto<any>> {
@@ -98,6 +101,12 @@ export class ShopAdminController {
       if (!file) {
         throw new BadRequestException('Image file is required');
       }
+      const quantityRaw =
+        body.quantity === undefined || body.quantity === null || body.quantity === ''
+          ? undefined
+          : Number(body.quantity);
+      const quantity =
+        quantityRaw !== undefined && !Number.isNaN(quantityRaw) ? quantityRaw : undefined;
       const data = await this.shopService.uploadDecoration(
         body.type,
         file,
@@ -107,6 +116,7 @@ export class ShopAdminController {
           rarity: body.rarity,
           description: body.description,
           isAvailable: body.isAvailable === 'true' || body.isAvailable === undefined,
+          quantity,
         },
       );
       return {

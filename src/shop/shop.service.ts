@@ -58,11 +58,19 @@ export class ShopService {
 
     this.logger.log('Fetching all available decorations');
 
+    const inStockFilter = {
+      isAvailable: true,
+      $or: [
+        { quantity: { $exists: false } },
+        { quantity: null },
+        { quantity: { $gt: 0 } },
+      ],
+    };
     const [avatars, frames, backgrounds, cards] = await Promise.all([
-      this.avatarDecorationModel.find({ isAvailable: true }),
-      this.avatarFrameDecorationModel.find({ isAvailable: true }),
-      this.backgroundDecorationModel.find({ isAvailable: true }),
-      this.cardDecorationModel.find({ isAvailable: true }),
+      this.avatarDecorationModel.find(inStockFilter),
+      this.avatarFrameDecorationModel.find(inStockFilter),
+      this.backgroundDecorationModel.find(inStockFilter),
+      this.cardDecorationModel.find(inStockFilter),
     ]);
 
     const result = {
@@ -85,27 +93,27 @@ export class ShopService {
 
     this.logger.log(`Fetching ${type} decorations`);
 
+    const inStockFilter = {
+      isAvailable: true,
+      $or: [
+        { quantity: { $exists: false } },
+        { quantity: null },
+        { quantity: { $gt: 0 } },
+      ],
+    };
     let decorations;
     switch (type) {
       case 'avatar':
-        decorations = await this.avatarDecorationModel.find({
-          isAvailable: true,
-        });
+        decorations = await this.avatarDecorationModel.find(inStockFilter);
         break;
       case 'frame':
-        decorations = await this.avatarFrameDecorationModel.find({
-          isAvailable: true,
-        });
+        decorations = await this.avatarFrameDecorationModel.find(inStockFilter);
         break;
       case 'background':
-        decorations = await this.backgroundDecorationModel.find({
-          isAvailable: true,
-        });
+        decorations = await this.backgroundDecorationModel.find(inStockFilter);
         break;
       case 'card':
-        decorations = await this.cardDecorationModel.find({
-          isAvailable: true,
-        });
+        decorations = await this.cardDecorationModel.find(inStockFilter);
         break;
       default:
         throw new BadRequestException('Invalid decoration type');
@@ -189,6 +197,15 @@ export class ShopService {
         break;
     }
 
+    // Если задано ограничение по количеству — проверяем остаток и не продаём при 0
+    if (
+      decoration.quantity !== undefined &&
+      decoration.quantity !== null &&
+      decoration.quantity < 1
+    ) {
+      throw new BadRequestException('This decoration is out of stock');
+    }
+
     // Check if user has enough balance (coerce to number: DB may return string)
     const userBalance = Number(user.balance ?? 0);
     const requiredPrice = Number(price);
@@ -196,6 +213,48 @@ export class ShopService {
       throw new BadRequestException(
         `Insufficient balance (available: ${userBalance}, required: ${requiredPrice})`,
       );
+    }
+
+    // Атомарно уменьшаем остаток, если задано ограничение по количеству
+    if (
+      decoration.quantity !== undefined &&
+      decoration.quantity !== null
+    ) {
+      const oid = new Types.ObjectId(decorationId);
+      let decremented = false;
+      switch (decorationType) {
+        case 'avatar':
+          decremented =
+            (await this.avatarDecorationModel.findOneAndUpdate(
+              { _id: oid, quantity: { $gte: 1 } },
+              { $inc: { quantity: -1 } },
+            )) != null;
+          break;
+        case 'background':
+          decremented =
+            (await this.backgroundDecorationModel.findOneAndUpdate(
+              { _id: oid, quantity: { $gte: 1 } },
+              { $inc: { quantity: -1 } },
+            )) != null;
+          break;
+        case 'frame':
+          decremented =
+            (await this.avatarFrameDecorationModel.findOneAndUpdate(
+              { _id: oid, quantity: { $gte: 1 } },
+              { $inc: { quantity: -1 } },
+            )) != null;
+          break;
+        case 'card':
+          decremented =
+            (await this.cardDecorationModel.findOneAndUpdate(
+              { _id: oid, quantity: { $gte: 1 } },
+              { $inc: { quantity: -1 } },
+            )) != null;
+          break;
+      }
+      if (!decremented) {
+        throw new BadRequestException('This decoration is out of stock');
+      }
     }
 
     // Deduct balance and add decoration to owned list
@@ -312,6 +371,7 @@ export class ShopService {
       rarity: 'common' | 'rare' | 'epic' | 'legendary';
       description?: string;
       isAvailable?: boolean;
+      quantity?: number | null;
     },
   ) {
     if (!file || !file.filename) {
@@ -320,7 +380,7 @@ export class ShopService {
 
     const imageUrl = `/uploads/decorations/${file.filename}`;
 
-    const doc = {
+    const doc: Record<string, unknown> = {
       name: payload.name,
       imageUrl,
       price: Number(payload.price),
@@ -328,6 +388,9 @@ export class ShopService {
       description: payload.description ?? '',
       isAvailable: payload.isAvailable !== false,
     };
+    if (payload.quantity !== undefined && payload.quantity !== null) {
+      doc.quantity = payload.quantity;
+    }
 
     let decoration;
     switch (type) {
@@ -370,6 +433,7 @@ export class ShopService {
       rarity: 'common' | 'rare' | 'epic' | 'legendary';
       description: string;
       isAvailable: boolean;
+      quantity: number | null;
     }>,
   ) {
     const oid = new Types.ObjectId(id);
@@ -403,6 +467,8 @@ export class ShopService {
       decoration.description = updates.description;
     if (updates.isAvailable !== undefined)
       decoration.isAvailable = updates.isAvailable;
+    if (updates.quantity !== undefined)
+      decoration.quantity = updates.quantity;
     await decoration.save();
 
     await this.cacheManager.set('shop:decorations:all', undefined as unknown);

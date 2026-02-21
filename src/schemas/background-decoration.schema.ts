@@ -24,6 +24,10 @@ export class BackgroundDecoration {
 
   @Prop()
   description: string;
+
+  /** Остаток в наличии. Не задано = без ограничений. При 0 продажа запрещена. */
+  @Prop({ min: 0 })
+  quantity?: number;
 }
 
 export const BackgroundDecorationSchema =
