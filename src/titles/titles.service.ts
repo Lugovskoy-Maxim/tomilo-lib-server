@@ -467,10 +467,11 @@ export class TitlesService {
     }
 
     const userObjectId = new Types.ObjectId(userId);
-    const rawRatings = title.ratings || [];
+    type RatingEntry = { userId: Types.ObjectId; rating: number } | number;
+    const rawRatings: RatingEntry[] = (title.ratings || []) as RatingEntry[];
     const ratings: { userId: Types.ObjectId; rating: number }[] = rawRatings.filter(
       (r): r is { userId: Types.ObjectId; rating: number } =>
-        r && typeof r === 'object' && r.userId != null && typeof r.rating === 'number',
+        typeof r === 'object' && r !== null && 'userId' in r && 'rating' in r && r.userId != null && typeof r.rating === 'number',
     );
 
     // Миграция: старый формат (массив чисел) — переносим в legacy, чтобы рейтинг не обнулялся
