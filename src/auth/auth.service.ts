@@ -626,7 +626,7 @@ export class AuthService {
   }
 
   /**
-   * Перенести данные из other в target (закладки, история, избранные персонажи), переназначить комментарии, затем удалить other.
+   * Перенести данные из other в target (закладки, история, избранные персонажи, опыт, монеты), переназначить комментарии, затем удалить other.
    */
   private async mergeUserInto(
     other: UserDocument,
@@ -685,6 +685,9 @@ export class AuthService {
     const bChars = (other.favoriteCharacters ?? []) as Types.ObjectId[];
     const charSet = new Set([...aChars.map((c) => c.toString()), ...bChars.map((c) => c.toString())]);
     target.favoriteCharacters = Array.from(charSet).map((id) => new Types.ObjectId(id)) as any;
+
+    target.experience = (target.experience ?? 0) + (other.experience ?? 0);
+    target.balance = (target.balance ?? 0) + (other.balance ?? 0);
 
     await this.commentModel.updateMany(
       { userId: otherId },
