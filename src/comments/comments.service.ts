@@ -241,6 +241,7 @@ export class CommentsService {
   /**
    * Реакции как в Telegram: один пользователь может поставить несколько эмодзи.
    * Переключение: если уже поставил этот эмодзи — снимаем, иначе — добавляем.
+   * Сохраняем через findOneAndUpdate + $set, чтобы массив реакций гарантированно записывался в MongoDB.
    */
   async toggleReaction(
     id: string,
@@ -253,15 +254,21 @@ export class CommentsService {
       );
     }
 
-    const comment = await this.commentModel.findById(id);
+    const comment = await this.commentModel.findById(id).lean();
     if (!comment) {
       throw new NotFoundException('Comment not found');
     }
 
     const userIdObj = new Types.ObjectId(userId);
-    const reactions = Array.isArray(comment.reactions) ? comment.reactions : [];
-    let entry = reactions.find((r) => r.emoji === emoji);
+    const existing = (comment as any).reactions || [];
+    const reactions = existing.map((r: any) => ({
+      emoji: r.emoji,
+      userIds: Array.isArray(r.userIds)
+        ? r.userIds.map((oid: any) => new Types.ObjectId(oid.toString()))
+        : [],
+    }));
 
+    let entry = reactions.find((r) => r.emoji === emoji);
     if (!entry) {
       entry = { emoji, userIds: [] };
       reactions.push(entry);
@@ -273,15 +280,21 @@ export class CommentsService {
     } else {
       entry.userIds.push(userIdObj);
     }
-    // Новый массив в явном виде, чтобы Mongoose сохранил вложенную структуру
-    comment.reactions = reactions
-      .filter((r) => (r.userIds?.length ?? 0) > 0)
-      .map((r) => ({
-        emoji: r.emoji,
-        userIds: Array.isArray(r.userIds) ? [...r.userIds] : [],
-      }));
-    comment.markModified('reactions');
-    return comment.save();
+
+    const newReactions = reactions
+      .filter((r) => r.userIds.length > 0)
+      .map((r) => ({ emoji: r.emoji, userIds: r.userIds }));
+
+    const updated = await this.commentModel.findByIdAndUpdate(
+      id,
+      { $set: { reactions: newReactions } },
+      { new: true },
+    );
+
+    if (!updated) {
+      throw new NotFoundException('Comment not found');
+    }
+    return updated;
   }
 
   async getReactionsCount(
