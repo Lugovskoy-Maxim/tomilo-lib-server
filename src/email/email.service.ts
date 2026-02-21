@@ -3,6 +3,7 @@ import * as nodemailer from 'nodemailer';
 import { ConfigService } from '@nestjs/config';
 import { registrationTemplate } from './templates/registration.template';
 import { emailVerificationTemplate } from './templates/email-verification.template';
+import { emailVerificationCodeTemplate } from './templates/email-verification-code.template';
 import { passwordResetTemplate } from './templates/password-reset.template';
 
 @Injectable()
@@ -34,6 +35,12 @@ export class EmailService {
     const verificationUrl = `${this.configService.get('FRONTEND_URL')}/verify-email?token=${verificationToken}`;
     const html = emailVerificationTemplate(verificationUrl);
 
+    await this.sendEmail(to, subject, html);
+  }
+
+  async sendEmailVerificationCode(to: string, username: string, code: string) {
+    const subject = 'Код подтверждения регистрации — Tomilo Lib';
+    const html = emailVerificationCodeTemplate(username, code);
     await this.sendEmail(to, subject, html);
   }
 

@@ -1,4 +1,10 @@
-import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  UnauthorizedException,
+  HttpException,
+  HttpStatus,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -7,10 +13,17 @@ import axios from 'axios';
 import { User, UserDocument } from '../schemas/user.schema';
 import { Comment, CommentDocument } from '../schemas/comment.schema';
 import { Report, ReportDocument } from '../schemas/report.schema';
+import {
+  PendingRegistration,
+  PendingRegistrationDocument,
+} from '../schemas/pending-registration.schema';
 import { CreateUserDto } from '../users/dto/create-user.dto';
 import { LoggerService } from '../common/logger/logger.service';
 import { v4 as uuidv4 } from 'uuid';
 import { EmailService } from '../email/email.service';
+
+const REGISTRATION_CODE_TTL_MS = 15 * 60 * 1000; // 15 минут
+const RESEND_CODE_COOLDOWN_MS = 60 * 1000; // 1 минута
 
 export type LinkProviderResult =
   | { linked: true }
@@ -26,6 +39,8 @@ export class AuthService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Comment.name) private commentModel: Model<CommentDocument>,
     @InjectModel(Report.name) private reportModel: Model<ReportDocument>,
+    @InjectModel(PendingRegistration.name)
+    private pendingRegistrationModel: Model<PendingRegistrationDocument>,
     private jwtService: JwtService,
     private emailService: EmailService,
   ) {
@@ -41,6 +56,11 @@ export class AuthService {
       user.password &&
       (await bcrypt.compare(password, user.password))
     ) {
+      // Для регистрации по email требуем подтверждение почты (emailVerified === false — ожидает код)
+      if (user.emailVerified === false) {
+        this.logger.warn(`Email not verified for user: ${email}`);
+        return null;
+      }
       this.logger.log(`User ${email} validated successfully`);
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { password, ...result } = user.toObject();
@@ -107,53 +127,116 @@ export class AuthService {
     }
   }
 
-  async register(createUserDto: CreateUserDto) {
-    const { email, username, password } = createUserDto;
-    this.logger.log(
-      `Registering new user with email: ${email}, username: ${username}`,
-    );
+  /** Генерирует 6-значный код подтверждения. */
+  private generateVerificationCode(): string {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  }
 
-    // Хэширование пароля, если он предоставлен
-    let hashedPassword: string | undefined = undefined;
+  /**
+   * Шаг 1 регистрации: отправка кода на email. Пользователь не создаётся.
+   * Лимит: раз в минуту на один email.
+   */
+  async requestRegistrationCode(createUserDto: CreateUserDto) {
+    const { email, username, password } = createUserDto;
+
+    const existing = await this.userModel.findOne({
+      $or: [{ email }, { username }],
+    });
+    if (existing) {
+      throw new ConflictException(
+        'User with this email or username already exists',
+      );
+    }
+
+    const pending = await this.pendingRegistrationModel.findOne({ email });
+    const now = Date.now();
+    if (pending && pending.sentAt.getTime() > now - RESEND_CODE_COOLDOWN_MS) {
+      const waitSec = Math.ceil(
+        (pending.sentAt.getTime() + RESEND_CODE_COOLDOWN_MS - now) / 1000,
+      );
+      throw new HttpException(
+        `Письмо можно отправить повторно через ${waitSec} сек`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const code = this.generateVerificationCode();
+    const expiresAt = new Date(now + REGISTRATION_CODE_TTL_MS);
+    const sentAt = new Date(now);
+    let hashedPassword = '';
     if (password) {
       hashedPassword = await bcrypt.hash(password, 10);
     }
 
-    try {
-      const user = new this.userModel({
-        ...createUserDto,
-        password: hashedPassword,
-      });
+    await this.pendingRegistrationModel.findOneAndUpdate(
+      { email },
+      {
+        username,
+        hashedPassword,
+        code,
+        expiresAt,
+        sentAt,
+      },
+      { upsert: true, new: true },
+    );
 
-      await user.save();
-      this.logger.log(`User ${email} registered successfully`);
+    await this.emailService.sendEmailVerificationCode(email, username, code);
+    this.logger.log(`Registration code sent to ${email}`);
+    return { message: 'Код отправлен на email' };
+  }
 
-      // Send registration email
-      try {
-        await this.emailService.sendRegistrationEmail(email, username);
-        this.logger.log(`Registration email sent to ${email}`);
-      } catch (error) {
-        this.logger.error(
-          `Failed to send registration email to ${email}`,
-          error,
-        );
-      }
+  /**
+   * Шаг 2 регистрации: создание пользователя с кодом из письма.
+   */
+  async registerWithCode(dto: {
+    email: string;
+    username: string;
+    password?: string;
+    code: string;
+  }) {
+    const { email, username, password, code } = dto;
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { password: _, ...result } = user.toObject();
-      return result;
-    } catch (error) {
-      if (error.code === 11000) {
-        // Duplicate key error
-        this.logger.warn(
-          `User with email ${email} or username ${username} already exists`,
-        );
-        throw new ConflictException(
-          'User with this email or username already exists',
-        );
-      }
-      throw error;
+    const pending = await this.pendingRegistrationModel.findOne({ email });
+    if (!pending) {
+      throw new ConflictException(
+        'Код не запрашивался или истёк. Запросите код снова.',
+      );
     }
+    if (pending.expiresAt.getTime() < Date.now()) {
+      await this.pendingRegistrationModel.deleteOne({ email });
+      throw new ConflictException('Код истёк. Запросите новый код.');
+    }
+    if (pending.code !== code) {
+      throw new ConflictException('Неверный код.');
+    }
+    if (pending.username !== username) {
+      throw new ConflictException('Имя пользователя не совпадает с запросом кода.');
+    }
+
+    const existing = await this.userModel.findOne({
+      $or: [{ email }, { username }],
+    });
+    if (existing) {
+      await this.pendingRegistrationModel.deleteOne({ email });
+      throw new ConflictException(
+        'User with this email or username already exists',
+      );
+    }
+
+    const hashedPassword = pending.hashedPassword || undefined;
+    const user = new this.userModel({
+      email,
+      username,
+      password: hashedPassword,
+      emailVerified: true,
+    });
+    await user.save();
+    await this.pendingRegistrationModel.deleteOne({ email });
+
+    this.logger.log(`User ${email} registered and verified`);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { password: _, ...result } = user.toObject();
+    return result;
   }
 
   async sendEmailVerification(email: string) {
@@ -188,6 +271,7 @@ export class AuthService {
 
     user.emailVerified = true;
     user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
     await user.save();
 
     return { message: 'Email verified successfully' };

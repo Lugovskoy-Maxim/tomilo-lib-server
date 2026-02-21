@@ -11,6 +11,7 @@ import {
   HttpStatus,
   ConflictException,
   UnauthorizedException,
+  HttpException,
 } from '@nestjs/common';
 import * as express from 'express';
 import { AuthService } from './auth.service';
@@ -23,6 +24,7 @@ import { OAuthLoginDto } from './dto/oauth-login.dto';
 import { VkIdLoginDto } from './dto/vk-id-login.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { RegisterWithCodeDto } from './dto/register-with-code.dto';
 
 const COOKIE_ACCESS_TOKEN = 'access_token';
 const COOKIE_REFRESH_TOKEN = 'refresh_token';
@@ -86,17 +88,67 @@ export class AuthController {
     }
   }
 
-  @Post('register')
-  @HttpCode(HttpStatus.CREATED)
-  async register(
+  /** Шаг 1: запрос кода на email (форма: email, username, password). Не чаще раза в минуту. */
+  @Post('send-registration-code')
+  @HttpCode(HttpStatus.OK)
+  async sendRegistrationCode(
     @Body() createUserDto: CreateUserDto,
     @Response({ passthrough: true }) res: express.Response,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const user = await this.authService.register(createUserDto);
+      const data = await this.authService.requestRegistrationCode(createUserDto);
+      return {
+        success: true,
+        data,
+        message: 'Код отправлен на email',
+        timestamp: new Date().toISOString(),
+        path: 'auth/send-registration-code',
+        method: 'POST',
+      };
+    } catch (error) {
+      if (error instanceof HttpException && error.getStatus() === 429) {
+        res.status(HttpStatus.TOO_MANY_REQUESTS);
+        return {
+          success: false,
+          message: error.message,
+          errors: [error.message],
+          timestamp: new Date().toISOString(),
+          path: 'auth/send-registration-code',
+          method: 'POST',
+        };
+      }
+      if (error instanceof ConflictException) {
+        return {
+          success: false,
+          message: error.message,
+          errors: [error.message],
+          timestamp: new Date().toISOString(),
+          path: 'auth/send-registration-code',
+          method: 'POST',
+        };
+      }
+      return {
+        success: false,
+        message: 'Failed to send code',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'auth/send-registration-code',
+        method: 'POST',
+      };
+    }
+  }
+
+  /** Шаг 2: регистрация с кодом из письма (форма + code). Создаёт пользователя и логинит. */
+  @Post('register')
+  @HttpCode(HttpStatus.CREATED)
+  async register(
+    @Body() registerDto: RegisterWithCodeDto,
+    @Response({ passthrough: true }) res: express.Response,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const user = await this.authService.registerWithCode(registerDto);
       const data = this.authService.login(user);
       setAuthCookies(res, data.access_token, data.refresh_token);
-
       return {
         success: true,
         data,

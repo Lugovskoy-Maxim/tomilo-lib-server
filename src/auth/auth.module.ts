@@ -14,6 +14,10 @@ import { VkIdStrategy } from './strategies/vk-id.strategy';
 import { User, UserSchema } from '../schemas/user.schema';
 import { Comment, CommentSchema } from '../schemas/comment.schema';
 import { Report, ReportSchema } from '../schemas/report.schema';
+import {
+  PendingRegistration,
+  PendingRegistrationSchema,
+} from '../schemas/pending-registration.schema';
 import { EmailModule } from '../email/email.module';
 
 @Module({
@@ -28,6 +32,7 @@ import { EmailModule } from '../email/email.module';
       { name: User.name, schema: UserSchema },
       { name: Comment.name, schema: CommentSchema },
       { name: Report.name, schema: ReportSchema },
+      { name: PendingRegistration.name, schema: PendingRegistrationSchema },
     ]),
     EmailModule,
   ],
