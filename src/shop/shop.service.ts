@@ -164,23 +164,29 @@ export class ShopService {
         break;
     }
 
-    // Check if user has enough balance
-    if (user.balance < price) {
-      throw new BadRequestException('Insufficient balance');
+    // Check if user has enough balance (coerce to number: DB may return string)
+    const userBalance = Number(user.balance ?? 0);
+    const requiredPrice = Number(price);
+    if (userBalance < requiredPrice) {
+      throw new BadRequestException(
+        `Insufficient balance (available: ${userBalance}, required: ${requiredPrice})`,
+      );
     }
 
     // Deduct balance and add decoration to owned list
-    user.balance -= price;
-    user.ownedDecorations.push({
-      decorationType,
-      decorationId: new Types.ObjectId(decorationId),
-      purchasedAt: new Date(),
-    });
+    const newBalance = userBalance - requiredPrice;
+    const updatedOwnedDecorations = [
+      ...(user.ownedDecorations || []),
+      {
+        decorationType,
+        decorationId: new Types.ObjectId(decorationId),
+        purchasedAt: new Date(),
+      },
+    ];
 
-    // Create UpdateUserDto from user object
     const updateUserDto = {
-      balance: user.balance,
-      ownedDecorations: user.ownedDecorations,
+      balance: newBalance,
+      ownedDecorations: updatedOwnedDecorations,
     };
 
     await this.usersService.update(userId, updateUserDto);
@@ -191,7 +197,7 @@ export class ShopService {
     return {
       message: 'Decoration purchased successfully',
       decoration,
-      newBalance: user.balance,
+      newBalance,
     };
   }
 

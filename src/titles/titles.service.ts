@@ -18,6 +18,9 @@ const CACHE_FILTER_OPTIONS = 'filter_options';
 const CACHE_COLLECTIONS_PREFIX = 'collections';
 const CACHE_CHAPTERS_COUNT_PREFIX = 'chapters_count';
 const CACHE_TITLES_LIST_PREFIX = 'titles_list';
+const CACHE_LATEST_UPDATES_PREFIX = 'latest_updates';
+const LATEST_UPDATES_CACHE_PAGE = 1;
+const LATEST_UPDATES_CACHE_LIMIT = 18;
 
 @Injectable()
 export class TitlesService {
@@ -179,55 +182,43 @@ export class TitlesService {
     const cached = await this.cacheManager.get(CACHE_FILTER_OPTIONS);
     if (cached) return cached as Awaited<ReturnType<typeof this.getFilterOptions>>;
 
-    // Получаем все тайтлы для извлечения уникальных значений
-    const titles = await this.titleModel.find().exec();
+    // Агрегации без загрузки полных документов — только уникальные значения
+    const [genresRes, tagsRes, metaRes] = await Promise.all([
+      this.titleModel.aggregate<{ genres: string[] }>([
+        { $unwind: { path: '$genres', preserveNullAndEmptyArrays: false } },
+        { $group: { _id: null, genres: { $addToSet: '$genres' } } },
+        { $project: { _id: 0, genres: 1 } },
+      ]),
+      this.titleModel.aggregate<{ tags: string[] }>([
+        { $unwind: { path: '$tags', preserveNullAndEmptyArrays: false } },
+        { $group: { _id: null, tags: { $addToSet: '$tags' } } },
+        { $project: { _id: 0, tags: 1 } },
+      ]),
+      this.titleModel.aggregate<{ types: (string | null)[]; status: (string | null)[]; releaseYears: (number | null)[]; ageLimits: (number | null)[] }>([
+        {
+          $group: {
+            _id: null,
+            types: { $addToSet: '$type' },
+            status: { $addToSet: '$status' },
+            releaseYears: { $addToSet: '$releaseYear' },
+            ageLimits: { $addToSet: '$ageLimit' },
+          },
+        },
+        { $project: { _id: 0, types: 1, status: 1, releaseYears: 1, ageLimits: 1 } },
+      ]),
+    ]);
 
-    const genres = new Set<string>();
-    const types = new Set<string>();
-    const status = new Set<string>();
-    const tags = new Set<string>();
-    const releaseYears = new Set<number>();
-    const ageLimits = new Set<number>();
-
-    titles.forEach((title) => {
-      // Добавляем жанры
-      if (title.genres && Array.isArray(title.genres)) {
-        title.genres.forEach((genre) => genres.add(genre));
-      }
-
-      // Добавляем тип
-      if (title.type) {
-        types.add(title.type);
-      }
-
-      // Добавляем статус
-      if (title.status) {
-        status.add(title.status);
-      }
-
-      // Добавляем теги
-      if (title.tags && Array.isArray(title.tags)) {
-        title.tags.forEach((tag) => tags.add(tag));
-      }
-
-      // Добавляем года выпуска
-      if (title.releaseYear) {
-        releaseYears.add(title.releaseYear);
-      }
-
-      // Добавляем возрастные ограничения
-      if (title.ageLimit !== undefined && title.ageLimit !== null) {
-        ageLimits.add(title.ageLimit);
-      }
-    });
+    const filterNull = <T>(arr: (T | null | undefined)[]): T[] =>
+      arr.filter((x): x is T => x != null);
+    const meta = metaRes[0] || { types: [], status: [], releaseYears: [], ageLimits: [] };
 
     const result = {
-      genres: Array.from(genres).sort(),
-      types: Array.from(types).sort(),
-      status: Array.from(status).sort(),
-      tags: Array.from(tags).sort(),
-      releaseYears: Array.from(releaseYears).sort((a, b) => b - a), // Сортируем по убыванию (новые года сначала)
-      ageLimits: Array.from(ageLimits).sort((a, b) => a - b),
+      genres: (genresRes[0]?.genres || []).sort(),
+      types: filterNull(meta.types).sort(),
+      status: filterNull(meta.status).sort(),
+      tags: (tagsRes[0]?.tags || []).sort(),
+      releaseYears: filterNull(meta.releaseYears).sort((a, b) => b - a),
+      ageLimits: filterNull(meta.ageLimits).sort((a, b) => a - b),
       sortByOptions: [
         'createdAt',
         'updatedAt',
@@ -400,54 +391,65 @@ export class TitlesService {
   }
 
   async incrementViews(id: string): Promise<TitleDocument> {
-    const title = await this.titleModel.findById(id).exec();
-
-    if (!title) {
-      throw new NotFoundException('Title not found');
-    }
-
-    // Получаем текущую дату
-    const now = new Date();
-
-    // Подготавливаем обновления для счетчиков по периодам
-    const update: any = { $inc: { views: 1 } };
-
-    // Проверяем, нужно ли сбросить дневной счетчик
-    if (
-      !title.lastDayReset ||
-      now.getDate() !== title.lastDayReset.getDate() ||
-      now.getMonth() !== title.lastDayReset.getMonth() ||
-      now.getFullYear() !== title.lastDayReset.getFullYear()
-    ) {
-      update.dayViews = 1;
-      update.lastDayReset = now;
-    } else {
-      update.$inc.dayViews = 1;
-    }
-
-    // Проверяем, нужно ли сбросить недельный счетчик
-    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    if (!title.lastWeekReset || title.lastWeekReset < oneWeekAgo) {
-      update.weekViews = 1;
-      update.lastWeekReset = now;
-    } else {
-      update.$inc.weekViews = 1;
-    }
-
-    // Проверяем, нужно ли сбросить месячный счетчик
-    if (
-      !title.lastMonthReset ||
-      now.getMonth() !== title.lastMonthReset.getMonth() ||
-      now.getFullYear() !== title.lastMonthReset.getFullYear()
-    ) {
-      update.monthViews = 1;
-      update.lastMonthReset = now;
-    } else {
-      update.$inc.monthViews = 1;
-    }
+    const pipeline = [
+      {
+        $set: {
+          startOfToday: {
+            $dateFromParts: {
+              year: { $year: '$$NOW' },
+              month: { $month: '$$NOW' },
+              day: { $dayOfMonth: '$$NOW' },
+            },
+          },
+          oneWeekAgo: { $subtract: ['$$NOW', 7 * 24 * 60 * 60 * 1000] },
+          startOfMonth: {
+            $dateFromParts: {
+              year: { $year: '$$NOW' },
+              month: { $month: '$$NOW' },
+              day: 1,
+            },
+          },
+        },
+      },
+      {
+        $set: {
+          dayReset: {
+            $or: [
+              { $eq: [{ $ifNull: ['$lastDayReset', null] }, null] },
+              { $lt: ['$lastDayReset', '$startOfToday'] },
+            ],
+          },
+          weekReset: {
+            $or: [
+              { $eq: [{ $ifNull: ['$lastWeekReset', null] }, null] },
+              { $lt: ['$lastWeekReset', '$oneWeekAgo'] },
+            ],
+          },
+          monthReset: {
+            $or: [
+              { $eq: [{ $ifNull: ['$lastMonthReset', null] }, null] },
+              { $ne: [{ $year: '$lastMonthReset' }, { $year: '$$NOW' }] },
+              { $ne: [{ $month: '$lastMonthReset' }, { $month: '$$NOW' }] },
+            ],
+          },
+        },
+      },
+      {
+        $set: {
+          views: { $add: ['$views', 1] },
+          dayViews: { $cond: ['$dayReset', 1, { $add: [{ $ifNull: ['$dayViews', 0] }, 1] }] },
+          lastDayReset: { $cond: ['$dayReset', '$startOfToday', '$lastDayReset'] },
+          weekViews: { $cond: ['$weekReset', 1, { $add: [{ $ifNull: ['$weekViews', 0] }, 1] }] },
+          lastWeekReset: { $cond: ['$weekReset', '$$NOW', '$lastWeekReset'] },
+          monthViews: { $cond: ['$monthReset', 1, { $add: [{ $ifNull: ['$monthViews', 0] }, 1] }] },
+          lastMonthReset: { $cond: ['$monthReset', '$startOfMonth', '$lastMonthReset'] },
+        },
+      },
+      { $unset: ['startOfToday', 'oneWeekAgo', 'startOfMonth', 'dayReset', 'weekReset', 'monthReset'] },
+    ];
 
     const updatedTitle = await this.titleModel
-      .findByIdAndUpdate(id, update, { new: true })
+      .findByIdAndUpdate(id, pipeline, { new: true })
       .exec();
 
     if (!updatedTitle) {
@@ -600,12 +602,24 @@ export class TitlesService {
   ): Promise<any[]> {
     const skip = (Math.max(1, page) - 1) * limit;
     const needed = skip + limit;
-    // Получаем все главы, отсортированные по дате добавления (достаточно для нужной страницы)
+
+    const cacheKey =
+      page === LATEST_UPDATES_CACHE_PAGE && limit === LATEST_UPDATES_CACHE_LIMIT
+        ? `${CACHE_LATEST_UPDATES_PREFIX}:${canViewAdult}`
+        : null;
+    if (cacheKey) {
+      const cached = await this.cacheManager.get(cacheKey);
+      if (cached && Array.isArray(cached)) return cached as any[];
+    }
+
+    const titleSelect =
+      'name slug _id altNames description genres tags artist coverImage status author views totalChapters rating releaseYear ageLimit chaptersRemovedByCopyrightHolder isPublished type createdAt updatedAt';
     const recentChapters = await this.chapterModel
       .find({ isPublished: true })
       .sort({ releaseDate: -1 })
-      .limit(needed * 40) // Получаем значительно больше глав для лучшей фильтрации
-      .populate('titleId')
+      .limit(needed * 40)
+      .populate({ path: 'titleId', select: titleSelect })
+      .lean()
       .exec();
 
     // Группируем главы по тайтлам и сохраняем информацию о диапазонах глав
@@ -663,11 +677,9 @@ export class TitlesService {
       )
       .slice(skip, skip + limit);
 
-    // Возвращаем массив с информацией о тайтлах и диапазонах глав
-    return titlesWithChapters.map((item) => {
+    const result = titlesWithChapters.map((item) => {
       const hideChapters = item.title.chaptersRemovedByCopyrightHolder;
       return {
-        // Явно перечисляем свойства вместо использования toObject()
         _id: item.title._id,
         name: item.title.name,
         slug: item.title.slug,
@@ -695,6 +707,11 @@ export class TitlesService {
         maxChapter: hideChapters ? undefined : item.maxChapter,
       };
     });
+
+    if (cacheKey) {
+      await this.cacheManager.set(cacheKey, result);
+    }
+    return result;
   }
 
   async addChapter(titleId: string, chapterId: Types.ObjectId): Promise<void> {

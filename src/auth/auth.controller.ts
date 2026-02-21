@@ -277,6 +277,143 @@ export class AuthController {
     }
   }
 
+  /** Привязать ВКонтакте к текущему аккаунту (JWT). Тело: { code } или при конфликте { code, resolve: 'use_existing'|'link_here'|'merge' }. */
+  @UseGuards(JwtAuthGuard)
+  @Post('link/vk')
+  @HttpCode(HttpStatus.OK)
+  async linkVk(
+    @Request() req,
+    @Response({ passthrough: true }) res: express.Response,
+    @Body() body: { code: string; resolve?: 'use_existing' | 'link_here' | 'merge' },
+  ): Promise<ApiResponseDto<any>> {
+    if (!body?.code) {
+      throw new UnauthorizedException('Authorization code is required');
+    }
+    const providerId = await this.authService.getVkProviderId(body.code);
+    const userId = String(req.user?.userId ?? req.user?._id ?? '');
+
+    if (body.resolve) {
+      const result = await this.authService.resolveLinkConflict(
+        userId,
+        'vk',
+        providerId,
+        body.resolve,
+      );
+      if (result.switchToUser) {
+        setAuthCookies(res, result.switchToUser.access_token, result.switchToUser.refresh_token);
+        return {
+          success: true,
+          data: result.switchToUser,
+          message: 'Switched to existing account',
+          timestamp: new Date().toISOString(),
+          path: 'auth/link/vk',
+          method: 'POST',
+        };
+      }
+      return {
+        success: true,
+        data: { linked: true },
+        message: 'VK account linked',
+        timestamp: new Date().toISOString(),
+        path: 'auth/link/vk',
+        method: 'POST',
+      };
+    }
+
+    const linkResult = await this.authService.linkProvider(userId, 'vk', providerId);
+    if ('conflict' in linkResult && linkResult.conflict) {
+      res.status(HttpStatus.CONFLICT);
+      return {
+        success: false,
+        data: { conflict: true, existingAccount: linkResult.existingAccount },
+        message: 'This VK is already linked to another account',
+        timestamp: new Date().toISOString(),
+        path: 'auth/link/vk',
+        method: 'POST',
+      } as ApiResponseDto<any>;
+    }
+    return {
+      success: true,
+      data: { linked: true },
+      message: 'VK account linked',
+      timestamp: new Date().toISOString(),
+      path: 'auth/link/vk',
+      method: 'POST',
+    };
+  }
+
+  /** Привязать Яндекс к текущему аккаунту (JWT). Тело: { code } или { access_token }, при конфликте + resolve: 'use_existing'|'link_here'|'merge'. */
+  @UseGuards(JwtAuthGuard)
+  @Post('link/yandex')
+  @HttpCode(HttpStatus.OK)
+  async linkYandex(
+    @Request() req,
+    @Response({ passthrough: true }) res: express.Response,
+    @Body() body: {
+      code?: string;
+      access_token?: string;
+      resolve?: 'use_existing' | 'link_here' | 'merge';
+    },
+  ): Promise<ApiResponseDto<any>> {
+    if (!body?.code && !body?.access_token) {
+      throw new UnauthorizedException('code or access_token is required');
+    }
+    const providerId = await this.authService.getYandexProviderId({
+      code: body.code,
+      access_token: body.access_token,
+    });
+    const userId = String(req.user?.userId ?? req.user?._id ?? '');
+
+    if (body.resolve) {
+      const result = await this.authService.resolveLinkConflict(
+        userId,
+        'yandex',
+        providerId,
+        body.resolve,
+      );
+      if (result.switchToUser) {
+        setAuthCookies(res, result.switchToUser.access_token, result.switchToUser.refresh_token);
+        return {
+          success: true,
+          data: result.switchToUser,
+          message: 'Switched to existing account',
+          timestamp: new Date().toISOString(),
+          path: 'auth/link/yandex',
+          method: 'POST',
+        };
+      }
+      return {
+        success: true,
+        data: { linked: true },
+        message: 'Yandex account linked',
+        timestamp: new Date().toISOString(),
+        path: 'auth/link/yandex',
+        method: 'POST',
+      };
+    }
+
+    const linkResult = await this.authService.linkProvider(userId, 'yandex', providerId);
+    if ('conflict' in linkResult && linkResult.conflict) {
+      res.status(HttpStatus.CONFLICT);
+      return {
+        success: false,
+        data: { conflict: true, existingAccount: linkResult.existingAccount },
+        message: 'This Yandex account is already linked to another account',
+        timestamp: new Date().toISOString(),
+        path: 'auth/link/yandex',
+        method: 'POST',
+      } as ApiResponseDto<any>;
+    }
+    return {
+      success: true,
+      data: { linked: true },
+      message: 'Yandex account linked',
+      timestamp: new Date().toISOString(),
+      path: 'auth/link/yandex',
+      method: 'POST',
+    };
+  }
+
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
   async refresh(

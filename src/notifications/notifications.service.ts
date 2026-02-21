@@ -1,4 +1,5 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -7,12 +8,21 @@ import {
   NotificationType,
 } from '../schemas/notification.schema';
 
+const UNREAD_COUNT_CACHE_PREFIX = 'notifications:unread:';
+const UNREAD_COUNT_CACHE_TTL_MS = 30 * 1000; // 30 sec
+
 @Injectable()
 export class NotificationsService {
   constructor(
     @InjectModel(Notification.name)
     private notificationModel: Model<NotificationDocument>,
+    @Inject(CACHE_MANAGER)
+    private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown, ttl?: number) => Promise<void> },
   ) {}
+
+  private unreadCountCacheKey(userId: string): string {
+    return `${UNREAD_COUNT_CACHE_PREFIX}${userId}`;
+  }
 
   async create(notificationData: {
     userId: string;
@@ -106,6 +116,7 @@ export class NotificationsService {
       throw new NotFoundException('Notification not found');
     }
 
+    await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, { ttl: 5 } as any);
     return notification;
   }
 
@@ -119,6 +130,7 @@ export class NotificationsService {
       { isRead: true },
     );
 
+    await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, { ttl: 5 } as any);
     return { modifiedCount: result.modifiedCount };
   }
 
@@ -138,6 +150,10 @@ export class NotificationsService {
     if (!result) {
       throw new NotFoundException('Notification not found');
     }
+
+    if (!result.isRead) {
+      await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, { ttl: 5 } as any);
+    }
   }
 
   async getUnreadCount(userId: string): Promise<{ count: number }> {
@@ -145,11 +161,18 @@ export class NotificationsService {
       throw new NotFoundException('Invalid user ID');
     }
 
+    const key = this.unreadCountCacheKey(userId);
+    const cached = await this.cacheManager.get(key);
+    if (typeof cached === 'number' && cached >= 0) {
+      return { count: cached };
+    }
+
     const count = await this.notificationModel.countDocuments({
       userId: new Types.ObjectId(userId),
       isRead: false,
     });
 
+    await this.cacheManager.set(key, count, { ttl: UNREAD_COUNT_CACHE_TTL_MS } as any);
     return { count };
   }
 

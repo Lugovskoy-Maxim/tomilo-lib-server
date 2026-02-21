@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ShopController } from './shop.controller';
+import { ShopAdminController } from './shop-admin.controller';
 import { ShopService } from './shop.service';
 import {
   AvatarDecoration,
@@ -31,7 +32,7 @@ const DECORATIONS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
     ]),
     UsersModule,
   ],
-  controllers: [ShopController],
+  controllers: [ShopController, ShopAdminController],
   providers: [ShopService],
   exports: [ShopService],
 })

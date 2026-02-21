@@ -91,42 +91,23 @@ export class TitlesController {
   }
 
   /**
-   * Вспомогательный метод для определения canViewAdult на основе настроек пользователя
-   * Возвращает true если пользователь может видеть взрослый контент
+   * Вспомогательный метод для определения canViewAdult на основе настроек пользователя (с кешем).
    */
   private async getCanViewAdult(req: any): Promise<boolean> {
-    // По умолчанию показываем весь контент для неавторизованных пользователей
-    let canViewAdult = true;
-
-    // Извлекаем токен из заголовка Authorization
     const authHeader = req.headers?.authorization || req.headers?.Authorization;
-
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7);
-
-      if (token) {
-        try {
-          // Декодируем JWT токен и верифицируем для получения userId
-          const jwtSecret =
-            process.env.JWT_SECRET || 'your-super-secret-jwt-key';
-
-          const decoded = jwt.verify(token, jwtSecret) as { userId?: string };
-
-          if (decoded && decoded.userId) {
-            const user = await this.usersService.findById(decoded.userId);
-            if (user && user.displaySettings) {
-              // Если пользователь отключил взрослый контент в настройках, скрываем его
-              canViewAdult = user.displaySettings.isAdult !== false;
-            }
-          }
-        } catch {
-          // Токен недействителен или истек, показываем весь контент
-          canViewAdult = true;
-        }
+    if (!authHeader?.startsWith('Bearer ')) return true;
+    const token = authHeader.substring(7);
+    if (!token) return true;
+    try {
+      const jwtSecret = process.env.JWT_SECRET || 'your-super-secret-jwt-key';
+      const decoded = jwt.verify(token, jwtSecret) as { userId?: string };
+      if (decoded?.userId) {
+        return this.usersService.getCanViewAdult(decoded.userId);
       }
+    } catch {
+      // Токен недействителен или истек
     }
-
-    return canViewAdult;
+    return true;
   }
 
   /**

@@ -412,8 +412,9 @@ export class FilesService {
       await fs.writeFile(filePath, watermarkedBuffer);
       this.logger.log(`Файл сохранен: ${filePath}`);
 
-      // Освобождаем буферы из памяти
+      // Освобождаем буферы и водяные знаки из ОЗУ сразу после использования
       watermarkedBuffer = null as any;
+      this.watermarkUtil.dispose();
 
       this.logger.log(`=== КОНЕЦ downloadImageFromUrl ===`);
       return `/${chapterDir}/${fileName}`;

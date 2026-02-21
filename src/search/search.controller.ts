@@ -32,33 +32,20 @@ export class SearchController {
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
   ): Promise<ApiResponseDto<TitleResponseDto[]>> {
     try {
-      // Determine if user can view adult content
-      let canViewAdult = true; // Default: show all content for unauthenticated users
-
-      // Извлекаем токен из заголовка Authorization
+      let canViewAdult = true;
       const authHeader =
         req.headers?.authorization || req.headers?.Authorization;
-
-      if (authHeader && authHeader.startsWith('Bearer ')) {
+      if (authHeader?.startsWith('Bearer ')) {
         const token = authHeader.substring(7);
-
         if (token) {
           try {
-            // Декодируем JWT токен и верифицируем для получения userId
             const jwtSecret =
               process.env.JWT_SECRET || 'your-super-secret-jwt-key';
-
             const decoded = jwt.verify(token, jwtSecret) as { userId?: string };
-
-            if (decoded && decoded.userId) {
-              const user = await this.usersService.findById(decoded.userId);
-              if (user && user.displaySettings) {
-                // Если пользователь отключил взрослый контент в настройках, скрываем его
-                canViewAdult = user.displaySettings.isAdult !== false;
-              }
+            if (decoded?.userId) {
+              canViewAdult = await this.usersService.getCanViewAdult(decoded.userId);
             }
           } catch {
-            // Токен недействителен или истек, показываем весь контент
             canViewAdult = true;
           }
         }

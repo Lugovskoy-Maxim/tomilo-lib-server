@@ -31,6 +31,8 @@ export type BookmarkCategory = (typeof BOOKMARK_CATEGORIES)[number];
 const MAX_READING_HISTORY_TITLES = 500;
 const MAX_CHAPTERS_PER_TITLE_IN_HISTORY = 6000;
 const HOMEPAGE_ACTIVE_USERS_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
+const CAN_VIEW_ADULT_CACHE_PREFIX = 'user:canViewAdult:';
+const CAN_VIEW_ADULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 
 type HomepageActiveUsersSortBy = 'lastActivityAt' | 'level' | 'createdAt';
 type HomepageActiveUsersSortOrder = 'asc' | 'desc';
@@ -165,17 +167,18 @@ export class UsersService {
     const activitySince = new Date();
     activitySince.setDate(activitySince.getDate() - safeDays);
 
+    const hasOAuth = {
+      $or: [
+        { 'oauth.providerId': { $exists: true, $nin: ['', null] } },
+        { 'oauthProviders.0': { $exists: true } },
+      ],
+    };
     const verificationFilter =
       verification === 'email'
         ? { emailVerified: true }
         : verification === 'oauth'
-          ? { 'oauth.providerId': { $exists: true, $nin: ['', null] } }
-          : {
-              $or: [
-                { emailVerified: true },
-                { 'oauth.providerId': { $exists: true, $nin: ['', null] } },
-              ],
-            };
+          ? hasOAuth
+          : { $or: [{ emailVerified: true }, hasOAuth] };
 
     const avatarFilter = requireAvatar
       ? { avatar: { $exists: true, $nin: ['', null] } }
@@ -202,6 +205,24 @@ export class UsersService {
     });
 
     return users;
+  }
+
+  /**
+   * Лёгкий запрос для проверки «показывать ли взрослый контент» (кеш 5 мин).
+   */
+  async getCanViewAdult(userId: string): Promise<boolean> {
+    if (!userId || !Types.ObjectId.isValid(userId)) return true;
+    const key = `${CAN_VIEW_ADULT_CACHE_PREFIX}${userId}`;
+    const cached = await this.cacheManager.get(key);
+    if (cached === true || cached === false) return cached;
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('displaySettings')
+      .lean()
+      .exec();
+    const canViewAdult = user?.displaySettings?.isAdult !== false;
+    await this.cacheManager.set(key, canViewAdult, { ttl: CAN_VIEW_ADULT_CACHE_TTL_MS });
+    return canViewAdult;
   }
 
   async findById(id: string): Promise<User> {
@@ -1721,6 +1742,11 @@ export class UsersService {
 
     if (!user) {
       throw new NotFoundException('User not found');
+    }
+
+    if (displaySettings.isAdult !== undefined) {
+      const key = `${CAN_VIEW_ADULT_CACHE_PREFIX}${userId}`;
+      await this.cacheManager.set(key, displaySettings.isAdult !== false, { ttl: CAN_VIEW_ADULT_CACHE_TTL_MS });
     }
 
     this.logger.log(

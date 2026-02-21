@@ -28,20 +28,20 @@ export class WatermarkUtil {
   }
 
   constructor() {
-    this.initializeWatermark();
-    this.initializeWatermarkTop();
+    // Не загружаем водяные знаки в конструкторе — только при первом использовании (ленивая загрузка).
+    // Так они не занимают ОЗУ при старте сервера и освобождаются после dispose().
   }
 
   /**
-   * Инициализация водяного знака
+   * Загружает водяной знак в буфер при первом обращении (ленивая инициализация).
    */
-  private initializeWatermark(): void {
+  private ensureWatermarkLoaded(): void {
+    if (this.watermarkBuffer !== null) return;
     try {
       this.logger.log(
         `Проверяем наличие водяного знака по пути: ${this.watermarkPath}`,
       );
       if (existsSync(this.watermarkPath)) {
-        // Загружаем водяной знак в буфер вместо хранения объекта Sharp
         this.watermarkBuffer = readFileSync(this.watermarkPath);
         this.logger.log('Водяной знак успешно загружен в буфер');
       } else {
@@ -53,9 +53,10 @@ export class WatermarkUtil {
   }
 
   /**
-   * Инициализация верхнего водяного знака
+   * Загружает верхний водяной знак в буфер при первом обращении (ленивая инициализация).
    */
-  private initializeWatermarkTop(): void {
+  private ensureWatermarkTopLoaded(): void {
+    if (this.watermarkTopBuffer !== null) return;
     try {
       this.logger.log(
         `Проверяем наличие верхнего водяного знака по пути: ${this.watermarkTopPath}`,
@@ -95,6 +96,7 @@ export class WatermarkUtil {
     } = {},
   ): Promise<Buffer> {
     try {
+      this.ensureWatermarkLoaded();
       this.logger.log(
         `Попытка добавления водяного знака. Загружен: ${this.watermarkBuffer ? 'да' : 'нет'}`,
       );
@@ -200,6 +202,7 @@ export class WatermarkUtil {
    */
   async addTopWatermark(imageBuffer: Buffer): Promise<Buffer> {
     try {
+      this.ensureWatermarkTopLoaded();
       this.logger.log(
         `Попытка добавления верхнего водяного знака. Загружен: ${this.watermarkTopBuffer ? 'да' : 'нет'}`,
       );
@@ -286,6 +289,8 @@ export class WatermarkUtil {
       minHeight?: number; // Минимальная высота изображения для добавления водяного знака
     } = {},
   ): Promise<Buffer[]> {
+    this.ensureWatermarkLoaded();
+    this.ensureWatermarkTopLoaded();
     this.logger.log(`=== НАЧАЛО addWatermarkMultiple ===`);
     this.logger.log(
       `Получено изображений для обработки: ${imageBuffers.length}`,
@@ -414,13 +419,11 @@ export class WatermarkUtil {
   }
 
   /**
-   * Перезагружает водяной знак
+   * Перезагружает водяной знак (очищает буферы; при следующем вызове add* загрузятся снова).
    */
   reloadWatermark(): void {
     this.watermarkBuffer = null;
     this.watermarkTopBuffer = null;
-    this.initializeWatermark();
-    this.initializeWatermarkTop();
   }
 
   /**

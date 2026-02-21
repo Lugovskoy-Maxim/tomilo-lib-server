@@ -12,6 +12,8 @@ import { YandexTokenStrategy } from './strategies/yandex-token.strategy';
 import { VkStrategy } from './strategies/vk.strategy';
 import { VkIdStrategy } from './strategies/vk-id.strategy';
 import { User, UserSchema } from '../schemas/user.schema';
+import { Comment, CommentSchema } from '../schemas/comment.schema';
+import { Report, ReportSchema } from '../schemas/report.schema';
 import { EmailModule } from '../email/email.module';
 
 @Module({
@@ -22,7 +24,11 @@ import { EmailModule } from '../email/email.module';
       secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
       signOptions: { expiresIn: '365d' },
     }),
-    MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
+    MongooseModule.forFeature([
+      { name: User.name, schema: UserSchema },
+      { name: Comment.name, schema: CommentSchema },
+      { name: Report.name, schema: ReportSchema },
+    ]),
     EmailModule,
   ],
   providers: [

@@ -168,7 +168,7 @@ export class User {
     readAt: Date;
   }[];
 
-  // OAuth providers
+  // OAuth providers (legacy: один провайдер, дублируется из oauthProviders[0] для совместимости)
   @Prop({
     type: {
       provider: String,
@@ -180,6 +180,21 @@ export class User {
     provider: string;
     providerId: string;
   };
+
+  /** Несколько OAuth-провайдеров на один аккаунт (VK, Yandex и т.д.) */
+  @Prop({
+    type: [
+      {
+        provider: { type: String, required: true },
+        providerId: { type: String, required: true },
+      },
+    ],
+    default: [],
+  })
+  oauthProviders: {
+    provider: string;
+    providerId: string;
+  }[];
 
   @Prop({ required: false })
   birthDate?: Date;
@@ -304,3 +319,4 @@ UserSchema.index({ 'readingHistory.chapters.chapterId': 1 });
 UserSchema.index({ 'readingHistory.readAt': -1 });
 UserSchema.index({ 'bookmarks.titleId': 1 });
 UserSchema.index({ birthDate: 1 });
+UserSchema.index({ 'oauthProviders.provider': 1, 'oauthProviders.providerId': 1 });

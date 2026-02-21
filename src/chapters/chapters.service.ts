@@ -4,7 +4,9 @@ import {
   ConflictException,
   BadRequestException,
   Logger,
+  Inject,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
@@ -13,6 +15,9 @@ import { CreateChapterDto } from './dto/create-chapter.dto';
 import { UpdateChapterDto } from './dto/update-chapter.dto';
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
+
+const CHAPTERS_COUNT_CACHE_TTL_MS = 2 * 60 * 1000; // 2 min
+const CHAPTERS_COUNT_CACHE_PREFIX = 'chapters_count';
 
 @Injectable()
 export class ChaptersService {
@@ -23,6 +28,8 @@ export class ChaptersService {
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     private filesService: FilesService,
     private notificationsService: NotificationsService,
+    @Inject(CACHE_MANAGER)
+    private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown, ttl?: number) => Promise<void> },
   ) {}
 
   async findAll({
@@ -75,12 +82,13 @@ export class ChaptersService {
     const [chapters, total] = await Promise.all([
       this.chapterModel
         .find(query)
-        .populate('titleId')
+        .populate({ path: 'titleId', select: 'name slug _id chaptersRemovedByCopyrightHolder' })
         .sort(sortOptions)
         .skip(skip)
         .limit(limit)
+        .lean()
         .exec(),
-      this.chapterModel.countDocuments(query),
+      this.getCountCached(query),
     ]);
 
     return {
@@ -94,6 +102,20 @@ export class ChaptersService {
     };
   }
 
+  private async getCountCached(query: any): Promise<number> {
+    const raw = query.$or?.[0]?.titleId ?? query.titleId;
+    const titleId = raw?.toString?.() ?? raw;
+    if (!titleId) {
+      return this.chapterModel.countDocuments(query);
+    }
+    const key = `${CHAPTERS_COUNT_CACHE_PREFIX}:${titleId}`;
+    const cached = await this.cacheManager.get(key);
+    if (typeof cached === 'number') return cached;
+    const total = await this.chapterModel.countDocuments(query);
+    await this.cacheManager.set(key, total, { ttl: CHAPTERS_COUNT_CACHE_TTL_MS } as any);
+    return total;
+  }
+
   async findById(id: string): Promise<ChapterDocument> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid chapter ID');
@@ -101,7 +123,8 @@ export class ChaptersService {
 
     const chapter = await this.chapterModel
       .findById(id)
-      .populate('titleId')
+      .populate({ path: 'titleId', select: 'name slug _id chaptersRemovedByCopyrightHolder' })
+      .lean()
       .exec();
 
     if (!chapter) {
@@ -113,7 +136,7 @@ export class ChaptersService {
       throw new NotFoundException('Chapter not found');
     }
 
-    return chapter;
+    return chapter as unknown as ChapterDocument;
   }
 
   async findByTitleAndNumber(
