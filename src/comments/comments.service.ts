@@ -273,7 +273,14 @@ export class CommentsService {
     } else {
       entry.userIds.push(userIdObj);
     }
-    comment.reactions = reactions.filter((r) => (r.userIds?.length ?? 0) > 0);
+    // Новый массив в явном виде, чтобы Mongoose сохранил вложенную структуру
+    comment.reactions = reactions
+      .filter((r) => (r.userIds?.length ?? 0) > 0)
+      .map((r) => ({
+        emoji: r.emoji,
+        userIds: Array.isArray(r.userIds) ? [...r.userIds] : [],
+      }));
+    comment.markModified('reactions');
     return comment.save();
   }
 
