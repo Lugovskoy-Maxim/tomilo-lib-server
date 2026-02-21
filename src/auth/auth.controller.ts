@@ -329,7 +329,7 @@ export class AuthController {
     }
   }
 
-  /** Привязать ВКонтакте к текущему аккаунту (JWT). Тело: { code [, redirect_uri ] } или при конфликте { code, resolve: 'use_existing'|'link_here'|'merge' }. */
+  /** Привязать ВКонтакте к текущему аккаунту (JWT). Тело: классический VK — { code [, redirect_uri ] }; VK ID (code_v2) — { code, code_verifier, device_id, state [, redirect_uri ] }. При конфликте + resolve: 'use_existing'|'link_here'|'merge'. */
   @UseGuards(JwtAuthGuard)
   @Post('link/vk')
   @HttpCode(HttpStatus.OK)
@@ -339,22 +339,35 @@ export class AuthController {
     @Body() body: {
       code: string;
       redirect_uri?: string;
+      code_verifier?: string;
+      device_id?: string;
+      state?: string;
       resolve?: 'use_existing' | 'link_here' | 'merge';
     },
   ): Promise<ApiResponseDto<any>> {
     if (!body?.code) {
       throw new UnauthorizedException('Authorization code is required');
     }
-    const providerId = await this.authService.getVkProviderId(
-      body.code,
-      body.redirect_uri,
-    );
+    const useVkId =
+      !!body.code_verifier?.trim() &&
+      !!body.device_id?.trim() &&
+      !!body.state?.trim();
+    const providerId = useVkId
+      ? await this.authService.getVkIdProviderId(
+          body.code,
+          body.code_verifier!,
+          body.device_id!,
+          body.state!,
+          body.redirect_uri,
+        )
+      : await this.authService.getVkProviderId(body.code, body.redirect_uri);
+    const provider: 'vk' | 'vk_id' = useVkId ? 'vk_id' : 'vk';
     const userId = String(req.user?.userId ?? req.user?._id ?? '');
 
     if (body.resolve) {
       const result = await this.authService.resolveLinkConflict(
         userId,
-        'vk',
+        provider,
         providerId,
         body.resolve,
       );
@@ -379,7 +392,7 @@ export class AuthController {
       };
     }
 
-    const linkResult = await this.authService.linkProvider(userId, 'vk', providerId);
+    const linkResult = await this.authService.linkProvider(userId, provider, providerId);
     if ('conflict' in linkResult && linkResult.conflict) {
       res.status(HttpStatus.CONFLICT);
       return {

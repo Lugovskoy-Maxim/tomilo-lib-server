@@ -467,6 +467,57 @@ export class AuthService {
   }
 
   /**
+   * Получить providerId VK ID (id.vk.ru, code_v2 + PKCE) по коду и code_verifier (для привязки аккаунта).
+   */
+  async getVkIdProviderId(
+    code: string,
+    codeVerifier: string,
+    deviceId: string,
+    state: string,
+    redirectUri?: string,
+  ): Promise<string> {
+    const clientId = process.env.VK_ID_CLIENT_ID;
+    const redirect =
+      redirectUri?.trim() || process.env.VK_ID_REDIRECT_URI || '';
+    if (!clientId || !redirect) {
+      throw new UnauthorizedException(
+        'VK ID is not configured (VK_ID_CLIENT_ID, VK_ID_REDIRECT_URI)',
+      );
+    }
+    const tokenParams = new URLSearchParams();
+    tokenParams.append('grant_type', 'authorization_code');
+    tokenParams.append('code_verifier', codeVerifier);
+    tokenParams.append('redirect_uri', redirect);
+    tokenParams.append('code', code);
+    tokenParams.append('client_id', clientId);
+    tokenParams.append('device_id', deviceId);
+    tokenParams.append('state', state);
+    try {
+      const tokenResponse = await axios.post<{ user_id: string }>(
+        'https://id.vk.ru/oauth2/auth',
+        tokenParams,
+        { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } },
+      );
+      const userId = tokenResponse.data?.user_id;
+      if (!userId) {
+        throw new UnauthorizedException('Invalid VK ID authorization code');
+      }
+      return String(userId);
+    } catch (err: unknown) {
+      if (err instanceof UnauthorizedException) throw err;
+      const msg =
+        axios.isAxiosError(err) && err.response?.data?.error_description
+          ? String(err.response.data.error_description)
+          : axios.isAxiosError(err) && err.response?.data?.error
+            ? `VK ID: ${String(err.response.data.error)}`
+            : err instanceof Error
+              ? err.message
+              : 'VK ID token exchange failed';
+      throw new UnauthorizedException(msg);
+    }
+  }
+
+  /**
    * Получить providerId Яндекса по code или access_token (для привязки аккаунта без учёта email).
    */
   async getYandexProviderId(
@@ -506,7 +557,7 @@ export class AuthService {
   /** Найти пользователя, у которого привязан данный провайдер (не текущий). */
   private async findOtherUserByProvider(
     excludeUserId: string,
-    provider: 'vk' | 'yandex',
+    provider: 'vk' | 'vk_id' | 'yandex',
     providerId: string,
   ): Promise<UserDocument | null> {
     return this.userModel.findOne({
@@ -534,7 +585,7 @@ export class AuthService {
 
   private removeProviderFromUser(
     user: UserDocument,
-    provider: 'vk' | 'yandex',
+    provider: 'vk' | 'vk_id' | 'yandex',
     providerId: string,
   ): void {
     const list = this.ensureOAuthProvidersList(user).filter(
@@ -548,7 +599,7 @@ export class AuthService {
 
   private addProviderToUser(
     user: UserDocument,
-    provider: 'vk' | 'yandex',
+    provider: 'vk' | 'vk_id' | 'yandex',
     providerId: string,
   ): void {
     const list = this.ensureOAuthProvidersList(user);
@@ -566,7 +617,7 @@ export class AuthService {
    */
   async linkProvider(
     userId: string,
-    provider: 'vk' | 'yandex',
+    provider: 'vk' | 'vk_id' | 'yandex',
     providerId: string,
   ): Promise<LinkProviderResult> {
     const user = await this.userModel.findById(userId);
@@ -604,7 +655,7 @@ export class AuthService {
    */
   async resolveLinkConflict(
     currentUserId: string,
-    provider: 'vk' | 'yandex',
+    provider: 'vk' | 'vk_id' | 'yandex',
     providerId: string,
     action: ResolveLinkAction,
   ): Promise<{ linked: true; switchToUser?: any }> {
