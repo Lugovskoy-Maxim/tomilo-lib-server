@@ -67,7 +67,23 @@ export class SenkuroParser implements MangaParser {
             }
             localizations {
               lang
-              description
+              description {
+                __typename
+                ... on TiptapNodeNestedBlock {
+                  type
+                  content {
+                    __typename
+                    ... on TiptapNodeText {
+                      type
+                      text
+                    }
+                  }
+                }
+                ... on TiptapNodeText {
+                  type
+                  text
+                }
+              }
             }
             mainStaff {
               roles
