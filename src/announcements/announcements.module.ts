@@ -16,7 +16,7 @@ import { FilesModule } from '../files/files.module';
     ]),
     FilesModule,
   ],
-  controllers: [AnnouncementsController, AnnouncementsAdminController],
+  controllers: [AnnouncementsAdminController, AnnouncementsController],
   providers: [AnnouncementsService],
   exports: [AnnouncementsService],
 })
