@@ -124,6 +124,22 @@ export class TitlesController {
     return ageLimit >= 18;
   }
 
+  /**
+   * Форматирует список номеров глав для ленты: "Глава 100" / "Главы 98–100" / "Главы 100, 98, 95"
+   */
+  private formatChapterSummary(numbers: number[]): string {
+    if (numbers.length === 0) return '';
+    if (numbers.length === 1) return `Глава ${numbers[0]}`;
+    const sorted = [...numbers].sort((a, b) => b - a);
+    const min = sorted[sorted.length - 1];
+    const max = sorted[0];
+    const isConsecutive =
+      sorted.length === max - min + 1 &&
+      sorted.every((n, i) => n === max - i);
+    if (isConsecutive) return `Главы ${min}–${max}`;
+    return `Главы ${sorted.join(', ')}`;
+  }
+
   private getHoursWord(hours: number): string {
     if (hours % 10 === 1 && hours % 100 !== 11) {
       return 'час';
@@ -303,14 +319,14 @@ export class TitlesController {
           canViewAdult,
           pageNum,
         );
-      const data = titlesWithChapters.map((item) => {
-        const releaseDate = new Date(item.latestChapter.releaseDate);
-
-        let chapterString = `Глава ${item.maxChapter}`;
-
-        if (item.minChapter !== item.maxChapter) {
-          chapterString = `Главы ${item.minChapter}-${item.maxChapter}`;
-        }
+      const data = titlesWithChapters.map((item: any) => {
+        const releaseDate = item.lastUpdate
+          ? new Date(item.lastUpdate)
+          : (item.latestChapter && new Date(item.latestChapter.releaseDate)) || null;
+        const chapterNumbers = item.recentChapterNumbers ?? [];
+        const chapterSummary = this.formatChapterSummary(chapterNumbers);
+        const maxChapter =
+          chapterNumbers.length > 0 ? Math.max(...chapterNumbers) : item.maxChapter;
 
         return {
           id: item._id?.toString(),
@@ -319,8 +335,18 @@ export class TitlesController {
           cover: item.coverImage,
           type: item.type,
           releaseYear: item.releaseYear,
-          chapter: chapterString,
-          chapterNumber: item.maxChapter,
+          status: item.status,
+          genres: Array.isArray(item.genres) ? item.genres.slice(0, 5) : [],
+          rating: item.averageRating ?? 0,
+          totalChapters: item.totalChapters ?? 0,
+          chapter: chapterSummary,
+          chapterNumber: maxChapter,
+          chapters: {
+            count: chapterNumbers.length,
+            numbers: chapterNumbers,
+            summary: chapterSummary,
+          },
+          lastUpdate: releaseDate ? releaseDate.toISOString() : null,
           timeAgo: releaseDate,
           isAdult: this.processAdultField(item.ageLimit),
         };

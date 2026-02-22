@@ -18,11 +18,6 @@ const CACHE_FILTER_OPTIONS = 'filter_options';
 const CACHE_COLLECTIONS_PREFIX = 'collections';
 const CACHE_CHAPTERS_COUNT_PREFIX = 'chapters_count';
 const CACHE_TITLES_LIST_PREFIX = 'titles_list';
-const CACHE_LATEST_UPDATES_PREFIX = 'latest_updates';
-const LATEST_UPDATES_CACHE_PAGE = 1;
-const LATEST_UPDATES_CACHE_LIMIT = 18;
-/** Кеш ленты последних обновлений — короткий TTL, чтобы лента обновлялась часто */
-const LATEST_UPDATES_CACHE_TTL_MS = 2 * 60 * 1000; // 2 минуты
 
 @Injectable()
 export class TitlesService {
@@ -35,7 +30,7 @@ export class TitlesService {
     private collectionModel: Model<CollectionDocument>,
     private readonly filesService: FilesService,
     private readonly usersService: UsersService,
-    @Inject(CACHE_MANAGER) private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown, opts?: { ttl?: number }) => Promise<void>; del?: (k: string) => Promise<void> },
+    @Inject(CACHE_MANAGER) private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown) => Promise<void> },
   ) {
     this.logger.setContext(TitlesService.name);
   }
@@ -628,17 +623,9 @@ export class TitlesService {
     const skip = (Math.max(1, page) - 1) * limit;
     const needed = skip + limit;
 
-    const cacheKey =
-      page === LATEST_UPDATES_CACHE_PAGE && limit === LATEST_UPDATES_CACHE_LIMIT
-        ? `${CACHE_LATEST_UPDATES_PREFIX}:${canViewAdult}`
-        : null;
-    if (cacheKey) {
-      const cached = await this.cacheManager.get(cacheKey);
-      if (cached && Array.isArray(cached)) return cached as any[];
-    }
-
+    // Лента последних обновлений не кешируется — всегда актуальные данные
     const titleSelect =
-      'name slug _id altNames description genres tags artist coverImage status author views totalChapters rating releaseYear ageLimit chaptersRemovedByCopyrightHolder isPublished type createdAt updatedAt';
+      'name slug _id altNames description genres tags artist coverImage status author views totalChapters averageRating releaseYear ageLimit chaptersRemovedByCopyrightHolder isPublished type createdAt updatedAt';
     const recentChapters = await this.chapterModel
       .find({ isPublished: true })
       .sort({ releaseDate: -1 })
@@ -704,6 +691,18 @@ export class TitlesService {
 
     const result = titlesWithChapters.map((item) => {
       const hideChapters = item.title.chaptersRemovedByCopyrightHolder;
+      const recentChaptersList = hideChapters ? [] : item.chapters;
+      const chapterNumbers =
+        recentChaptersList.length > 0
+          ? [...new Set(recentChaptersList.map((c: any) => c.chapterNumber))].sort(
+              (a: number, b: number) => b - a,
+            )
+          : [];
+      const lastUpdate =
+        recentChaptersList.length > 0
+          ? (recentChaptersList[0] as any).releaseDate
+          : null;
+
       return {
         _id: item.title._id,
         name: item.title.name,
@@ -718,7 +717,7 @@ export class TitlesService {
         author: item.title.author,
         views: item.title.views,
         totalChapters: item.title.totalChapters,
-        rating: item.title.rating,
+        averageRating: item.title.averageRating ?? item.title.rating ?? 0,
         releaseYear: item.title.releaseYear,
         ageLimit: item.title.ageLimit,
         chaptersRemovedByCopyrightHolder: item.title.chaptersRemovedByCopyrightHolder,
@@ -730,12 +729,13 @@ export class TitlesService {
         latestChapter: hideChapters ? undefined : item.chapters[0],
         minChapter: hideChapters ? undefined : item.minChapter,
         maxChapter: hideChapters ? undefined : item.maxChapter,
+        /** Номера недавно вышедших глав (по убыванию), для ленты */
+        recentChapterNumbers: chapterNumbers,
+        /** Дата выхода последней главы в этой выборке */
+        lastUpdate,
       };
     });
 
-    if (cacheKey) {
-      await this.cacheManager.set(cacheKey, result, { ttl: LATEST_UPDATES_CACHE_TTL_MS });
-    }
     return result;
   }
 
@@ -751,12 +751,6 @@ export class TitlesService {
 
     if (!title) {
       throw new NotFoundException('Title not found');
-    }
-
-    // Сброс кеша ленты последних обновлений при добавлении главы
-    if (typeof this.cacheManager.del === 'function') {
-      await this.cacheManager.del(`${CACHE_LATEST_UPDATES_PREFIX}:true`);
-      await this.cacheManager.del(`${CACHE_LATEST_UPDATES_PREFIX}:false`);
     }
   }
 
@@ -793,11 +787,6 @@ export class TitlesService {
 
     if (!title) {
       throw new NotFoundException('Title not found');
-    }
-
-    if (typeof this.cacheManager.del === 'function') {
-      await this.cacheManager.del(`${CACHE_LATEST_UPDATES_PREFIX}:true`);
-      await this.cacheManager.del(`${CACHE_LATEST_UPDATES_PREFIX}:false`);
     }
   }
 
