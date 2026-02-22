@@ -54,7 +54,7 @@ export class Announcement {
   contentBlocks: ContentBlock[];
 
   /** Обложка объявления (URL или путь) */
-  @Prop({ default: null })
+  @Prop({ type: String, default: null })
   coverImage: string | null;
 
   /** Изображения внутри контента (URLs) */
@@ -71,7 +71,7 @@ export class Announcement {
   @Prop({ default: false })
   isPublished: boolean;
 
-  @Prop({ default: null })
+  @Prop({ type: Date, default: null })
   publishedAt: Date | null;
 
   @Prop({ default: false })

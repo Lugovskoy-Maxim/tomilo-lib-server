@@ -17,6 +17,9 @@ export class WatermarkUtil {
     'watermark-top.png',
   );
 
+  /** Прозрачность обычного водяного знака (0–1). Меньше = более прозрачный. */
+  private readonly watermarkOpacity = 0.45;
+
   // Добавляем геттер для проверки пути
   public getWatermarkPath(): string {
     return this.watermarkPath;
@@ -123,7 +126,7 @@ export class WatermarkUtil {
 
       const {
         position = 'center-right',
-        scale = 0.35,
+        scale = 0.30,
         minHeight = 2000,
       } = options;
 
@@ -160,11 +163,27 @@ export class WatermarkUtil {
       );
 
       // Изменяем размер водяного знака
-      const resizedWatermark = await sharp(Buffer.from(this.watermarkBuffer))
+      let resizedWatermark = await sharp(Buffer.from(this.watermarkBuffer))
         .resize(watermarkWidth, watermarkHeight, {
           fit: 'contain',
           withoutEnlargement: true,
         })
+        .ensureAlpha()
+        .raw()
+        .toBuffer({ resolveWithObject: true });
+
+      // Уменьшаем непрозрачность (делаем водяной знак более прозрачным)
+      const { data, info } = resizedWatermark;
+      for (let i = 3; i < data.length; i += 4) {
+        data[i] = Math.round(data[i] * this.watermarkOpacity);
+      }
+      const watermarkWithOpacity = await sharp(Buffer.from(data), {
+        raw: {
+          width: info.width,
+          height: info.height,
+          channels: info.channels,
+        },
+      })
         .png()
         .toBuffer();
 
@@ -173,7 +192,7 @@ export class WatermarkUtil {
       const compositeImage = await mainImage
         .composite([
           {
-            input: resizedWatermark,
+            input: watermarkWithOpacity,
             gravity: this.getGravity(position),
           },
         ])
@@ -298,7 +317,7 @@ export class WatermarkUtil {
     this.logger.log(`Опции: ${JSON.stringify(options)}`);
     this.logger.log(`Водяной знак загружен: ${this.isWatermarkLoaded()}`);
 
-    const { scale = 0.35, minHeight = 4000 } = options;
+    const { scale = 0.30, minHeight = 4000 } = options;
     const results: Buffer[] = [];
 
     // Определяем позиции для водяных знаков
