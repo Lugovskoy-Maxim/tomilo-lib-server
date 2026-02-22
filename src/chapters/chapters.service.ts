@@ -615,7 +615,13 @@ export class ChaptersService {
     chapterId: string,
     files: Express.Multer.File[],
   ): Promise<ChapterDocument> {
-    const chapter = await this.findById(chapterId);
+    if (!Types.ObjectId.isValid(chapterId)) {
+      throw new BadRequestException('Invalid chapter ID');
+    }
+    const chapter = await this.chapterModel.findById(chapterId).exec();
+    if (!chapter) {
+      throw new NotFoundException('Chapter not found');
+    }
 
     this.logger.log(`Добавляем ${files.length} страниц к главе ${chapterId}`);
     const pagePaths = await this.filesService.saveChapterPages(
