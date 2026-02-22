@@ -1,10 +1,12 @@
 import {
   Injectable,
+  Inject,
   ConflictException,
   UnauthorizedException,
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { JwtService } from '@nestjs/jwt';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -31,6 +33,15 @@ export type LinkProviderResult =
 
 export type ResolveLinkAction = 'use_existing' | 'link_here' | 'merge';
 
+/** Ожидающая привязка после 409 (код одноразовый, второй запрос — только resolve). */
+export type PendingLink = {
+  provider: 'vk' | 'vk_id' | 'yandex';
+  providerId: string;
+};
+
+const PENDING_LINK_CACHE_PREFIX = 'pendingLink:';
+const PENDING_LINK_TTL_MS = 10 * 60 * 1000; // 10 минут
+
 @Injectable()
 export class AuthService {
   private readonly logger = new LoggerService();
@@ -43,8 +54,35 @@ export class AuthService {
     private pendingRegistrationModel: Model<PendingRegistrationDocument>,
     private jwtService: JwtService,
     private emailService: EmailService,
+    @Inject(CACHE_MANAGER)
+    private cache: {
+      get: (k: string) => Promise<unknown>;
+      set: (k: string, v: unknown, ttl?: number) => Promise<void>;
+      del: (k: string) => Promise<void>;
+    },
   ) {
     this.logger.setContext(AuthService.name);
+  }
+
+  /** Сохранить ожидающую привязку в кэше (после 409). */
+  async setPendingLink(
+    userId: string,
+    provider: PendingLink['provider'],
+    providerId: string,
+  ): Promise<void> {
+    const key = PENDING_LINK_CACHE_PREFIX + userId;
+    await this.cache.set(key, { provider, providerId }, PENDING_LINK_TTL_MS);
+  }
+
+  /** Прочитать и удалить ожидающую привязку (для запроса только с resolve). */
+  async getAndClearPendingLink(userId: string): Promise<PendingLink | null> {
+    const key = PENDING_LINK_CACHE_PREFIX + userId;
+    const value = await this.cache.get(key);
+    await this.cache.del(key);
+    if (!value || typeof value !== 'object' || !('provider' in value) || !('providerId' in value)) {
+      return null;
+    }
+    return value as PendingLink;
   }
 
   async validateUser(email: string, password: string): Promise<any> {

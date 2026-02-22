@@ -9,6 +9,7 @@ import {
   Response,
   HttpCode,
   HttpStatus,
+  BadRequestException,
   ConflictException,
   UnauthorizedException,
   HttpException,
@@ -329,7 +330,7 @@ export class AuthController {
     }
   }
 
-  /** Привязать ВКонтакте к текущему аккаунту (JWT). Тело: классический VK — { code [, redirect_uri ] }; VK ID (code_v2) — { code, code_verifier, device_id, state [, redirect_uri ] }. При конфликте + resolve: 'use_existing'|'link_here'|'merge'. */
+  /** Привязать ВКонтакте к текущему аккаунту (JWT). Тело: классический VK — { code [, redirect_uri ] }; VK ID (code_v2) — { code, code_verifier, device_id, state [, redirect_uri ] }. При 409 сохраняем ожидающую привязку в кэше; второй запрос — только { resolve } (без code). */
   @UseGuards(JwtAuthGuard)
   @Post('link/vk')
   @HttpCode(HttpStatus.OK)
@@ -337,7 +338,7 @@ export class AuthController {
     @Request() req,
     @Response({ passthrough: true }) res: express.Response,
     @Body() body: {
-      code: string;
+      code?: string;
       redirect_uri?: string;
       code_verifier?: string;
       device_id?: string;
@@ -345,6 +346,43 @@ export class AuthController {
       resolve?: 'use_existing' | 'link_here' | 'merge';
     },
   ): Promise<ApiResponseDto<any>> {
+    const userId = String(req.user?.userId ?? req.user?._id ?? '');
+
+    // Второй шаг: только resolve (код одноразовый) — берём ожидающую привязку из кэша
+    if (body.resolve && !body?.code) {
+      const pending = await this.authService.getAndClearPendingLink(userId);
+      if (!pending || (pending.provider !== 'vk' && pending.provider !== 'vk_id')) {
+        throw new BadRequestException(
+          'No pending VK link. Start by linking with code first, then use resolve after 409.',
+        );
+      }
+      const result = await this.authService.resolveLinkConflict(
+        userId,
+        pending.provider,
+        pending.providerId,
+        body.resolve,
+      );
+      if (result.switchToUser) {
+        setAuthCookies(res, result.switchToUser.access_token, result.switchToUser.refresh_token);
+        return {
+          success: true,
+          data: result.switchToUser,
+          message: 'Switched to existing account',
+          timestamp: new Date().toISOString(),
+          path: 'auth/link/vk',
+          method: 'POST',
+        };
+      }
+      return {
+        success: true,
+        data: { linked: true },
+        message: 'VK account linked',
+        timestamp: new Date().toISOString(),
+        path: 'auth/link/vk',
+        method: 'POST',
+      };
+    }
+
     if (!body?.code) {
       throw new UnauthorizedException('Authorization code is required');
     }
@@ -362,7 +400,6 @@ export class AuthController {
         )
       : await this.authService.getVkProviderId(body.code, body.redirect_uri);
     const provider: 'vk' | 'vk_id' = useVkId ? 'vk_id' : 'vk';
-    const userId = String(req.user?.userId ?? req.user?._id ?? '');
 
     if (body.resolve) {
       const result = await this.authService.resolveLinkConflict(
@@ -394,6 +431,7 @@ export class AuthController {
 
     const linkResult = await this.authService.linkProvider(userId, provider, providerId);
     if ('conflict' in linkResult && linkResult.conflict) {
+      await this.authService.setPendingLink(userId, provider, providerId);
       res.status(HttpStatus.CONFLICT);
       return {
         success: false,
@@ -414,7 +452,7 @@ export class AuthController {
     };
   }
 
-  /** Привязать Яндекс к текущему аккаунту (JWT). Тело: { code } или { access_token }, при конфликте + resolve: 'use_existing'|'link_here'|'merge'. */
+  /** Привязать Яндекс к текущему аккаунту (JWT). Тело: { code } или { access_token }. При 409 сохраняем ожидающую привязку; второй запрос — только { resolve } (без code/access_token). */
   @UseGuards(JwtAuthGuard)
   @Post('link/yandex')
   @HttpCode(HttpStatus.OK)
@@ -427,6 +465,43 @@ export class AuthController {
       resolve?: 'use_existing' | 'link_here' | 'merge';
     },
   ): Promise<ApiResponseDto<any>> {
+    const userId = String(req.user?.userId ?? req.user?._id ?? '');
+
+    // Второй шаг: только resolve — берём ожидающую привязку из кэша
+    if (body.resolve && !body?.code && !body?.access_token) {
+      const pending = await this.authService.getAndClearPendingLink(userId);
+      if (!pending || pending.provider !== 'yandex') {
+        throw new BadRequestException(
+          'No pending Yandex link. Start by linking with code or access_token first, then use resolve after 409.',
+        );
+      }
+      const result = await this.authService.resolveLinkConflict(
+        userId,
+        'yandex',
+        pending.providerId,
+        body.resolve,
+      );
+      if (result.switchToUser) {
+        setAuthCookies(res, result.switchToUser.access_token, result.switchToUser.refresh_token);
+        return {
+          success: true,
+          data: result.switchToUser,
+          message: 'Switched to existing account',
+          timestamp: new Date().toISOString(),
+          path: 'auth/link/yandex',
+          method: 'POST',
+        };
+      }
+      return {
+        success: true,
+        data: { linked: true },
+        message: 'Yandex account linked',
+        timestamp: new Date().toISOString(),
+        path: 'auth/link/yandex',
+        method: 'POST',
+      };
+    }
+
     if (!body?.code && !body?.access_token) {
       throw new UnauthorizedException('code or access_token is required');
     }
@@ -434,7 +509,6 @@ export class AuthController {
       code: body.code,
       access_token: body.access_token,
     });
-    const userId = String(req.user?.userId ?? req.user?._id ?? '');
 
     if (body.resolve) {
       const result = await this.authService.resolveLinkConflict(
@@ -466,6 +540,7 @@ export class AuthController {
 
     const linkResult = await this.authService.linkProvider(userId, 'yandex', providerId);
     if ('conflict' in linkResult && linkResult.conflict) {
+      await this.authService.setPendingLink(userId, 'yandex', providerId);
       res.status(HttpStatus.CONFLICT);
       return {
         success: false,
