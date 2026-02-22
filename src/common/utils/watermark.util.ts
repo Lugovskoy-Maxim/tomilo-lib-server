@@ -18,7 +18,7 @@ export class WatermarkUtil {
   );
 
   /** Прозрачность обычного водяного знака (0–1). Меньше = более прозрачный. */
-  private readonly watermarkOpacity = 0.45;
+  private readonly watermarkOpacity = 0.65;
 
   // Добавляем геттер для проверки пути
   public getWatermarkPath(): string {
