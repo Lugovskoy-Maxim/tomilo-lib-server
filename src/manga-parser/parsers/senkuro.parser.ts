@@ -30,11 +30,12 @@ export class SenkuroParser implements MangaParser {
         Referer: `https://${domain}/`,
       };
 
-      // Get full manga data
+      // Get full manga data (все поля по ответу api.senkuro.me/graphql)
       const mangaQuery = `
         query Manga($slug: String!) {
           manga(slug: $slug) {
             id
+            slug
             originalName {
               content
               lang
@@ -43,7 +44,12 @@ export class SenkuroParser implements MangaParser {
               content
               lang
             }
-
+            alternativeNames {
+              content
+              lang
+            }
+            type
+            releasedOn
             labels {
               titles {
                 content
@@ -59,6 +65,16 @@ export class SenkuroParser implements MangaParser {
                 url
               }
             }
+            localizations {
+              lang
+              description
+            }
+            mainStaff {
+              roles
+              person {
+                name
+              }
+            }
           }
         }
       `;
@@ -72,17 +88,7 @@ export class SenkuroParser implements MangaParser {
         { headers },
       );
 
-      // Debug logging
-      console.log('GraphQL URL:', graphqlUrl);
-      console.log('Slug:', slug);
-      console.log('Response status:', mangaResponse.status);
-      console.log(
-        'Response data:',
-        JSON.stringify(mangaResponse.data, null, 2),
-      );
-
       if (mangaResponse.data.errors) {
-        console.log('GraphQL errors:', mangaResponse.data.errors);
         throw new Error(
           `GraphQL errors: ${JSON.stringify(mangaResponse.data.errors)}`,
         );
@@ -105,15 +111,29 @@ export class SenkuroParser implements MangaParser {
       // Extract genres
       const genres = this.extractGenres(mangaData);
 
+      // Extract description (RU > EN > first available)
+      const description = this.extractDescription(mangaData);
+
+      // Author/artist from mainStaff (STORY -> author, ART -> artist)
+      const { author, artist } = this.extractStaff(mangaData);
+
+      // Type (MANHWA -> Manhwa, MANGA -> Manga, etc.) and release year
+      const type = this.extractType(mangaData);
+      const releaseYear = this.extractReleaseYear(mangaData);
+
       // Get chapters
       const chapters = await this.getChapters(mangaData, graphqlUrl, headers);
 
       return {
         title,
         alternativeTitles,
-        description: undefined,
+        description,
         coverUrl,
         genres,
+        author,
+        artist,
+        type,
+        releaseYear,
         chapters,
       };
     } catch (error) {
@@ -146,24 +166,45 @@ export class SenkuroParser implements MangaParser {
   }
 
   private extractAlternativeTitles(mangaData: any): string[] {
-    const alternativeTitles: string[] = [];
+    const mainTitle = this.extractTitle(mangaData);
+    const seen = new Set<string>([mainTitle]);
 
-    // Add all titles except RU (since RU is now main)
+    const add = (content: string | undefined) => {
+      if (content && !seen.has(content.trim())) {
+        seen.add(content.trim());
+        return content.trim();
+      }
+      return null;
+    };
+
+    const result: string[] = [];
+
+    // Из titles — все кроме того, что выбран как main
     const titles = mangaData.titles || [];
-    for (const title of titles) {
-      if (title.lang !== 'RU' && title.content) {
-        alternativeTitles.push(title.content);
+    for (const t of titles) {
+      if (t.content) {
+        const v = add(t.content);
+        if (v) result.push(v);
       }
     }
 
-    // Add original name if different from main title
-    const mainTitle = this.extractTitle(mangaData);
-    const originalName = mangaData.originalName?.content;
-    if (originalName && originalName !== mainTitle) {
-      alternativeTitles.push(originalName);
+    // alternativeNames из API (отдельное поле с доп. названиями)
+    const alternativeNames = mangaData.alternativeNames || [];
+    for (const a of alternativeNames) {
+      if (a.content) {
+        const v = add(a.content);
+        if (v) result.push(v);
+      }
     }
 
-    return alternativeTitles;
+    // originalName если ещё не добавлен
+    const originalName = mangaData.originalName?.content;
+    if (originalName) {
+      const v = add(originalName);
+      if (v) result.push(v);
+    }
+
+    return result;
   }
 
   private extractCoverUrl(mangaData: any): string | undefined {
@@ -224,6 +265,50 @@ export class SenkuroParser implements MangaParser {
     return genres.length > 0 ? genres : ['Unknown'];
   }
 
+  /** Author (STORY), artist (ART) из mainStaff */
+  private extractStaff(mangaData: any): {
+    author?: string;
+    artist?: string;
+  } {
+    const staff = mangaData.mainStaff || [];
+    const authors: string[] = [];
+    const artists: string[] = [];
+
+    for (const s of staff) {
+      const name = s.person?.name?.trim();
+      if (!name) continue;
+      const roles = (s.roles || []) as string[];
+      if (roles.includes('STORY') && !authors.includes(name)) authors.push(name);
+      if (roles.includes('ART') && !artists.includes(name)) artists.push(name);
+    }
+
+    return {
+      author: authors.length > 0 ? authors.join(', ') : undefined,
+      artist: artists.length > 0 ? artists.join(', ') : undefined,
+    };
+  }
+
+  /** type: MANHWA -> Manhwa, MANGA -> Manga, COMIC -> Comic */
+  private extractType(mangaData: any): string | undefined {
+    const raw = mangaData.type;
+    if (!raw || typeof raw !== 'string') return undefined;
+    const map: Record<string, string> = {
+      MANHWA: 'Manhwa',
+      MANGA: 'Manga',
+      COMIC: 'Comic',
+      NOVEL: 'Novel',
+    };
+    return map[raw] ?? raw;
+  }
+
+  /** Год из releasedOn (например "2024-05-17" -> 2024) */
+  private extractReleaseYear(mangaData: any): number | undefined {
+    const dateStr = mangaData.releasedOn;
+    if (!dateStr || typeof dateStr !== 'string') return undefined;
+    const year = parseInt(dateStr.slice(0, 4), 10);
+    return Number.isNaN(year) ? undefined : year;
+  }
+
   private extractDomain(url: string): string {
     const urlObj = new URL(url);
     return urlObj.hostname;
@@ -235,13 +320,11 @@ export class SenkuroParser implements MangaParser {
     headers: any,
   ): Promise<ChapterInfo[]> {
     const branches = mangaData.branches || [];
-    console.log('Branches:', JSON.stringify(branches, null, 2));
     let branchId = branches.find((b: any) => b.primaryBranch)?.id;
     if (!branchId && branches.length > 0) {
       branchId = branches[0].id;
     }
 
-    console.log('Selected branchId:', branchId);
     if (!branchId) {
       throw new Error('No branch ID found');
     }

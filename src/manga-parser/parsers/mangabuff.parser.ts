@@ -58,11 +58,15 @@ export class MangabuffParser implements MangaParser {
       // Extract manga ID from HTML markup
       const mangaId = $main('.manga').attr('data-id');
 
+      // Собираем cookies из ответа для последующих POST-запросов (chapters/load)
+      const cookieHeader = this.getCookieHeaderFromResponse(mainResponse);
+
       // Extract chapters
       const chapters = await this.extractChapters(
         $main,
         this.session,
         mangaId || '',
+        cookieHeader,
       );
 
       return {
@@ -81,14 +85,33 @@ export class MangabuffParser implements MangaParser {
     }
   }
 
+  /** Извлекает HTML списка глав из ответа /chapters/load */
+  private getChaptersHtmlFromResponse(response: { data?: unknown }): string | null {
+    if (!response.data || typeof response.data !== 'object') return null;
+    const content = (response.data as { content?: unknown }).content ?? response.data;
+    return typeof content === 'string' ? content : null;
+  }
+
+  /** Формирует заголовок Cookie из ответа axios для последующих запросов */
+  private getCookieHeaderFromResponse(response: { headers: Record<string, unknown> }): string {
+    const setCookie = response.headers['set-cookie'];
+    if (!setCookie) return '';
+    const list = Array.isArray(setCookie) ? setCookie : [setCookie];
+    return list
+      .map((h: unknown) => (typeof h === 'string' ? h : '').split(';')[0].trim())
+      .filter(Boolean)
+      .join('; ');
+  }
+
   private async extractChapters(
     $: cheerio.Root,
     session: AxiosInstance,
     mangaId: string,
+    cookieHeader: string,
   ): Promise<ChapterInfo[]> {
     const chapters: ChapterInfo[] = [];
 
-    // Сначала парсим главы с основной страницы
+    // Сначала парсим главы с основной страницы (первые ~100)
     $('.chapters__item').each((_, element) => {
       const chapter = this.parseChapterElement($, element);
       if (chapter) {
@@ -96,81 +119,89 @@ export class MangabuffParser implements MangaParser {
       }
     });
 
-    // Если есть mangaId, загружаем дополнительные главы
+    // Если есть mangaId, подгружаем остальные главы через POST /chapters/load
     if (mangaId) {
-      let page = 1;
+      const csrfToken = $('meta[name="csrf-token"]').attr('content') || '';
+      const baseHeaders = {
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-CSRF-TOKEN': csrfToken,
+        Referer: 'https://mangabuff.ru',
+        Origin: 'https://mangabuff.ru',
+        ...(cookieHeader ? { Cookie: cookieHeader } : {}),
+      };
+
+      // Запрашиваем дополнительные порции: сначала пробуем offset (100, 200, ...)
+      let offset = chapters.length;
       let hasMoreChapters = true;
+      let offsetEverReturnedChapters = false;
 
       while (hasMoreChapters) {
         try {
-          // Получаем CSRF-токен из meta-тега
-          const csrfToken = $('meta[name="csrf-token"]').attr('content');
-
           const response = await session.post(
             'https://mangabuff.ru/chapters/load',
-            new URLSearchParams({
-              manga_id: mangaId,
-              page: page.toString(), // Добавляем параметр страницы
-            }),
-            {
-              headers: {
-                'Content-Type':
-                  'application/x-www-form-urlencoded; charset=UTF-8',
-                'X-Requested-With': 'XMLHttpRequest',
-                'X-CSRF-TOKEN': csrfToken || '',
-                Referer: 'https://mangabuff.ru',
-                Origin: 'https://mangabuff.ru',
-              },
-            },
+            new URLSearchParams({ manga_id: mangaId, offset: String(offset) }),
+            { headers: baseHeaders },
           );
 
-          // Парсим HTML из ответа
-          if (response.data && typeof response.data === 'object') {
-            // Ответ может быть объектом с полем content
-            const htmlContent = response.data.content || response.data;
-
-            if (typeof htmlContent === 'string') {
-              const $chapters = cheerio.load(htmlContent);
-
-              // Всегда продолжаем загрузку, так как нет кнопки "Загрузить еще"
-              // Просто проверяем, были ли добавлены новые главы
-              let newChaptersCount = 0;
-              $chapters('.chapters__item').each((_, element) => {
-                const chapter = this.parseChapterElement($chapters, element);
-                if (chapter) {
-                  // Проверяем, нет ли уже такой главы
-                  const exists = chapters.some((c) => c.url === chapter.url);
-                  if (!exists) {
-                    chapters.push(chapter);
-                    newChaptersCount++;
-                  }
-                }
-              });
-
-              // Если не добавили новых глав, прекращаем загрузку
-              if (newChaptersCount === 0) {
-                hasMoreChapters = false;
-              } else {
-                // Переходим к следующей странице
-                page++;
-              }
-
-              // Переходим к следующей странице
-            } else {
-              // Если ответ не строка, прекращаем загрузку
-              hasMoreChapters = false;
-            }
-          } else {
-            // Если ответ пустой, прекращаем загрузку
+          const htmlContent = this.getChaptersHtmlFromResponse(response);
+          if (htmlContent === null) {
             hasMoreChapters = false;
+            break;
           }
+
+          const $chapters = cheerio.load(htmlContent);
+          let newChaptersCount = 0;
+          $chapters('.chapters__item').each((_, element) => {
+            const chapter = this.parseChapterElement($chapters, element);
+            if (chapter && !chapters.some((c) => c.url === chapter.url)) {
+              chapters.push(chapter);
+              newChaptersCount++;
+            }
+          });
+
+          if (newChaptersCount > 0) offsetEverReturnedChapters = true;
+          if (newChaptersCount === 0) hasMoreChapters = false;
+          else offset += newChaptersCount;
         } catch (error) {
           console.error(
-            `Error loading additional chapters (page ${page}):`,
+            `Error loading additional chapters (offset ${offset}):`,
             error,
           );
-          // Продолжаем работу с главами, которые уже есть
           hasMoreChapters = false;
+        }
+      }
+
+      // Если по offset ничего не пришло (API может ждать page), пробуем page=2, 3, ...
+      if (!offsetEverReturnedChapters) {
+        let page = 2;
+        let pageHasMore = true;
+        while (pageHasMore) {
+          try {
+            const response = await session.post(
+              'https://mangabuff.ru/chapters/load',
+              new URLSearchParams({ manga_id: mangaId, page: String(page) }),
+              { headers: baseHeaders },
+            );
+            const htmlContent = this.getChaptersHtmlFromResponse(response);
+            if (htmlContent === null) {
+              pageHasMore = false;
+              break;
+            }
+            const $chapters = cheerio.load(htmlContent);
+            let added = 0;
+            $chapters('.chapters__item').each((_, element) => {
+              const chapter = this.parseChapterElement($chapters, element);
+              if (chapter && !chapters.some((c) => c.url === chapter.url)) {
+                chapters.push(chapter);
+                added++;
+              }
+            });
+            if (added === 0) pageHasMore = false;
+            else page++;
+          } catch {
+            pageHasMore = false;
+          }
         }
       }
     }
