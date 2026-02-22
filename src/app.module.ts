@@ -36,6 +36,7 @@ import { IPActivity, IPActivitySchema } from './schemas/ip-activity.schema';
 import { AutoParsingModule } from './auto-parsing/auto-parsing.module';
 import { EmailModule } from './email/email.module';
 import { StatsModule } from './stats/stats.module';
+import { AnnouncementsModule } from './announcements/announcements.module';
 
 const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 
@@ -84,6 +85,7 @@ const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
     AutoParsingModule,
     EmailModule,
     StatsModule,
+    AnnouncementsModule,
   ],
   controllers: [AppController],
   providers: [

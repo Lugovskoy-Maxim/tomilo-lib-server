@@ -7,6 +7,7 @@ import {
   NotificationDocument,
   NotificationType,
 } from '../schemas/notification.schema';
+import { CommentEntityType } from '../schemas/comment.schema';
 
 const UNREAD_COUNT_CACHE_PREFIX = 'notifications:unread:';
 const UNREAD_COUNT_CACHE_TTL_MS = 30 * 1000; // 30 sec
@@ -230,5 +231,117 @@ export class NotificationsService {
     if (notifications.length > 0) {
       await this.notificationModel.insertMany(notifications);
     }
+  }
+
+  /**
+   * Уведомление автору комментария о новом ответе.
+   * recipientUserId — автор родительского комментария (кому шлём).
+   */
+  async createCommentReplyNotification(
+    recipientUserId: string,
+    replierUsername: string,
+    commentId: string,
+    entityType: CommentEntityType,
+    entityId: string,
+    options: {
+      titleId?: string;
+      chapterId?: string;
+      entityName?: string;
+      parentContentPreview?: string;
+    } = {},
+  ): Promise<NotificationDocument | null> {
+    if (recipientUserId == null || !Types.ObjectId.isValid(recipientUserId)) {
+      return null;
+    }
+    const title = 'Ответ на ваш комментарий';
+    const context = options.entityName ? ` (${options.entityName})` : '';
+    const preview = options.parentContentPreview
+      ? `: «${(options.parentContentPreview || '').slice(0, 60)}${(options.parentContentPreview?.length ?? 0) > 60 ? '…' : ''}»`
+      : '';
+    const message = `${replierUsername} ответил(а) на ваш комментарий${context}${preview}`;
+    return this.create({
+      userId: recipientUserId,
+      type: NotificationType.COMMENT_REPLY,
+      title,
+      message,
+      titleId: options.titleId,
+      chapterId: options.chapterId,
+      metadata: {
+        commentId,
+        entityType,
+        entityId,
+        replierUsername,
+      },
+    });
+  }
+
+  /**
+   * Группировка реакций: одно непрочитанное уведомление на комментарий.
+   * При новой реакции — найти существующее непрочитанное COMMENT_REACTIONS для этого комментария и обновить счётчик, иначе создать новое.
+   */
+  async createOrUpdateReactionsNotification(
+    commentOwnerId: string,
+    commentId: string,
+    reactorUsername: string,
+    emoji: string,
+    totalReactionsCount: number,
+    options: {
+      titleId?: string;
+      chapterId?: string;
+      entityType?: CommentEntityType;
+      entityId?: string;
+    } = {},
+  ): Promise<NotificationDocument | null> {
+    if (commentOwnerId == null || !Types.ObjectId.isValid(commentOwnerId)) {
+      return null;
+    }
+    const ownerOid = new Types.ObjectId(commentOwnerId);
+    const existing = await this.notificationModel.findOne({
+      userId: ownerOid,
+      type: NotificationType.COMMENT_REACTIONS,
+      isRead: false,
+      'metadata.commentId': commentId,
+    });
+
+    const title = 'Реакции на ваш комментарий';
+    const message =
+      totalReactionsCount <= 1
+        ? `${reactorUsername} поставил(а) ${emoji} на ваш комментарий`
+        : `${totalReactionsCount} человек поставили реакции на ваш комментарий`;
+
+    if (existing) {
+      const updated = await this.notificationModel.findByIdAndUpdate(
+        existing._id,
+        {
+          $set: {
+            message,
+            'metadata.reactionsCount': totalReactionsCount,
+            'metadata.lastReactorUsername': reactorUsername,
+            'metadata.lastEmoji': emoji,
+            ...(options.titleId && { titleId: new Types.ObjectId(options.titleId) }),
+            ...(options.chapterId && { chapterId: new Types.ObjectId(options.chapterId) }),
+          },
+        },
+        { new: true },
+      );
+      return updated;
+    }
+
+    return this.create({
+      userId: commentOwnerId,
+      type: NotificationType.COMMENT_REACTIONS,
+      title,
+      message,
+      titleId: options.titleId,
+      chapterId: options.chapterId,
+      metadata: {
+        commentId,
+        reactionsCount: totalReactionsCount,
+        lastReactorUsername: reactorUsername,
+        lastEmoji: emoji,
+        entityType: options.entityType,
+        entityId: options.entityId,
+      },
+    });
   }
 }

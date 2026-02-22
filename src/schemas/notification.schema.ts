@@ -7,6 +7,8 @@ export enum NotificationType {
   NEW_CHAPTER = 'new_chapter',
   SYSTEM = 'system',
   REPORT_RESOLVED = 'report_resolved',
+  COMMENT_REPLY = 'comment_reply',
+  COMMENT_REACTIONS = 'comment_reactions',
 }
 
 @Schema({ timestamps: true })

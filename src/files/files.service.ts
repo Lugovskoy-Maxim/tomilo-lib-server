@@ -496,6 +496,66 @@ export class FilesService {
   }
 
   /**
+   * Сохраняет изображение для объявления/новости (обложка или контент).
+   * Путь: uploads/announcements/{announcementId?}/{filename}
+   */
+  async saveAnnouncementImage(
+    file: Express.Multer.File,
+    announcementId?: string,
+  ): Promise<string> {
+    if (!file) {
+      throw new BadRequestException('Нет файла для загрузки');
+    }
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Файл должен быть изображением');
+    }
+
+    const subDir = announcementId
+      ? `announcements/${announcementId}`
+      : 'announcements';
+    const uploadPath = join('uploads', subDir);
+
+    await fs.mkdir(uploadPath, { recursive: true });
+
+    const ext = file.originalname.split('.').pop() || 'jpg';
+    const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
+    const filePath = join(uploadPath, fileName);
+
+    if (file.path) {
+      try {
+        await fs.rename(file.path, filePath);
+      } catch {
+        const content = await fs.readFile(file.path);
+        await fs.writeFile(filePath, content);
+        await fs.unlink(file.path);
+      }
+    } else if (file.buffer) {
+      await fs.writeFile(filePath, file.buffer);
+    } else {
+      throw new BadRequestException('Отсутствует содержимое файла');
+    }
+
+    return `/${subDir}/${fileName}`;
+  }
+
+  /**
+   * Удаляет папку с изображениями объявления
+   */
+  async deleteAnnouncementImages(announcementId: string): Promise<void> {
+    const dir = join('uploads', 'announcements', announcementId);
+    try {
+      await fs.rm(dir, { recursive: true, force: true });
+      this.logger.log(`Announcement images deleted: ${announcementId}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        this.logger.error(
+          `Error deleting announcement images ${announcementId}: ${error}`,
+        );
+      }
+    }
+  }
+
+  /**
    * Освобождает ресурсы водяных знаков
    */
   disposeWatermarkResources(): void {

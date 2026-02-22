@@ -16,6 +16,7 @@ import { Title, TitleDocument } from '../schemas/title.schema';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class CommentsService {
@@ -23,6 +24,7 @@ export class CommentsService {
     @InjectModel(Comment.name) private commentModel: Model<CommentDocument>,
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
+    private notificationsService: NotificationsService,
   ) {}
 
   async create(
@@ -36,8 +38,9 @@ export class CommentsService {
     );
 
     // If parentId is provided, validate it exists and belongs to the same entity
+    let parentComment: CommentDocument | null = null;
     if (createCommentDto.parentId) {
-      const parentComment = await this.commentModel.findById(
+      parentComment = await this.commentModel.findById(
         createCommentDto.parentId,
       );
       if (!parentComment) {
@@ -62,7 +65,40 @@ export class CommentsService {
         : null,
     });
 
-    return comment.save();
+    const saved = await comment.save();
+
+    // Уведомление автору родительского комментария об ответе (не себе)
+    if (createCommentDto.parentId && parentComment) {
+      const parentAuthorId = parentComment.userId.toString();
+      if (parentAuthorId !== userId) {
+        const replier = await this.commentModel.db
+          .collection('users')
+          .findOne(
+            { _id: new Types.ObjectId(userId) },
+            { projection: { username: 1 } },
+          );
+        const replierUsername = (replier as any)?.username ?? 'Пользователь';
+        const ctx = await this.getEntityContext(
+          parentComment.entityType,
+          parentComment.entityId.toString(),
+        );
+        await this.notificationsService.createCommentReplyNotification(
+          parentAuthorId,
+          replierUsername,
+          parentComment._id.toString(),
+          parentComment.entityType,
+          parentComment.entityId.toString(),
+          {
+            titleId: ctx?.titleId,
+            chapterId: ctx?.chapterId,
+            entityName: ctx?.entityName,
+            parentContentPreview: parentComment.content,
+          },
+        );
+      }
+    }
+
+    return saved;
   }
 
   async findAll(
@@ -275,6 +311,7 @@ export class CommentsService {
     }
 
     const idx = entry.userIds.findIndex((oid) => oid.toString() === userId);
+    const addedReaction = idx < 0;
     if (idx >= 0) {
       entry.userIds.splice(idx, 1);
     } else {
@@ -294,6 +331,37 @@ export class CommentsService {
     if (!updated) {
       throw new NotFoundException('Comment not found');
     }
+
+    // Уведомление автору комментария о новой реакции (не себе), с группировкой
+    const commentOwnerId = (comment as any).userId?.toString();
+    if (addedReaction && commentOwnerId && commentOwnerId !== userId) {
+      const totalCount = newReactions.reduce((sum, r) => sum + r.userIds.length, 0);
+      const reactor = await this.commentModel.db
+        .collection('users')
+        .findOne(
+          { _id: new Types.ObjectId(userId) },
+          { projection: { username: 1 } },
+        );
+      const reactorUsername = (reactor as any)?.username ?? 'Пользователь';
+      const ctx = await this.getEntityContext(
+        (comment as any).entityType,
+        (comment as any).entityId?.toString(),
+      );
+      await this.notificationsService.createOrUpdateReactionsNotification(
+        commentOwnerId,
+        id,
+        reactorUsername,
+        emoji,
+        totalCount,
+        {
+          titleId: ctx?.titleId,
+          chapterId: ctx?.chapterId,
+          entityType: (comment as any).entityType,
+          entityId: (comment as any).entityId?.toString(),
+        },
+      );
+    }
+
     return updated;
   }
 
@@ -401,5 +469,39 @@ export class CommentsService {
     } else {
       throw new BadRequestException('Invalid entity type');
     }
+  }
+
+  /** Контекст сущности для уведомлений: titleId, chapterId, название для отображения */
+  private async getEntityContext(
+    entityType: CommentEntityType,
+    entityId: string,
+  ): Promise<{ titleId?: string; chapterId?: string; entityName?: string } | null> {
+    if (!Types.ObjectId.isValid(entityId)) return null;
+    const oid = new Types.ObjectId(entityId);
+    if (entityType === CommentEntityType.TITLE) {
+      const title = await this.titleModel.findById(oid).select('name').lean();
+      if (!title) return null;
+      return {
+        titleId: entityId,
+        entityName: (title as any).name ? `«${(title as any).name}»` : undefined,
+      };
+    }
+    if (entityType === CommentEntityType.CHAPTER) {
+      const chapter = await this.chapterModel
+        .findById(oid)
+        .select('titleId chapterNumber name')
+        .populate('titleId', 'name')
+        .lean();
+      if (!chapter) return null;
+      const ch = chapter as any;
+      const titleName = ch.titleId?.name ?? '';
+      const chapterLabel = ch.name || `Глава ${ch.chapterNumber}`;
+      return {
+        titleId: ch.titleId?._id?.toString(),
+        chapterId: entityId,
+        entityName: titleName ? `«${titleName}» — ${chapterLabel}` : chapterLabel,
+      };
+    }
+    return null;
   }
 }
