@@ -314,8 +314,24 @@ export class TitlesService {
       .exec();
   }
 
+  /**
+   * Приводит slug к виду, безопасному для URL: только a-z, 0-9, дефис.
+   * Убирает ', кавычки и другие символы, ломающие ссылки.
+   */
+  private sanitizeSlug(slug: string): string {
+    if (!slug || typeof slug !== 'string') return 'unknown-title';
+    const safe = slug
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .substring(0, 50);
+    return safe || 'unknown-title';
+  }
+
   async create(createTitleDto: CreateTitleDto): Promise<TitleDocument> {
-    const { name, slug } = createTitleDto;
+    const { name } = createTitleDto;
+    const slug = this.sanitizeSlug(createTitleDto.slug);
 
     // Проверка на существующий тайтл по имени
     const existingTitle = await this.findByName(name);
@@ -329,7 +345,7 @@ export class TitlesService {
       throw new ConflictException('Title with this slug already exists');
     }
 
-    const title = new this.titleModel(createTitleDto);
+    const title = new this.titleModel({ ...createTitleDto, slug });
     return title.save();
   }
 
@@ -341,8 +357,13 @@ export class TitlesService {
       throw new BadRequestException('Invalid title ID');
     }
 
+    const payload = { ...updateTitleDto };
+    if (payload.slug !== undefined) {
+      payload.slug = this.sanitizeSlug(payload.slug);
+    }
+
     const title = await this.titleModel
-      .findByIdAndUpdate(id, updateTitleDto, { new: true })
+      .findByIdAndUpdate(id, payload, { new: true })
       .exec();
 
     if (!title) {

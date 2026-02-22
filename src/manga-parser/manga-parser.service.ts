@@ -112,9 +112,9 @@ export class MangaParserService {
       ч: 'ch',
       ш: 'sh',
       щ: 'sch',
-      ъ: 'y',
+      ъ: '',
       ы: 'y',
-      ь: "'",
+      ь: '',
       э: 'e',
       ю: 'yu',
       я: 'ya',
@@ -132,15 +132,16 @@ export class MangaParserService {
       } else if (/\s/.test(char)) {
         result += '-';
       }
+      // Остальные символы (', ", и т.д.) не добавляем — ломают ссылки
     }
 
-    // Убираем повторяющиеся дефисы и обрезаем по краям
-    return (
-      result
-        .replace(/-+/g, '-')
-        .replace(/^-+|-+$/g, '')
-        .substring(0, 50) || 'unknown-title'
-    ); // Ограничиваем длину
+    // Оставляем только символы, безопасные для URL: a-z, 0-9, дефис
+    const safe = result
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .substring(0, 50);
+    return safe || 'unknown-title';
   }
 
   private parseChapterNumbers(chapterNumbers: string[]): Set<number> {
