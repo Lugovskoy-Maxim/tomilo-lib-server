@@ -97,25 +97,28 @@ export class MangaShiParser implements MangaParser {
       // New site: chapters on main page (a[href*="/glava-"] with .chapter-title) + pagination
       let chapters: ChapterInfo[] = this.extractChaptersFromHtml($main, baseUrl);
 
-      // Fetch additional chapter pages (load more: /manga/{slug}/chapters/?page=N)
+      // Fetch chapter list pages (page 1, 2, …) and merge — main page may lack last of first batch (HTMX "Load more")
       const slugMatch = url.match(/\/manga\/([^/]+)\/?/);
       if (slugMatch) {
         const slug = slugMatch[1];
-        const seenUrls = new Set(chapters.map((c) => c.url).filter(Boolean));
-        let page = 2;
-        for (;;) {
+        const seenUrls = new Set<string>();
+        for (const c of chapters) {
+          if (c.url) seenUrls.add(this.normalizeChapterUrl(c.url));
+        }
+        const maxPages = 150;
+        for (let page = 1; page <= maxPages; page++) {
           const more = await this.fetchChaptersPage(baseUrl, slug, page);
           if (more.length === 0) break;
           let added = 0;
           for (const ch of more) {
-            if (ch.url && !seenUrls.has(ch.url)) {
-              seenUrls.add(ch.url);
-              chapters.push(ch);
-              added++;
-            }
+            if (!ch.url) continue;
+            const norm = this.normalizeChapterUrl(ch.url);
+            if (seenUrls.has(norm)) continue;
+            seenUrls.add(norm);
+            chapters.push(ch);
+            added++;
           }
-          if (added === 0) break; // no new chapters — stop pagination (site may return same page)
-          page++;
+          if (added === 0) break; // no new chapters — stop (same page or end)
         }
       }
 
@@ -127,8 +130,8 @@ export class MangaShiParser implements MangaParser {
         chapters = this.extractChaptersFromHtmlLegacy($main);
       }
 
-      // Reverse to have chapters in ascending order
-      chapters.reverse();
+      // Sort by chapter number ascending (more reliable than reverse when there are prologue chapters like 0-1)
+      chapters.sort((a, b) => (a.number ?? 0) - (b.number ?? 0));
 
       return {
         title,
@@ -240,6 +243,18 @@ export class MangaShiParser implements MangaParser {
     return chapters;
   }
 
+  /** Normalize chapter URL for deduplication: path without query, trailing slash */
+  private normalizeChapterUrl(url: string): string {
+    try {
+      const u = new URL(url);
+      let path = u.pathname.replace(/\/+$/, '') || '/';
+      if (!path.endsWith('/')) path += '/';
+      return `${u.origin}${path}`;
+    } catch {
+      return url;
+    }
+  }
+
   /** New site layout: a[href*="/glava-"] with .chapter-title, relative hrefs */
   private extractChaptersFromHtml($: cheerio.Root, baseUrl: string): ChapterInfo[] {
     const chapters: ChapterInfo[] = [];
@@ -251,8 +266,9 @@ export class MangaShiParser implements MangaParser {
       if (!href || !href.includes('/glava-')) return;
 
       const fullUrl = href.startsWith('http') ? href : `${baseUrl}${href}`;
-      if (seen.has(fullUrl)) return;
-      seen.add(fullUrl);
+      const norm = this.normalizeChapterUrl(fullUrl);
+      if (seen.has(norm)) return;
+      seen.add(norm);
 
       const name =
         $el.find('.chapter-title').text().trim() ||
@@ -261,10 +277,16 @@ export class MangaShiParser implements MangaParser {
       const cleanName = name.replace(/\s*\d{2}\.\d{2}\.\d{4}\s*$/, '').trim() || name;
 
       let number: number | undefined;
-      const urlMatch = href.match(/\/glava-(\d+(?:\.\d+)?)\//i);
-      if (urlMatch) {
-        const n = parseFloat(urlMatch[1]);
-        if (!isNaN(n)) number = n;
+      // glava-0-1 -> 0.1, glava-1174 -> 1174
+      const twoPart = href.match(/\/glava-(\d+)-(\d+)\//i);
+      if (twoPart) {
+        number = parseFloat(`${twoPart[1]}.${twoPart[2]}`);
+      } else {
+        const urlMatch = href.match(/\/glava-(\d+(?:\.\d+)?)\//i);
+        if (urlMatch) {
+          const n = parseFloat(urlMatch[1]);
+          if (!isNaN(n)) number = n;
+        }
       }
       if (number === undefined && cleanName) {
         const nameMatch = cleanName.match(/(?:Глава|Chapter)\s*(\d+(?:\.\d+)?)/i);
@@ -279,7 +301,7 @@ export class MangaShiParser implements MangaParser {
 
       chapters.push({
         name: cleanName || `Глава ${number ?? '?'}`,
-        url: fullUrl,
+        url: norm,
         number,
         slug,
       });
