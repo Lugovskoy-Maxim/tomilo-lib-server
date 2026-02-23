@@ -22,9 +22,11 @@ export class MangaShiParser implements MangaParser {
       // Get the main page to extract all data
       const mainResponse = await this.session.get(url);
       const $main = cheerio.load(mainResponse.data);
+      const baseUrl = new URL(url).origin;
 
-      // Extract title
+      // Extract title (new layout and legacy)
       const title =
+        $main('h1').first().text().trim() ||
         $main('.post-title h1').text().trim() ||
         $main('.post-title').text().trim() ||
         url;
@@ -54,12 +56,34 @@ export class MangaShiParser implements MangaParser {
         }
       });
 
-      // Try to get chapters via AJAX first (as per user's example)
-      let chapters: ChapterInfo[] = await this.fetchChaptersViaAjax(url);
+      // New site: chapters on main page (a[href*="/glava-"] with .chapter-title) + pagination
+      let chapters: ChapterInfo[] = this.extractChaptersFromHtml($main, baseUrl);
 
-      // If AJAX failed, try to extract from main page
+      // Fetch additional chapter pages (load more: /manga/{slug}/chapters/?page=N)
+      const slugMatch = url.match(/\/manga\/([^/]+)\/?/);
+      if (slugMatch) {
+        const slug = slugMatch[1];
+        const seenUrls = new Set(chapters.map((c) => c.url).filter(Boolean));
+        let page = 2;
+        for (;;) {
+          const more = await this.fetchChaptersPage(baseUrl, slug, page);
+          if (more.length === 0) break;
+          for (const ch of more) {
+            if (ch.url && !seenUrls.has(ch.url)) {
+              seenUrls.add(ch.url);
+              chapters.push(ch);
+            }
+          }
+          page++;
+        }
+      }
+
+      // Legacy: try AJAX if new selectors found nothing
       if (chapters.length === 0) {
-        chapters = this.extractChaptersFromHtml($main);
+        chapters = await this.fetchChaptersViaAjax(url);
+      }
+      if (chapters.length === 0) {
+        chapters = this.extractChaptersFromHtmlLegacy($main);
       }
 
       // Reverse to have chapters in ascending order
@@ -169,10 +193,77 @@ export class MangaShiParser implements MangaParser {
     return chapters;
   }
 
-  private extractChaptersFromHtml($: cheerio.Root): ChapterInfo[] {
+  /** New site layout: a[href*="/glava-"] with .chapter-title, relative hrefs */
+  private extractChaptersFromHtml($: cheerio.Root, baseUrl: string): ChapterInfo[] {
+    const chapters: ChapterInfo[] = [];
+    const seen = new Set<string>();
+
+    $(`a[href*="/glava-"]`).each((_, element) => {
+      const $el = $(element);
+      const href = $el.attr('href');
+      if (!href || !href.includes('/glava-')) return;
+
+      const fullUrl = href.startsWith('http') ? href : `${baseUrl}${href}`;
+      if (seen.has(fullUrl)) return;
+      seen.add(fullUrl);
+
+      const name =
+        $el.find('.chapter-title').text().trim() ||
+        $el.find('span').first().text().trim() ||
+        $el.text().trim();
+      const cleanName = name.replace(/\s*\d{2}\.\d{2}\.\d{4}\s*$/, '').trim() || name;
+
+      let number: number | undefined;
+      const urlMatch = href.match(/\/glava-(\d+(?:\.\d+)?)\//i);
+      if (urlMatch) {
+        const n = parseFloat(urlMatch[1]);
+        if (!isNaN(n)) number = n;
+      }
+      if (number === undefined && cleanName) {
+        const nameMatch = cleanName.match(/(?:Глава|Chapter)\s*(\d+(?:\.\d+)?)/i);
+        if (nameMatch) {
+          const n = parseFloat(nameMatch[1]);
+          if (!isNaN(n)) number = n;
+        }
+      }
+
+      const slugMatch = href.match(/\/manga\/[^/]+\/(.+)\/$/);
+      const slug = slugMatch ? slugMatch[1] : undefined;
+
+      chapters.push({
+        name: cleanName || `Глава ${number ?? '?'}`,
+        url: fullUrl,
+        number,
+        slug,
+      });
+    });
+
+    if (chapters.length > 0) {
+      console.log(`Found ${chapters.length} chapters (new layout)`);
+    }
+    return chapters;
+  }
+
+  /** Fetch one page of chapters (pagination: /manga/{slug}/chapters/?chapter_sort=latest&page=N) */
+  private async fetchChaptersPage(
+    baseUrl: string,
+    slug: string,
+    page: number,
+  ): Promise<ChapterInfo[]> {
+    try {
+      const pageUrl = `${baseUrl}/manga/${slug}/chapters/?chapter_sort=latest&page=${page}`;
+      const res = await this.session.get(pageUrl);
+      const $ = cheerio.load(res.data);
+      return this.extractChaptersFromHtml($, baseUrl);
+    } catch {
+      return [];
+    }
+  }
+
+  /** Legacy selectors (old site layout) */
+  private extractChaptersFromHtmlLegacy($: cheerio.Root): ChapterInfo[] {
     const chapters: ChapterInfo[] = [];
 
-    // Try different selectors for chapters on main page
     const chapterSelectors = [
       'li.wp-manga-chapter a',
       '.wp-manga-chapter a',
@@ -183,7 +274,6 @@ export class MangaShiParser implements MangaParser {
 
     for (const selector of chapterSelectors) {
       const elements = $(selector);
-      console.log(`Selector "${selector}" found ${elements.length} elements`);
 
       elements.each((_, element) => {
         const name = $(element).text().trim();
@@ -192,30 +282,22 @@ export class MangaShiParser implements MangaParser {
         if (
           name &&
           link &&
-          (link.includes('/glava/') || link.includes('/chapter/'))
+          (link.includes('/glava/') || link.includes('/glava-') || link.includes('/chapter/'))
         ) {
-          // Extract chapter number
           let number: number | undefined;
 
           const nameMatch = name.match(/(?:Глава|Chapter)\s*(\d+(?:\.\d+)?)/i);
           if (nameMatch) {
             const parsedNumber = parseFloat(nameMatch[1]);
-            if (!isNaN(parsedNumber)) {
-              number = parsedNumber;
-            }
+            if (!isNaN(parsedNumber)) number = parsedNumber;
           } else {
-            const urlMatch = link.match(
-              /\/(?:glava|chapter)-(\d+(?:\.\d+)?)\//i,
-            );
+            const urlMatch = link.match(/\/(?:glava|chapter)-(\d+(?:\.\d+)?)\//i);
             if (urlMatch) {
               const parsedNumber = parseFloat(urlMatch[1]);
-              if (!isNaN(parsedNumber)) {
-                number = parsedNumber;
-              }
+              if (!isNaN(parsedNumber)) number = parsedNumber;
             }
           }
 
-          // Extract slug from URL for image downloading
           const slugMatch = link.match(/\/manga\/[^/]+\/(.+)\/$/);
           const slug = slugMatch ? slugMatch[1] : undefined;
 
@@ -226,7 +308,7 @@ export class MangaShiParser implements MangaParser {
       if (chapters.length > 0) break;
     }
 
-    console.log(`Found ${chapters.length} chapters from main page`);
+    console.log(`Found ${chapters.length} chapters from main page (legacy)`);
     return chapters;
   }
 }
