@@ -68,12 +68,15 @@ export class MangaShiParser implements MangaParser {
         for (;;) {
           const more = await this.fetchChaptersPage(baseUrl, slug, page);
           if (more.length === 0) break;
+          let added = 0;
           for (const ch of more) {
             if (ch.url && !seenUrls.has(ch.url)) {
               seenUrls.add(ch.url);
               chapters.push(ch);
+              added++;
             }
           }
+          if (added === 0) break; // no new chapters — stop pagination (site may return same page)
           page++;
         }
       }
