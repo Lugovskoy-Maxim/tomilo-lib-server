@@ -407,16 +407,30 @@ export class MangaParserService {
 
       const chapterResponse = await mangaShiSession.get(chapter.url);
       const $chapter = cheerio.load(chapterResponse.data);
+      const baseUrl = new URL(chapter.url).origin;
 
       const imageUrls: string[] = [];
-      $chapter('.page-break img').each((_, element) => {
-        const src =
-          $chapter(element).attr('data-src') || $chapter(element).attr('src');
+      // New layout: one img per .reader-page (data-src for lazy, src for first)
+      $chapter('.reader-page').each((_, pageEl) => {
+        const img = $chapter(pageEl).find('.reader-image img, img').first();
+        const src = img.attr('data-src') || img.attr('src');
         if (src) {
-          const absoluteUrl = new URL(src, chapter.url).href;
+          const absoluteUrl =
+            src.startsWith('http') ? src : `${baseUrl}${src.startsWith('/') ? '' : '/'}${src}`;
           imageUrls.push(absoluteUrl);
         }
       });
+      // Legacy: .page-break img
+      if (imageUrls.length === 0) {
+        $chapter('.page-break img').each((_, element) => {
+          const src =
+            $chapter(element).attr('data-src') || $chapter(element).attr('src');
+          if (src) {
+            const absoluteUrl = new URL(src, chapter.url).href;
+            imageUrls.push(absoluteUrl);
+          }
+        });
+      }
 
       if (imageUrls.length === 0) {
         throw new Error('No images found in chapter');

@@ -31,14 +31,24 @@ export class MangaShiParser implements MangaParser {
         $main('.post-title').text().trim() ||
         url;
 
-      // Extract cover URL
-      const coverUrl =
+      // Extract cover URL (new layout: og:image, .media-image; legacy: .summary_image, .thumb)
+      let coverUrl =
+        $main('meta[property="og:image"]').attr('content') ||
         $main('.summary_image img').attr('data-src') ||
         $main('.summary_image img').attr('src') ||
         $main('.summary_image a img').attr('data-src') ||
         $main('.summary_image a img').attr('src') ||
         $main('.thumb img').attr('data-src') ||
         $main('.thumb img').attr('src');
+      if (!coverUrl) {
+        const mainCover = $main('img.media-image[alt*="Обложка"], img.media-image[title]').first();
+        if (mainCover.length) {
+          coverUrl = mainCover.attr('src') || mainCover.attr('data-src');
+        }
+      }
+      if (coverUrl && !coverUrl.startsWith('http')) {
+        coverUrl = coverUrl.startsWith('/') ? `${baseUrl}${coverUrl}` : `${baseUrl}/${coverUrl}`;
+      }
 
       // Extract description
       const description =
