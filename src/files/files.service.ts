@@ -434,13 +434,18 @@ export class FilesService {
 
   async downloadTitleCover(imageUrl: string, titleId: string): Promise<string> {
     try {
+      const urlObj = new URL(imageUrl);
+      const headers: Record<string, string> = {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
+      };
+      if (urlObj.hostname === 'manga-shi.org') {
+        headers['Referer'] = 'https://manga-shi.org/';
+      }
       const response = await axios.get(imageUrl, {
         responseType: 'arraybuffer',
         timeout: 30000,
-        headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
-        },
+        headers,
       });
 
       const titleDir = `titles/${titleId}`;
@@ -450,8 +455,7 @@ export class FilesService {
       await fs.mkdir(uploadPath, { recursive: true });
 
       // Определяем расширение файла
-      const urlPath = new URL(imageUrl).pathname;
-      const ext = urlPath.split('.').pop()?.split('?')[0] || 'jpg';
+      const ext = urlObj.pathname.split('.').pop()?.split('?')[0] || 'jpg';
       const fileName = `cover.${ext}`;
       const filePath = join(uploadPath, fileName);
 

@@ -50,21 +50,49 @@ export class MangaShiParser implements MangaParser {
         coverUrl = coverUrl.startsWith('/') ? `${baseUrl}${coverUrl}` : `${baseUrl}/${coverUrl}`;
       }
 
-      // Extract description
-      const description =
+      // Description: full text from content block (new layout) or legacy selectors
+      let description =
+        $main('div.text-zinc-400.leading-relaxed.max-w-3xl').first().text().trim() ||
+        $main('h1').nextAll('div').filter((_, el) => $main(el).text().length > 100).first().text().trim() ||
+        $main('meta[property="og:description"]').attr('content')?.trim() ||
         $main('.summary__content .post-content').text().trim() ||
         $main('.summary .post-content').text().trim() ||
         $main('.description').text().trim() ||
         $main('.manga-summary').text().trim();
+      if (description?.endsWith('…') || description?.endsWith('...')) {
+        const fromMeta = $main('meta[property="og:description"]').attr('content');
+        if (fromMeta && description === fromMeta) description = description; // keep as is or try JSON-LD full
+      }
 
-      // Extract genres
-      const genres: string[] = [];
-      $main('.genres-content a, .genre a, .mg_genres a').each((_, element) => {
-        const genre = $main(element).text().trim();
-        if (genre) {
-          genres.push(genre);
-        }
-      });
+      // Genres: from JSON-LD (CreativeWorkSeries.genre) or from #-tags on page or legacy
+      let genres: string[] = this.extractGenresFromJsonLd($main);
+      if (genres.length === 0) {
+        $main('span').each((_, element) => {
+          const t = $main(element).text().trim();
+          if (/^#[\wА-Яа-яёЁ]+$/.test(t)) genres.push(t.replace(/^#/, '').trim());
+        });
+      }
+      if (genres.length === 0) {
+        $main('.genres-content a, .genre a, .mg_genres a').each((_, element) => {
+          const genre = $main(element).text().trim();
+          if (genre) genres.push(genre);
+        });
+      }
+
+      // Author: links to /catalog/?author=
+      const author = this.extractListFromLinks($main, 'a[href*="/catalog/?author="]');
+
+      // Artist: links to /catalog/?artist=
+      const artist = this.extractListFromLinks($main, 'a[href*="/catalog/?artist="]');
+
+      // Year: row with label "Год:" and value in next span
+      const releaseYear = this.extractYearFromLabel($main, 'Год:');
+
+      // Alternative titles: row "Другие названия:" then comma-separated list
+      const alternativeTitles = this.extractAlternativeTitlesFromLabel($main);
+
+      // Type: Manga / Manhwa / Manhua from page (e.g. "Manga • Ongoing")
+      const type = this.extractType($main);
 
       // New site: chapters on main page (a[href*="/glava-"] with .chapter-title) + pagination
       let chapters: ChapterInfo[] = this.extractChaptersFromHtml($main, baseUrl);
@@ -104,9 +132,15 @@ export class MangaShiParser implements MangaParser {
 
       return {
         title,
+        alternativeTitles:
+          alternativeTitles.length > 0 ? alternativeTitles : undefined,
         description: description || undefined,
         coverUrl: coverUrl || undefined,
         genres: genres.length > 0 ? genres : undefined,
+        author: author || undefined,
+        artist: artist || undefined,
+        releaseYear: releaseYear ?? undefined,
+        type: type || undefined,
         chapters,
       };
     } catch (error) {
@@ -323,5 +357,76 @@ export class MangaShiParser implements MangaParser {
 
     console.log(`Found ${chapters.length} chapters from main page (legacy)`);
     return chapters;
+  }
+
+  /** Parse JSON-LD script and return genre array from CreativeWorkSeries */
+  private extractGenresFromJsonLd($: cheerio.Root): string[] {
+    try {
+      const script = $('script#json-ld').html();
+      if (!script) return [];
+      const data = JSON.parse(script) as Array<{ '@type'?: string; genre?: string[] }>;
+      const creative = Array.isArray(data) ? data.find((o) => o['@type'] === 'CreativeWorkSeries') : null;
+      const genre = creative?.genre;
+      return Array.isArray(genre) ? genre.filter((g): g is string => typeof g === 'string') : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Collect unique text from links matching selector, join with ", " */
+  private extractListFromLinks($: cheerio.Root, selector: string): string | undefined {
+    const parts: string[] = [];
+    $(selector).each((_, el) => {
+      const t = $(el).text().trim();
+      if (t && !parts.includes(t)) parts.push(t);
+    });
+    return parts.length > 0 ? parts.join(', ') : undefined;
+  }
+
+  /** Find row with label (e.g. "Год:") and return numeric value from same row */
+  private extractYearFromLabel($: cheerio.Root, label: string): number | undefined {
+    let year: number | undefined;
+    $('div.flex').each((_, rowEl) => {
+      const row = $(rowEl);
+      const spans = row.find('span');
+      if (spans.length < 2) return;
+      if (spans.first().text().trim() !== label) return;
+      const text = spans.last().text().trim();
+      const num = parseInt(text, 10);
+      if (!Number.isNaN(num) && num > 1900 && num < 2100) year = num;
+    });
+    return year;
+  }
+
+  /** Find row "Другие названия:" and return comma-split list (trimmed) */
+  private extractAlternativeTitlesFromLabel($: cheerio.Root): string[] {
+    const result: string[] = [];
+    $('div.flex').each((_, rowEl) => {
+      const row = $(rowEl);
+      const spans = row.find('span');
+      if (spans.length < 2) return;
+      if (spans.first().text().trim() !== 'Другие названия:') return;
+      const text = spans.last().text().trim();
+      if (!text) return;
+      text.split(',').map((s) => s.trim()).filter(Boolean).forEach((s) => result.push(s));
+    });
+    return [...new Set(result)];
+  }
+
+  /** Extract type: Manga / Manhwa / Manhua from page (e.g. "Manga • Ongoing") */
+  private extractType($: cheerio.Root): string | undefined {
+    const candidates = ['Manga', 'Manhwa', 'Manhua', 'Comic', 'Комикс', 'Манхва', 'Маньхуа'];
+    let found: string | undefined;
+    $('span').each((_, el) => {
+      if (found) return;
+      const t = $(el).text().trim();
+      for (const c of candidates) {
+        if (t.toLowerCase().startsWith(c.toLowerCase()) && (t.length <= c.length + 2 || /^\s*[•·]/.test(t.slice(c.length)))) {
+          found = c;
+          return;
+        }
+      }
+    });
+    return found;
   }
 }
