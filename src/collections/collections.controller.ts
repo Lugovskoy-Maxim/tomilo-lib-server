@@ -19,8 +19,7 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { memoryStorage } from 'multer';
 import { CollectionsService } from './collections.service';
 import { CreateCollectionDto } from './dto/create-collection.dto';
 import { UpdateCollectionDto } from './dto/update-collection.dto';
@@ -80,14 +79,7 @@ export class CollectionsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @UseInterceptors(
     FileInterceptor('cover', {
-      storage: diskStorage({
-        destination: './uploads/collections',
-        filename: (req, file, cb) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, uniqueSuffix + extname(file.originalname));
-        },
-      }),
+      storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
         if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
           return cb(
@@ -115,12 +107,9 @@ export class CollectionsController {
       `User making request: ${req.user?.email} (${req.user?.userId}) with roles: ${req.user?.roles?.join(', ')}`,
     );
 
-    if (file) {
-      createCollectionDto.cover = `/uploads/collections/${file.filename}`;
-    }
     return {
       success: true,
-      data: await this.collectionsService.create(createCollectionDto),
+      data: await this.collectionsService.create(createCollectionDto, file),
       message: ' Collection created successfully',
       timestamp: new Date().toISOString(),
       path: 'uploads/collections',
@@ -131,14 +120,7 @@ export class CollectionsController {
   @Put(':id')
   @UseInterceptors(
     FileInterceptor('cover', {
-      storage: diskStorage({
-        destination: './uploads/collections',
-        filename: (req, file, cb) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, uniqueSuffix + extname(file.originalname));
-        },
-      }),
+      storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
         if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
           return cb(
@@ -159,12 +141,9 @@ export class CollectionsController {
     @Body() updateCollectionDto: UpdateCollectionDto,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    if (file) {
-      updateCollectionDto.cover = `/uploads/collections/${file.filename}`;
-    }
     return {
       success: true,
-      data: await this.collectionsService.update(id, updateCollectionDto),
+      data: await this.collectionsService.update(id, updateCollectionDto, file),
       message: ' Collection updated successfully',
       timestamp: new Date().toISOString(),
       path: 'uploads/collections',

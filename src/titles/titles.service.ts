@@ -314,35 +314,51 @@ export class TitlesService {
       .exec();
   }
 
-  async create(createTitleDto: CreateTitleDto): Promise<TitleDocument> {
+  async create(
+    createTitleDto: CreateTitleDto,
+    file?: Express.Multer.File,
+  ): Promise<TitleDocument> {
     const { name, slug } = createTitleDto;
 
-    // Проверка на существующий тайтл по имени
     const existingTitle = await this.findByName(name);
     if (existingTitle) {
       throw new ConflictException('Title with this name already exists');
     }
 
-    // Проверка на существующий тайтл по slug
     const existingTitleBySlug = await this.findBySlug(slug);
     if (existingTitleBySlug) {
       throw new ConflictException('Title with this slug already exists');
     }
 
-    // Slug сохраняем в том виде, в каком прислал клиент
     const title = new this.titleModel(createTitleDto);
-    return title.save();
+    const saved = await title.save();
+
+    if (file) {
+      const coverUrl = await this.filesService.saveTitleCoverFromFile(
+        file,
+        saved._id.toString(),
+      );
+      saved.coverImage = coverUrl;
+      await saved.save();
+    }
+
+    return saved;
   }
 
   async update(
     id: string,
     updateTitleDto: UpdateTitleDto,
+    file?: Express.Multer.File,
   ): Promise<TitleDocument> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid title ID');
     }
 
-    // Slug и остальные поля сохраняем в том виде, в каком прислал клиент
+    if (file) {
+      const coverUrl = await this.filesService.saveTitleCoverFromFile(file, id);
+      updateTitleDto.coverImage = coverUrl;
+    }
+
     const title = await this.titleModel
       .findByIdAndUpdate(id, updateTitleDto, { new: true })
       .exec();

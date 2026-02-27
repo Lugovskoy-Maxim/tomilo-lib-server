@@ -26,11 +26,10 @@ import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { diskStorage } from 'multer';
+import { memoryStorage } from 'multer';
 import { TitlesService } from './titles.service';
 import { CreateTitleDto } from './dto/create-title.dto';
 import { UpdateTitleDto } from './dto/update-title.dto';
-import { extname } from 'path';
 import { FilterOptionsResponseDto } from './dto/title-controller.dto';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { BotDetectionService } from '../common/services/bot-detection.service';
@@ -441,14 +440,7 @@ export class TitlesController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @UseInterceptors(
     FileInterceptor('coverImage', {
-      storage: diskStorage({
-        destination: './uploads/covers',
-        filename: (req, file, cb) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, uniqueSuffix + extname(file.originalname));
-        },
-      }),
+      storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
         if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
           return cb(
@@ -468,10 +460,7 @@ export class TitlesController {
     @UploadedFile() file?: Express.Multer.File,
   ): Promise<ApiResponseDto<any>> {
     try {
-      if (file) {
-        createTitleDto.coverImage = `/uploads/covers/${file.filename}`;
-      }
-      const data = await this.titlesService.create(createTitleDto);
+      const data = await this.titlesService.create(createTitleDto, file);
 
       return {
         success: true,
@@ -496,14 +485,7 @@ export class TitlesController {
   @Put('titles/:id')
   @UseInterceptors(
     FileInterceptor('coverImage', {
-      storage: diskStorage({
-        destination: './uploads/covers',
-        filename: (req, file, cb) => {
-          const uniqueSuffix =
-            Date.now() + '-' + Math.round(Math.random() * 1e9);
-          cb(null, uniqueSuffix + extname(file.originalname));
-        },
-      }),
+      storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
         if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
           return cb(
@@ -525,10 +507,7 @@ export class TitlesController {
     @UploadedFile() file?: Express.Multer.File,
   ): Promise<ApiResponseDto<any>> {
     try {
-      if (file) {
-        updateTitleDto.coverImage = `/uploads/covers/${file.filename}`;
-      }
-      const data = await this.titlesService.update(id, updateTitleDto);
+      const data = await this.titlesService.update(id, updateTitleDto, file);
 
       return {
         success: true,

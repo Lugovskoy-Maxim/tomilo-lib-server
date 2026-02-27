@@ -3,12 +3,136 @@ import { promises as fs } from 'fs';
 import { join } from 'path';
 import axios from 'axios';
 import { WatermarkUtil } from '../common/utils/watermark.util';
+import { S3Service } from '../s3/s3.service';
 
 @Injectable()
 export class FilesService {
   private readonly logger = new Logger(FilesService.name);
 
-  constructor(private watermarkUtil: WatermarkUtil) {}
+  constructor(
+    private watermarkUtil: WatermarkUtil,
+    private s3Service: S3Service,
+  ) {}
+
+  private useS3(): boolean {
+    return this.s3Service.isConfigured();
+  }
+
+  /**
+   * Сохраняет файл локально и асинхронно дублирует в S3 (если настроен).
+   * Всегда возвращает локальный путь — S3 используется как зеркало.
+   * Загрузка в S3 не блокирует ответ сервера.
+   */
+  private async saveFileWithBackup(
+    buffer: Buffer,
+    localPath: string,
+    s3Key: string,
+    contentType: string,
+  ): Promise<string> {
+    await fs.mkdir(join('uploads', ...localPath.split('/').slice(0, -1)), {
+      recursive: true,
+    });
+    const fullLocalPath = join('uploads', localPath);
+    await fs.writeFile(fullLocalPath, buffer);
+    this.logger.log(`Файл сохранен локально: ${fullLocalPath}`);
+
+    if (this.useS3()) {
+      this.uploadToS3Async(s3Key, buffer, contentType);
+    }
+
+    return `/${localPath}`;
+  }
+
+  /**
+   * Асинхронная загрузка в S3 (fire-and-forget).
+   * Не блокирует основной поток, ошибки логируются.
+   */
+  private uploadToS3Async(
+    s3Key: string,
+    buffer: Buffer,
+    contentType: string,
+  ): void {
+    this.s3Service
+      .uploadFile(s3Key, buffer, contentType)
+      .then(() => {
+        this.logger.log(`[S3 async] Файл загружен: ${s3Key}`);
+      })
+      .catch((error) => {
+        this.logger.error(`[S3 async] Ошибка загрузки ${s3Key}: ${error}`);
+      });
+  }
+
+  /**
+   * Удаляет файл локально и асинхронно из S3 (если настроен).
+   */
+  private async deleteFileWithBackup(
+    localPath: string,
+    s3Key: string,
+  ): Promise<void> {
+    const fullLocalPath = join('uploads', localPath);
+    try {
+      await fs.unlink(fullLocalPath);
+      this.logger.log(`Локальный файл удален: ${fullLocalPath}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        this.logger.error(`Ошибка удаления локального файла: ${error}`);
+      }
+    }
+
+    if (this.useS3()) {
+      this.deleteFromS3Async(s3Key);
+    }
+  }
+
+  /**
+   * Асинхронное удаление из S3 (fire-and-forget).
+   */
+  private deleteFromS3Async(s3Key: string): void {
+    this.s3Service
+      .deleteFile(s3Key)
+      .then(() => {
+        this.logger.log(`[S3 async] Файл удален: ${s3Key}`);
+      })
+      .catch((error) => {
+        this.logger.error(`[S3 async] Ошибка удаления ${s3Key}: ${error}`);
+      });
+  }
+
+  /**
+   * Удаляет папку локально и асинхронно из S3 (если настроен).
+   */
+  private async deleteFolderWithBackup(
+    localDir: string,
+    s3Prefix: string,
+  ): Promise<void> {
+    const fullLocalPath = join('uploads', localDir);
+    try {
+      await fs.rm(fullLocalPath, { recursive: true, force: true });
+      this.logger.log(`Локальная папка удалена: ${fullLocalPath}`);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        this.logger.error(`Ошибка удаления локальной папки: ${error}`);
+      }
+    }
+
+    if (this.useS3()) {
+      this.deleteFolderFromS3Async(s3Prefix);
+    }
+  }
+
+  /**
+   * Асинхронное удаление папки из S3 (fire-and-forget).
+   */
+  private deleteFolderFromS3Async(s3Prefix: string): void {
+    this.s3Service
+      .deleteFolder(s3Prefix)
+      .then(() => {
+        this.logger.log(`[S3 async] Папка удалена: ${s3Prefix}`);
+      })
+      .catch((error) => {
+        this.logger.error(`[S3 async] Ошибка удаления папки ${s3Prefix}: ${error}`);
+      });
+  }
 
   async saveChapterPages(
     files: Express.Multer.File[],
@@ -18,6 +142,7 @@ export class FilesService {
     this.logger.log(`=== НАЧАЛО saveChapterPages ===`);
     this.logger.log(`Получено файлов: ${files?.length || 0}`);
     this.logger.log(`Chapter ID: ${chapterId}, Title ID: ${titleId}`);
+    this.logger.log(`Используем S3: ${this.useS3()}`);
 
     if (!files || files.length === 0) {
       this.logger.error('Нет файлов для загрузки - выбрасываем исключение');
@@ -25,22 +150,13 @@ export class FilesService {
     }
 
     const chapterDir = `titles/${titleId}/chapters/${chapterId}`;
-    const uploadPath = join('uploads', chapterDir);
-    this.logger.log(`Путь для сохранения: ${uploadPath}`);
-
-    // Создаем директорию для главы
-    await fs.mkdir(uploadPath, { recursive: true });
-    this.logger.log(`Директория создана: ${uploadPath}`);
-
     const pagePaths: string[] = [];
 
-    // Сортируем файлы по имени для сохранения порядка
     const sortedFiles = files.sort((a, b) => {
       return a.originalname.localeCompare(b.originalname);
     });
     this.logger.log(`Файлы отсортированы. Количество: ${sortedFiles.length}`);
 
-    // Подготавливаем буферы изображений для обработки водяным знаком
     const imageBuffers: Buffer[] = [];
     for (let i = 0; i < sortedFiles.length; i++) {
       const file = sortedFiles[i];
@@ -69,7 +185,6 @@ export class FilesService {
 
     this.logger.log(`Всего буферов подготовлено: ${imageBuffers.length}`);
 
-    // Проверяем, загружен ли водяной знак
     this.logger.log(
       `Водяной знак загружен: ${this.watermarkUtil.isWatermarkLoaded()}`,
     );
@@ -90,7 +205,6 @@ export class FilesService {
       );
     }
 
-    // Добавляем водяной знак ко всем изображениям
     this.logger.log(
       `Добавляем водяной знак к ${imageBuffers.length} изображениям`,
     );
@@ -100,36 +214,37 @@ export class FilesService {
       watermarkedBuffers = await this.watermarkUtil.addWatermarkMultiple(
         imageBuffers,
         {
-          scale: 0.35, // 35% от ширины основного изображения
-          minHeight: 2000, // Минимальная высота изображения для добавления водяного знака
+          scale: 0.35,
+          minHeight: 2000,
         },
       );
       this.logger.log(
         `Водяной знак добавлен к изображениям. Результат: ${watermarkedBuffers.length} изображений`,
       );
 
-      // Сохраняем обработанные файлы
       for (let i = 0; i < watermarkedBuffers.length; i++) {
         const file = sortedFiles[i];
         const fileExtension = file.originalname.split('.').pop();
         const fileName = `cover_${i + 1}.${fileExtension}`;
-        const filePath = join(uploadPath, fileName);
+        const contentType = file.mimetype || 'image/jpeg';
 
-        this.logger.log(
-          `Сохраняем файл ${i + 1}: ${fileName} по пути: ${filePath}`,
+        this.logger.log(`Сохраняем файл ${i + 1}: ${fileName}`);
+
+        const localPath = `${chapterDir}/${fileName}`;
+        const s3Key = `${chapterDir}/${fileName}`;
+
+        const resultUrl = await this.saveFileWithBackup(
+          watermarkedBuffers[i],
+          localPath,
+          s3Key,
+          contentType,
         );
+        pagePaths.push(resultUrl);
 
-        // Сохраняем изображение с водяным знаком
-        await fs.writeFile(filePath, watermarkedBuffers[i]);
-        this.logger.log(`Файл ${fileName} сохранен успешно`);
-
-        // Удаляем временный файл (если он был)
         if (file.path) {
           await fs.unlink(file.path);
           this.logger.log(`Временный файл ${file.path} удален`);
         }
-
-        pagePaths.push(`/${chapterDir}/${fileName}`);
       }
 
       this.logger.log(
@@ -138,35 +253,25 @@ export class FilesService {
 
       return pagePaths;
     } finally {
-      // Всегда освобождаем буферы и ресурсы водяных знаков (предотвращение утечек ОЗУ)
       imageBuffers.length = 0;
       watermarkedBuffers.length = 0;
       this.watermarkUtil.dispose();
     }
   }
 
-  /**
-   * Удаляет файлы главы. Поддерживает старую структуру (chapters/id) и новую (titles/id/chapters/id).
-   * @param titleId — при указании удаляются обе возможные папки; без него — только chapters/chapterId (для старых/сиротских глав)
-   */
   async deleteChapterPages(chapterId: string, titleId?: string): Promise<void> {
-    const dirsToRemove: string[] = [join('uploads', 'chapters', chapterId)];
     if (titleId) {
-      dirsToRemove.unshift(
-        join('uploads', 'titles', titleId, 'chapters', chapterId),
+      await this.deleteFolderWithBackup(
+        `titles/${titleId}/chapters/${chapterId}`,
+        `titles/${titleId}/chapters/${chapterId}`,
       );
     }
-    for (const dir of dirsToRemove) {
-      try {
-        await fs.rm(dir, { recursive: true, force: true });
-        this.logger.log(`Удалена директория глав: ${dir}`);
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
-          this.logger.error(`Ошибка при удалении директории ${dir}: ${error}`);
-        }
-      }
-    }
+    await this.deleteFolderWithBackup(
+      `chapters/${chapterId}`,
+      `chapters/${chapterId}`,
+    );
   }
+
   async saveUserAvatar(
     file: Express.Multer.File,
     userId: string,
@@ -175,45 +280,40 @@ export class FilesService {
       throw new BadRequestException('Нет файла для загрузки');
     }
 
-    // Проверяем тип файла
     if (!file.mimetype.startsWith('image/')) {
       throw new BadRequestException('Файл должен быть изображением');
     }
 
-    const userDir = `users/${userId}/avatar`;
-    const uploadPath = join('uploads', userDir);
+    const fileExtension = file.originalname.split('.').pop() || 'jpg';
+    const fileName = `avatar.${fileExtension}`;
+
+    let fileBuffer: Buffer;
+    if (file.path) {
+      fileBuffer = await fs.readFile(file.path);
+    } else if (file.buffer) {
+      fileBuffer = file.buffer;
+    } else {
+      throw new BadRequestException('Отсутствует содержимое файла');
+    }
 
     try {
-      // Создаем директорию для аватара пользователя
-      await fs.mkdir(uploadPath, { recursive: true });
-
-      // Удаляем старый аватар, если он существует
       await this.deleteUserAvatar(userId);
 
-      // Получаем расширение файла
-      const fileExtension = file.originalname.split('.').pop() || 'jpg';
+      const localPath = `users/${userId}/avatar/${fileName}`;
+      const s3Key = `users/${userId}/avatar/${fileName}`;
 
-      // Формируем имя файла: avatar.{ext}
-      const fileName = `avatar.${fileExtension}`;
-      const filePath = join(uploadPath, fileName);
+      const resultUrl = await this.saveFileWithBackup(
+        fileBuffer,
+        localPath,
+        s3Key,
+        file.mimetype,
+      );
 
-      // Сохраняем файл
       if (file.path) {
-        try {
-          await fs.rename(file.path, filePath);
-        } catch {
-          const fileContent = await fs.readFile(file.path);
-          await fs.writeFile(filePath, fileContent);
-          await fs.unlink(file.path);
-        }
-      } else if (file.buffer) {
-        await fs.writeFile(filePath, file.buffer);
-      } else {
-        throw new BadRequestException('Отсутствует содержимое файла');
+        await fs.unlink(file.path);
       }
 
-      // Возвращаем относительный путь
-      return `/${userDir}/${fileName}`;
+      return resultUrl;
     } catch (error) {
       this.logger.error(
         `Ошибка при сохранении аватара: ${error instanceof Error ? error.message : 'Unknown error'}`,
@@ -225,44 +325,28 @@ export class FilesService {
   }
 
   async deleteUserAvatar(userId: string): Promise<void> {
-    const userAvatarDir = join('uploads', 'users', userId, 'avatar');
-
-    try {
-      await fs.access(userAvatarDir);
-      const files = await fs.readdir(userAvatarDir);
-
-      // Удаляем все файлы в папке аватара
-      const deletePromises = files.map((file) =>
-        fs.unlink(join(userAvatarDir, file)),
-      );
-
-      await Promise.all(deletePromises);
-      this.logger.log(`Аватар пользователя ${userId} успешно удален`);
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        'code' in error &&
-        error.code === 'ENOENT'
-      ) {
-        this.logger.warn(
-          `Директория аватара пользователя ${userId} не найдена`,
-        );
-      } else {
-        this.logger.error(
-          `Ошибка при удалении аватара: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        );
-      }
-    }
+    await this.deleteFolderWithBackup(
+      `users/${userId}/avatar`,
+      `users/${userId}/avatar`,
+    );
   }
 
   async getUserAvatarPath(userId: string): Promise<string | null> {
+    if (this.useS3()) {
+      const files = await this.s3Service.listFiles(`users/${userId}/avatar/`);
+      const avatarFile = files.find((f) => f.includes('avatar.'));
+      if (avatarFile) {
+        return this.s3Service.getPublicUrl(avatarFile);
+      }
+      return null;
+    }
+
     const userAvatarDir = join('uploads', 'users', userId, 'avatar');
 
     try {
       await fs.access(userAvatarDir);
       const files = await fs.readdir(userAvatarDir);
 
-      // Ищем файл аватара (обычно avatar.*)
       const avatarFile = files.find((file) => file.startsWith('avatar.'));
 
       if (avatarFile) {
@@ -276,25 +360,7 @@ export class FilesService {
   }
 
   async deleteUserFolder(userId: string): Promise<void> {
-    const userDir = join('uploads', 'users', userId);
-
-    try {
-      await fs.access(userDir);
-      await fs.rm(userDir, { recursive: true, force: true });
-      this.logger.log(`Директория пользователя ${userId} успешно удалена`);
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        'code' in error &&
-        error.code === 'ENOENT'
-      ) {
-        this.logger.warn(`Директория пользователя ${userId} не найдена`);
-      } else {
-        this.logger.error(
-          `Ошибка при удалении директории пользователя: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        );
-      }
-    }
+    await this.deleteFolderWithBackup(`users/${userId}`, `users/${userId}`);
   }
 
   async downloadImageFromUrl(
@@ -316,6 +382,7 @@ export class FilesService {
     this.logger.log(`URL: ${imageUrl}`);
     this.logger.log(`Chapter ID: ${chapterId}, Title ID: ${titleId}`);
     this.logger.log(`Page Number: ${pageNumber}`);
+    this.logger.log(`Используем S3: ${this.useS3()}`);
 
     try {
       const response = await axios.get(imageUrl, {
@@ -329,23 +396,15 @@ export class FilesService {
       });
 
       const chapterDir = `titles/${titleId}/chapters/${chapterId}`;
-      const uploadPath = join('uploads', chapterDir);
 
-      // Создаем директорию для главы
-      await fs.mkdir(uploadPath, { recursive: true });
-      this.logger.log(`Директория создана: ${uploadPath}`);
-
-      // Определяем расширение файла
       const urlPath = new URL(imageUrl).pathname;
       const ext = urlPath.split('.').pop()?.split('?')[0] || 'jpg';
       const fileName = `${pageNumber.toString().padStart(3, '0')}.${ext}`;
-      const filePath = join(uploadPath, fileName);
 
       this.logger.log(
         `Загружено изображение, размер: ${response.data.length} байт`,
       );
 
-      // Проверяем, загружен ли водяной знак
       this.logger.log(
         `Водяной знак загружен: ${this.watermarkUtil.isWatermarkLoaded()}`,
       );
@@ -368,7 +427,6 @@ export class FilesService {
         );
       }
 
-      // Добавляем водяной знак к изображению
       const imageBuffer = Buffer.from(response.data);
       this.logger.log(
         `Применяем водяной знак к изображению (страница ${pageNumber})`,
@@ -376,17 +434,14 @@ export class FilesService {
 
       let watermarkedBuffer: Buffer;
 
-      // Страница 1 - добавляем ОБА водяных знака
       if (pageNumber === 1) {
         this.logger.log(
           `Страница 1 - добавляем верхний и обычный водяной знак`,
         );
 
-        // Сначала добавляем верхний водяной знак
         watermarkedBuffer =
           await this.watermarkUtil.addTopWatermark(imageBuffer);
 
-        // Затем добавляем обычный водяной знак
         watermarkedBuffer = await this.watermarkUtil.addWatermark(
           watermarkedBuffer,
           {
@@ -396,7 +451,6 @@ export class FilesService {
           },
         );
       } else {
-        // Для остальных страниц используем стандартную логику
         watermarkedBuffer = await this.watermarkUtil.addWatermark(imageBuffer, {
           position: 'center-right',
           scale: 0.35,
@@ -408,16 +462,22 @@ export class FilesService {
 
       this.logger.log(`Водяной знак применен успешно`);
 
-      // Сохраняем файл с водяным знаком
-      await fs.writeFile(filePath, watermarkedBuffer);
-      this.logger.log(`Файл сохранен: ${filePath}`);
+      const localPath = `${chapterDir}/${fileName}`;
+      const s3Key = `${chapterDir}/${fileName}`;
+      const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
 
-      // Освобождаем буферы и водяные знаки из ОЗУ сразу после использования
+      const resultPath = await this.saveFileWithBackup(
+        watermarkedBuffer,
+        localPath,
+        s3Key,
+        contentType,
+      );
+
       watermarkedBuffer = null as any;
       this.watermarkUtil.dispose();
 
       this.logger.log(`=== КОНЕЦ downloadImageFromUrl ===`);
-      return `/${chapterDir}/${fileName}`;
+      return resultPath;
     } catch (error) {
       this.logger.error(
         `Failed to download image ${imageUrl}: ${
@@ -449,20 +509,19 @@ export class FilesService {
       });
 
       const titleDir = `titles/${titleId}`;
-      const uploadPath = join('uploads', titleDir);
-
-      // Создаем директорию для тайтла
-      await fs.mkdir(uploadPath, { recursive: true });
-
-      // Определяем расширение файла
       const ext = urlObj.pathname.split('.').pop()?.split('?')[0] || 'jpg';
       const fileName = `cover.${ext}`;
-      const filePath = join(uploadPath, fileName);
+      const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
 
-      // Сохраняем файл
-      await fs.writeFile(filePath, response.data);
+      const localPath = `${titleDir}/${fileName}`;
+      const s3Key = `${titleDir}/${fileName}`;
 
-      return `/uploads/${titleDir}/${fileName}`;
+      return this.saveFileWithBackup(
+        Buffer.from(response.data),
+        localPath,
+        s3Key,
+        contentType,
+      );
     } catch (error) {
       this.logger.error(
         `Failed to download title cover ${imageUrl}: ${
@@ -478,31 +537,49 @@ export class FilesService {
   }
 
   async deleteTitleCover(titleId: string): Promise<void> {
-    const titleDir = join('uploads', 'titles', titleId);
-
-    try {
-      await fs.access(titleDir);
-      await fs.rm(titleDir, { recursive: true, force: true });
-      this.logger.log(`Title cover directory ${titleId} successfully deleted`);
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        'code' in error &&
-        error.code === 'ENOENT'
-      ) {
-        this.logger.warn(`Title cover directory ${titleId} not found`);
-      } else {
-        this.logger.error(
-          `Error deleting title cover directory: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        );
-      }
-    }
+    await this.deleteFolderWithBackup(`titles/${titleId}`, `titles/${titleId}`);
   }
 
-  /**
-   * Сохраняет изображение для объявления/новости (обложка или контент).
-   * Путь: uploads/announcements/{announcementId?}/{filename}
-   */
+  async saveTitleCoverFromFile(
+    file: Express.Multer.File,
+    titleId: string,
+  ): Promise<string> {
+    if (!file) {
+      throw new BadRequestException('Нет файла для загрузки');
+    }
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Файл должен быть изображением');
+    }
+
+    const ext = file.originalname.split('.').pop() || 'jpg';
+    const fileName = `cover.${ext}`;
+
+    let fileBuffer: Buffer;
+    if (file.path) {
+      fileBuffer = await fs.readFile(file.path);
+    } else if (file.buffer) {
+      fileBuffer = file.buffer;
+    } else {
+      throw new BadRequestException('Отсутствует содержимое файла');
+    }
+
+    const localPath = `titles/${titleId}/${fileName}`;
+    const s3Key = `titles/${titleId}/${fileName}`;
+
+    const resultUrl = await this.saveFileWithBackup(
+      fileBuffer,
+      localPath,
+      s3Key,
+      file.mimetype,
+    );
+
+    if (file.path) {
+      await fs.unlink(file.path);
+    }
+
+    return resultUrl;
+  }
+
   async saveAnnouncementImage(
     file: Express.Multer.File,
     announcementId?: string,
@@ -517,51 +594,139 @@ export class FilesService {
     const subDir = announcementId
       ? `announcements/${announcementId}`
       : 'announcements';
-    const uploadPath = join('uploads', subDir);
-
-    await fs.mkdir(uploadPath, { recursive: true });
 
     const ext = file.originalname.split('.').pop() || 'jpg';
     const fileName = `${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
-    const filePath = join(uploadPath, fileName);
 
+    let fileBuffer: Buffer;
     if (file.path) {
-      try {
-        await fs.rename(file.path, filePath);
-      } catch {
-        const content = await fs.readFile(file.path);
-        await fs.writeFile(filePath, content);
-        await fs.unlink(file.path);
-      }
+      fileBuffer = await fs.readFile(file.path);
     } else if (file.buffer) {
-      await fs.writeFile(filePath, file.buffer);
+      fileBuffer = file.buffer;
     } else {
       throw new BadRequestException('Отсутствует содержимое файла');
     }
 
-    return `/${subDir}/${fileName}`;
-  }
+    const localPath = `${subDir}/${fileName}`;
+    const s3Key = `${subDir}/${fileName}`;
 
-  /**
-   * Удаляет папку с изображениями объявления
-   */
-  async deleteAnnouncementImages(announcementId: string): Promise<void> {
-    const dir = join('uploads', 'announcements', announcementId);
-    try {
-      await fs.rm(dir, { recursive: true, force: true });
-      this.logger.log(`Announcement images deleted: ${announcementId}`);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') {
-        this.logger.error(
-          `Error deleting announcement images ${announcementId}: ${error}`,
-        );
-      }
+    const resultUrl = await this.saveFileWithBackup(
+      fileBuffer,
+      localPath,
+      s3Key,
+      file.mimetype,
+    );
+
+    if (file.path) {
+      await fs.unlink(file.path);
     }
+
+    return resultUrl;
   }
 
-  /**
-   * Освобождает ресурсы водяных знаков
-   */
+  async deleteAnnouncementImages(announcementId: string): Promise<void> {
+    await this.deleteFolderWithBackup(
+      `announcements/${announcementId}`,
+      `announcements/${announcementId}`,
+    );
+  }
+
+  async saveDecorationImage(file: Express.Multer.File): Promise<string> {
+    if (!file) {
+      throw new BadRequestException('Нет файла для загрузки');
+    }
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Файл должен быть изображением');
+    }
+
+    const ext = file.originalname.split('.').pop() || 'png';
+    const fileName = `decoration-${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
+
+    let fileBuffer: Buffer;
+    if (file.path) {
+      fileBuffer = await fs.readFile(file.path);
+    } else if (file.buffer) {
+      fileBuffer = file.buffer;
+    } else {
+      throw new BadRequestException('Отсутствует содержимое файла');
+    }
+
+    const localPath = `decorations/${fileName}`;
+    const s3Key = `decorations/${fileName}`;
+
+    const resultUrl = await this.saveFileWithBackup(
+      fileBuffer,
+      localPath,
+      s3Key,
+      file.mimetype,
+    );
+
+    if (file.path) {
+      await fs.unlink(file.path);
+    }
+
+    return resultUrl;
+  }
+
+  async deleteDecorationImage(imagePath: string): Promise<void> {
+    let key: string;
+    if (imagePath.startsWith('http')) {
+      const url = new URL(imagePath);
+      key = url.pathname.replace(/^\//, '');
+    } else {
+      key = imagePath.replace(/^\//, '');
+    }
+
+    await this.deleteFileWithBackup(key, key);
+  }
+
+  async saveCollectionCover(
+    file: Express.Multer.File,
+    collectionId: string,
+  ): Promise<string> {
+    if (!file) {
+      throw new BadRequestException('Нет файла для загрузки');
+    }
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Файл должен быть изображением');
+    }
+
+    const ext = file.originalname.split('.').pop() || 'jpg';
+    const fileName = `cover.${ext}`;
+
+    let fileBuffer: Buffer;
+    if (file.path) {
+      fileBuffer = await fs.readFile(file.path);
+    } else if (file.buffer) {
+      fileBuffer = file.buffer;
+    } else {
+      throw new BadRequestException('Отсутствует содержимое файла');
+    }
+
+    const localPath = `collections/${collectionId}/${fileName}`;
+    const s3Key = `collections/${collectionId}/${fileName}`;
+
+    const resultUrl = await this.saveFileWithBackup(
+      fileBuffer,
+      localPath,
+      s3Key,
+      file.mimetype,
+    );
+
+    if (file.path) {
+      await fs.unlink(file.path);
+    }
+
+    return resultUrl;
+  }
+
+  async deleteCollectionCover(collectionId: string): Promise<void> {
+    await this.deleteFolderWithBackup(
+      `collections/${collectionId}`,
+      `collections/${collectionId}`,
+    );
+  }
+
   disposeWatermarkResources(): void {
     this.watermarkUtil.dispose();
   }

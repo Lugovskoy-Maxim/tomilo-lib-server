@@ -10,6 +10,7 @@ import { Collection, CollectionDocument } from '../schemas/collection.schema';
 import { CreateCollectionDto } from './dto/create-collection.dto';
 import { UpdateCollectionDto } from './dto/update-collection.dto';
 import { LoggerService } from '../common/logger/logger.service';
+import { FilesService } from '../files/files.service';
 
 @Injectable()
 export class CollectionsService {
@@ -18,6 +19,7 @@ export class CollectionsService {
   constructor(
     @InjectModel(Collection.name)
     private collectionModel: Model<CollectionDocument>,
+    private filesService: FilesService,
   ) {
     this.logger.setContext(CollectionsService.name);
   }
@@ -79,6 +81,7 @@ export class CollectionsService {
 
   async create(
     createCollectionDto: CreateCollectionDto,
+    file?: Express.Multer.File,
   ): Promise<CollectionDocument> {
     this.logger.log(
       `Creating new collection with data: ${JSON.stringify(createCollectionDto)}`,
@@ -86,7 +89,6 @@ export class CollectionsService {
 
     const { name } = createCollectionDto;
 
-    // Проверка на существующую коллекцию
     if (name) {
       const existingCollection = await this.findByName(name);
       if (existingCollection) {
@@ -97,6 +99,16 @@ export class CollectionsService {
 
     const collection = new this.collectionModel(createCollectionDto);
     const saved = await collection.save();
+
+    if (file) {
+      const coverUrl = await this.filesService.saveCollectionCover(
+        file,
+        saved._id.toString(),
+      );
+      saved.cover = coverUrl;
+      await saved.save();
+    }
+
     this.logger.log(
       `Collection created successfully with ID: ${saved._id.toString()}`,
     );
@@ -107,9 +119,15 @@ export class CollectionsService {
   async update(
     id: string,
     updateCollectionDto: UpdateCollectionDto,
+    file?: Express.Multer.File,
   ): Promise<CollectionDocument> {
     if (!Types.ObjectId.isValid(id)) {
       throw new BadRequestException('Invalid collection ID');
+    }
+
+    if (file) {
+      const coverUrl = await this.filesService.saveCollectionCover(file, id);
+      updateCollectionDto.cover = coverUrl;
     }
 
     const collection = await this.collectionModel

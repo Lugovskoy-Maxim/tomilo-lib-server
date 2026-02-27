@@ -37,6 +37,7 @@ import { AutoParsingModule } from './auto-parsing/auto-parsing.module';
 import { EmailModule } from './email/email.module';
 import { StatsModule } from './stats/stats.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
+import { S3Module } from './s3/s3.module';
 
 const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 
@@ -55,7 +56,8 @@ const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
         limit: 1000, // 1000 requests per minute (raised from 240 to avoid 429 on heavy read usage)
       },
     ]),
-    ConfigModule.forRoot(),
+    ConfigModule.forRoot({ isGlobal: true }),
+    S3Module,
     ScheduleModule.forRoot(),
     MongooseModule.forFeature([
       { name: Title.name, schema: TitleSchema },

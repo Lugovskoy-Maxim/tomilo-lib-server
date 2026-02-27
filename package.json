@@ -19,9 +19,12 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "migrate:bookmarks": "ts-node -r tsconfig-paths/register scripts/migrate-bookmarks.ts",
-    "check:autoparser": "ts-node -r tsconfig-paths/register scripts/check-autoparser-sources.ts"
+    "check:autoparser": "ts-node -r tsconfig-paths/register scripts/check-autoparser-sources.ts",
+    "migrate:s3": "ts-node -r tsconfig-paths/register scripts/migrate-uploads-to-s3.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.999.0",
+    "@aws-sdk/lib-storage": "^3.999.0",
     "@nestjs/cache-manager": "^3.1.0",
     "@nestjs/common": "^11.1.6",
     "@nestjs/config": "^4.0.2",
@@ -44,6 +47,7 @@
     "cookie-parser": "^1.4.7",
     "dotenv": "^17.2.3",
     "jsonwebtoken": "^9.0.3",
+    "mime-types": "^3.0.2",
     "mongodb": "^7.0.0",
     "mongoose": "^8.19.1",
     "multer": "^2.0.2",
@@ -72,6 +76,7 @@
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",
     "@types/jquery": "^3.5.33",
+    "@types/mime-types": "^3.0.1",
     "@types/multer": "^2.0.0",
     "@types/node": "^22.10.7",
     "@types/nodemailer": "^7.0.5",
