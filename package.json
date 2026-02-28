@@ -22,6 +22,7 @@
     "check:autoparser": "ts-node -r tsconfig-paths/register scripts/check-autoparser-sources.ts",
     "migrate:s3": "ts-node -r tsconfig-paths/register scripts/migrate-uploads-to-s3.ts",
     "s3:cleanup": "ts-node -r tsconfig-paths/register scripts/sync-s3-cleanup.ts",
+    "s3:upload": "ts-node -r tsconfig-paths/register scripts/sync-s3-upload.ts",
     "cleanup:orphans": "ts-node -r tsconfig-paths/register scripts/cleanup-orphan-files.ts"
   },
   "dependencies": {
