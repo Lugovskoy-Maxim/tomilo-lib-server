@@ -90,23 +90,50 @@ export class TitlesController {
   }
 
   /**
-   * Вспомогательный метод для определения canViewAdult на основе настроек пользователя (с кешем).
+   * Вспомогательный метод для определения canViewAdult.
+   * Логика:
+   * 1. Если пользователь НЕ авторизован → НЕ показывать 18+ (безопасный дефолт)
+   * 2. Если авторизован, но в настройках isAdult = false → НЕ показывать 18+
+   * 3. Если авторизован, isAdult = true, и includeAdult = true → показывать 18+
+   * 4. Если авторизован, isAdult = true, но includeAdult = false → НЕ показывать 18+
+   * 
+   * @param req - запрос
+   * @param includeAdult - query параметр от клиента (опционально)
    */
-  private async getCanViewAdult(req: any): Promise<boolean> {
+  private async getCanViewAdult(req: any, includeAdult?: string): Promise<boolean> {
     const authHeader = req.headers?.authorization || req.headers?.Authorization;
-    if (!authHeader?.startsWith('Bearer ')) return true;
+    
+    // Неавторизованные пользователи НЕ видят взрослый контент
+    if (!authHeader?.startsWith('Bearer ')) return false;
+    
     const token = authHeader.substring(7);
-    if (!token) return true;
+    if (!token) return false;
+    
     try {
       const jwtSecret = process.env.JWT_SECRET || 'your-super-secret-jwt-key';
       const decoded = jwt.verify(token, jwtSecret) as { userId?: string };
+      
       if (decoded?.userId) {
-        return this.usersService.getCanViewAdult(decoded.userId);
+        // Проверяем настройки пользователя в БД
+        const userCanViewAdult = await this.usersService.getCanViewAdult(decoded.userId);
+        
+        // Если у пользователя отключен показ 18+ в настройках, не показываем
+        if (!userCanViewAdult) return false;
+        
+        // Пользователь может видеть 18+, проверяем query параметр
+        // Если includeAdult явно передан, используем его значение
+        if (includeAdult !== undefined) {
+          return includeAdult === 'true';
+        }
+        
+        // По умолчанию показываем 18+ если пользователь разрешил в настройках
+        return true;
       }
     } catch {
       // Токен недействителен или истек
     }
-    return true;
+    
+    return false;
   }
 
   /**
@@ -156,12 +183,13 @@ export class TitlesController {
   @Get('titles/popular')
   async getPopularTitles(
     @Query('limit') limit = 10,
+    @Query('includeAdult') includeAdult?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     await this.checkIPActivity(req);
 
     try {
-      const canViewAdult = await this.getCanViewAdult(req);
+      const canViewAdult = await this.getCanViewAdult(req, includeAdult);
       const titles = await this.titlesService.getPopularTitles(
         Number(limit),
         canViewAdult,
@@ -306,12 +334,13 @@ export class TitlesController {
   async getLatestUpdates(
     @Query('page') page = 1,
     @Query('limit') limit = 18,
+    @Query('includeAdult') includeAdult?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
       const pageNum = Math.max(1, Math.floor(Number(page)) || 1);
       const limitNum = Math.max(1, Math.min(100, Math.floor(Number(limit)) || 18));
-      const canViewAdult = await this.getCanViewAdult(req);
+      const canViewAdult = await this.getCanViewAdult(req, includeAdult);
       const titlesWithChapters =
         await this.titlesService.getTitlesWithRecentChapters(
           limitNum,
@@ -381,12 +410,13 @@ export class TitlesController {
     @Query('tags') tags?: string,
     @Query('sortBy') sortBy = 'createdAt',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
+    @Query('includeAdult') includeAdult?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     await this.checkIPActivity(req);
 
     try {
-      const canViewAdult = await this.getCanViewAdult(req);
+      const canViewAdult = await this.getCanViewAdult(req, includeAdult);
       const result = await this.titlesService.findAll({
         search: query,
         page: Number(page),
@@ -621,6 +651,7 @@ export class TitlesController {
     @Query('tags') tags?: string,
     @Query('sortBy') sortBy = 'createdAt',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
+    @Query('includeAdult') includeAdult?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
@@ -694,7 +725,7 @@ export class TitlesController {
         );
       }
 
-      const canViewAdult = await this.getCanViewAdult(req);
+      const canViewAdult = await this.getCanViewAdult(req, includeAdult);
 
       const result = await this.titlesService.findAll({
         page: Number(page),
@@ -744,10 +775,11 @@ export class TitlesController {
   @Get('titles/recent')
   async getRecent(
     @Query('limit') limit = 10,
+    @Query('includeAdult') includeAdult?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const canViewAdult = await this.getCanViewAdult(req);
+      const canViewAdult = await this.getCanViewAdult(req, includeAdult);
       const data = await this.titlesService.getRecentTitles(
         Number(limit),
         canViewAdult,
@@ -773,10 +805,11 @@ export class TitlesController {
   @Get('titles/random')
   async getRandomTitles(
     @Query('limit') limit = 10,
+    @Query('includeAdult') includeAdult?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const canViewAdult = await this.getCanViewAdult(req);
+      const canViewAdult = await this.getCanViewAdult(req, includeAdult);
       const titles = await this.titlesService.getRandomTitles(
         Number(limit),
         canViewAdult,
@@ -818,6 +851,7 @@ export class TitlesController {
   @UseGuards(JwtAuthGuard)
   async getRecommendedTitles(
     @Query('limit') limit = 10,
+    @Query('includeAdult') includeAdult?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     await this.checkIPActivity(req);
@@ -853,7 +887,7 @@ export class TitlesController {
       }
 
       // Определяем, может ли пользователь видеть взрослый контент
-      const canViewAdult = await this.getCanViewAdult(req);
+      const canViewAdult = await this.getCanViewAdult(req, includeAdult);
 
       // Получаем рекомендуемые тайтлы
       const titles = await this.titlesService.getRecommendedTitles(
@@ -1081,10 +1115,11 @@ export class TitlesController {
   @Get('titles/top/day')
   async getTopTitlesDay(
     @Query('limit') limit = 10,
+    @Query('includeAdult') includeAdult?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const canViewAdult = await this.getCanViewAdult(req);
+      const canViewAdult = await this.getCanViewAdult(req, includeAdult);
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'day',
         Number(limit),
@@ -1123,10 +1158,11 @@ export class TitlesController {
   @Get('titles/top/week')
   async getTopTitlesWeek(
     @Query('limit') limit = 10,
+    @Query('includeAdult') includeAdult?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const canViewAdult = await this.getCanViewAdult(req);
+      const canViewAdult = await this.getCanViewAdult(req, includeAdult);
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'week',
         Number(limit),
@@ -1165,10 +1201,11 @@ export class TitlesController {
   @Get('titles/top/month')
   async getTopTitlesMonth(
     @Query('limit') limit = 10,
+    @Query('includeAdult') includeAdult?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const canViewAdult = await this.getCanViewAdult(req);
+      const canViewAdult = await this.getCanViewAdult(req, includeAdult);
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'month',
         Number(limit),
