@@ -804,6 +804,9 @@ export class UsersService {
 
     const currentTime = new Date();
 
+    // Флаг: является ли глава новой (для начисления опыта)
+    let isNewChapter = false;
+
     if (existingEntryIndex !== -1) {
       // Тайтл уже есть в истории - обновляем его
       const existingEntry = user.readingHistory[existingEntryIndex];
@@ -815,13 +818,15 @@ export class UsersService {
       );
 
       if (existingChapterIndex !== -1) {
-        // Глава уже есть - обновляем время чтения
+        // Глава уже есть - обновляем время чтения, НЕ начисляем опыт
         existingEntry.chapters[existingChapterIndex].readAt = currentTime;
+        isNewChapter = false;
         this.logger.log(
-          `Updated read time for existing chapter in user ${userId}'s history`,
+          `Updated read time for existing chapter in user ${userId}'s history (no XP)`,
         );
       } else {
-        // Главы нет - добавляем новую
+        // Главы нет - добавляем новую, начисляем опыт
+        isNewChapter = true;
         existingEntry.chapters.push({
           chapterId: chapterObjectId,
           chapterNumber,
@@ -847,7 +852,8 @@ export class UsersService {
       // Обновляем время чтения тайтла
       existingEntry.readAt = currentTime;
     } else {
-      // Тайтла нет в истории - создаем новую запись
+      // Тайтла нет в истории - создаем новую запись, начисляем опыт
+      isNewChapter = true;
       const newEntry = {
         titleId: titleObjectId,
         chapters: [
@@ -877,11 +883,16 @@ export class UsersService {
       this.logger.log(`Added new title to user ${userId}'s reading history`);
     }
 
-    // Обновляем streak (серию дней активности)
-    this.updateStreak(user);
+    // Обновляем streak (серию дней активности) — только если глава новая
+    let streakBonus = 0;
+    if (isNewChapter) {
+      streakBonus = this.updateStreak(user);
+    }
 
-    // Добавляем примерное время чтения (4 минуты на главу)
-    this.addReadingTime(user, 4);
+    // Добавляем примерное время чтения (4 минуты на главу) — только если глава новая
+    if (isNewChapter) {
+      this.addReadingTime(user, 4);
+    }
 
     // 🛡️ Проверка на ботов перед начислением XP
     const botDetectionResult = await this.botDetectionService.checkActivity(
@@ -908,8 +919,7 @@ export class UsersService {
       );
     }
 
-    // Award experience for reading (только если не бот) — применяем к тому же user,
-    // чтобы не было version conflict (addExperience load+save инкрементит __v, и наш save падает)
+    // Award experience for reading (только если не бот И глава новая)
     let progressEvent: {
       expGained: number;
       reason: string;
@@ -917,16 +927,20 @@ export class UsersService {
       newLevel?: number;
       oldLevel?: number;
       bonusCoins?: number;
+      streakBonus?: number;
     } | undefined = undefined;
     let oldRankInfo: { rank: number; stars: number; name: string; minLevel: number } | undefined = undefined;
     let newRankInfo: { rank: number; stars: number; name: string; minLevel: number } | undefined = undefined;
 
-    if (!botDetectionResult.isBot) {
+    if (!botDetectionResult.isBot && isNewChapter) {
       const oldLevel = user.level;
       const oldRank = this.levelToRank(oldLevel);
       oldRankInfo = oldRank;
 
-      user.experience += 10;
+      // Базовый опыт за главу + бонус за streak
+      const baseExp = 10;
+      const totalExp = baseExp + streakBonus;
+      user.experience += totalExp;
       let leveledUp = false;
       let totalBonusCoins = 0;
 
@@ -942,15 +956,18 @@ export class UsersService {
       newRankInfo = newRank;
 
       progressEvent = {
-        expGained: 10,
-        reason: 'Чтение главы',
+        expGained: totalExp,
+        reason: streakBonus > 0 ? `Чтение главы + бонус за серию ${user.currentStreak} дней` : 'Чтение главы',
         levelUp: leveledUp,
         oldLevel: leveledUp ? oldLevel : undefined,
         newLevel: leveledUp ? user.level : undefined,
         bonusCoins: leveledUp ? totalBonusCoins : undefined,
+        streakBonus: streakBonus > 0 ? streakBonus : undefined,
       };
-    } else {
+    } else if (botDetectionResult.isBot) {
       this.logger.warn(`Skipping XP award for bot user ${userId}`);
+    } else if (!isNewChapter) {
+      this.logger.log(`Skipping XP award for already read chapter ${chapterId} by user ${userId}`);
     }
 
     // Проверка достижений
@@ -963,7 +980,7 @@ export class UsersService {
     const socialConnections =
       (user.emailVerified ? 1 : 0) + (user.oauthProviders?.length ?? 0);
 
-    const { updatedAchievements, newUnlocked } =
+    const { updatedAchievements, newUnlocked, totalExpReward: achievementExp } =
       this.achievementsService.checkAchievements(
         user.achievements ?? [],
         {
@@ -977,8 +994,30 @@ export class UsersService {
 
     if (newUnlocked.length > 0) {
       user.achievements = updatedAchievements;
+      
+      // Начисляем опыт за достижения (если не бот)
+      if (!botDetectionResult.isBot && achievementExp > 0) {
+        user.experience += achievementExp;
+        
+        // Проверяем level up от достижений
+        while (user.experience >= this.calculateNextLevelExp(user.level)) {
+          user.level += 1;
+          const coins = user.level * 10;
+          user.balance += coins;
+          if (progressEvent) {
+            progressEvent.levelUp = true;
+            progressEvent.bonusCoins = (progressEvent.bonusCoins ?? 0) + coins;
+          }
+        }
+        
+        if (progressEvent) {
+          progressEvent.expGained += achievementExp;
+          progressEvent.reason += ` + ${achievementExp} XP за достижения`;
+        }
+      }
+      
       this.logger.log(
-        `User ${userId} unlocked ${newUnlocked.length} achievement(s): ${newUnlocked.map((a) => a.name).join(', ')}`,
+        `User ${userId} unlocked ${newUnlocked.length} achievement(s): ${newUnlocked.map((a) => `${a.name} (+${a.expReward} XP)`).join(', ')}`,
       );
     }
 
@@ -1322,21 +1361,32 @@ export class UsersService {
     };
   }
 
+  /** Бонусы за достижение определённых milestone streak */
+  private static readonly STREAK_BONUSES: Record<number, number> = {
+    7: 50,   // 50 XP за 7 дней подряд
+    14: 100, // 100 XP за 14 дней подряд
+    21: 150, // 150 XP за 21 день подряд
+    30: 250, // 250 XP за 30 дней подряд
+  };
+
   /**
-   * Обновляет streak (серию дней активности) пользователя
+   * Обновляет streak (серию дней активности) пользователя.
+   * Возвращает бонус XP за достижение milestone (7, 14, 21, 30 дней).
    */
-  private updateStreak(user: UserDocument): void {
+  private updateStreak(user: UserDocument): number {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const lastStreakDate = user.lastStreakDate
       ? new Date(user.lastStreakDate)
       : null;
 
+    let streakBonus = 0;
+
     if (!lastStreakDate) {
       user.currentStreak = 1;
       user.longestStreak = Math.max(user.longestStreak ?? 0, 1);
       user.lastStreakDate = today;
-      return;
+      return 0;
     }
 
     const lastDate = new Date(
@@ -1350,7 +1400,7 @@ export class UsersService {
 
     if (diffDays === 0) {
       // Уже была активность сегодня — ничего не меняем
-      return;
+      return 0;
     } else if (diffDays === 1) {
       // Активность вчера — продолжаем streak
       user.currentStreak = (user.currentStreak ?? 0) + 1;
@@ -1359,11 +1409,21 @@ export class UsersService {
         user.currentStreak,
       );
       user.lastStreakDate = today;
+
+      // Проверяем бонус за milestone
+      if (UsersService.STREAK_BONUSES[user.currentStreak]) {
+        streakBonus = UsersService.STREAK_BONUSES[user.currentStreak];
+        this.logger.log(
+          `User reached ${user.currentStreak} days streak! Bonus: ${streakBonus} XP`,
+        );
+      }
     } else {
       // Пропуск более 1 дня — сбрасываем streak
       user.currentStreak = 1;
       user.lastStreakDate = today;
     }
+
+    return streakBonus;
   }
 
   /**
@@ -1401,6 +1461,85 @@ export class UsersService {
     );
 
     return user;
+  }
+
+  /** Опыт за ежедневный вход (раз в день) */
+  private static readonly DAILY_LOGIN_EXP = 5;
+
+  /**
+   * Начисляет опыт за ежедневный вход (раз в день).
+   * Возвращает объект с информацией о начислении или null если уже был вход сегодня.
+   */
+  async awardDailyLoginExp(
+    userId: string,
+  ): Promise<{
+    expGained: number;
+    experience: number;
+    level: number;
+    levelUp: boolean;
+    newLevel?: number;
+    oldLevel?: number;
+    bonusCoins?: number;
+  } | null> {
+    if (!Types.ObjectId.isValid(userId)) {
+      return null;
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) {
+      return null;
+    }
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const lastLoginExpDate = user.lastLoginExpDate
+      ? new Date(user.lastLoginExpDate)
+      : null;
+
+    // Проверяем, был ли уже вход сегодня
+    if (lastLoginExpDate) {
+      const lastDate = new Date(
+        lastLoginExpDate.getFullYear(),
+        lastLoginExpDate.getMonth(),
+        lastLoginExpDate.getDate(),
+      );
+      if (lastDate.getTime() === today.getTime()) {
+        // Уже был вход сегодня — не начисляем
+        return null;
+      }
+    }
+
+    // Начисляем опыт за вход
+    const oldLevel = user.level;
+    user.experience += UsersService.DAILY_LOGIN_EXP;
+    user.lastLoginExpDate = today;
+
+    let leveledUp = false;
+    let totalBonusCoins = 0;
+
+    while (user.experience >= this.calculateNextLevelExp(user.level)) {
+      user.level += 1;
+      leveledUp = true;
+      const coins = user.level * 10;
+      user.balance += coins;
+      totalBonusCoins += coins;
+    }
+
+    await user.save();
+
+    this.logger.log(
+      `User ${userId} awarded ${UsersService.DAILY_LOGIN_EXP} XP for daily login. Current level: ${user.level}, XP: ${user.experience}`,
+    );
+
+    return {
+      expGained: UsersService.DAILY_LOGIN_EXP,
+      experience: user.experience,
+      level: user.level,
+      levelUp: leveledUp,
+      oldLevel: leveledUp ? oldLevel : undefined,
+      newLevel: leveledUp ? user.level : undefined,
+      bonusCoins: leveledUp ? totalBonusCoins : undefined,
+    };
   }
 
   // 💰 Balance management

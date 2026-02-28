@@ -50,10 +50,20 @@ export interface UnlockedAchievement {
   unlockedAt: string;
   progress: number;
   maxProgress: number;
+  expReward: number;
 }
 
 @Injectable()
 export class AchievementsService {
+  /** Опыт за получение достижения по редкости */
+  private static readonly RARITY_EXP_REWARDS: Record<AchievementRarity, number> = {
+    common: 10,
+    uncommon: 25,
+    rare: 50,
+    epic: 100,
+    legendary: 250,
+  };
+
   private readonly achievements: AchievementDefinition[] = [
     {
       id: 'reader',
@@ -137,6 +147,7 @@ export class AchievementsService {
 
   /**
    * Проверяет достижения и возвращает список новых разблокированных.
+   * Также возвращает общий опыт за полученные достижения.
    */
   checkAchievements(
     userAchievements: UserAchievementData[],
@@ -150,9 +161,11 @@ export class AchievementsService {
   ): {
     updatedAchievements: UserAchievementData[];
     newUnlocked: UnlockedAchievement[];
+    totalExpReward: number;
   } {
     const updatedAchievements: UserAchievementData[] = [...userAchievements];
     const newUnlocked: UnlockedAchievement[] = [];
+    let totalExpReward = 0;
 
     const statsMap: Record<string, number> = {
       reader: stats.chaptersRead,
@@ -199,6 +212,9 @@ export class AchievementsService {
         }
 
         if (newLevelData) {
+          const expReward = AchievementsService.RARITY_EXP_REWARDS[newLevelData.rarity] ?? 10;
+          totalExpReward += expReward;
+
           newUnlocked.push({
             id: achDef.id,
             name: achDef.name,
@@ -211,6 +227,7 @@ export class AchievementsService {
             unlockedAt: new Date().toISOString(),
             progress: currentProgress,
             maxProgress: nextLevelThreshold,
+            expReward,
           });
         }
       } else if (existingAch && currentProgress !== existingAch.progress) {
@@ -218,7 +235,7 @@ export class AchievementsService {
       }
     }
 
-    return { updatedAchievements, newUnlocked };
+    return { updatedAchievements, newUnlocked, totalExpReward };
   }
 
   /**
@@ -271,6 +288,7 @@ export class AchievementsService {
         unlockedAt: existingAch.unlockedAt.toISOString(),
         progress: statsMap[achDef.id] ?? existingAch.progress,
         maxProgress: nextLevelThreshold,
+        expReward: AchievementsService.RARITY_EXP_REWARDS[levelData.rarity] ?? 10,
       });
     }
 

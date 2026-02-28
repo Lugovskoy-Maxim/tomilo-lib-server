@@ -61,12 +61,12 @@ export class AuthController {
   @UseGuards(LocalAuthGuard)
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  login(
+  async login(
     @Request() req,
     @Response({ passthrough: true }) res: express.Response,
-  ): ApiResponseDto<any> {
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = this.authService.login(req.user);
+      const data = await this.authService.loginWithDailyExp(req.user);
       setAuthCookies(res, data.access_token, data.refresh_token);
 
       return {
@@ -148,7 +148,7 @@ export class AuthController {
   ): Promise<ApiResponseDto<any>> {
     try {
       const user = await this.authService.registerWithCode(registerDto);
-      const data = this.authService.login(user);
+      const data = await this.authService.loginWithDailyExp(user);
       setAuthCookies(res, data.access_token, data.refresh_token);
       return {
         success: true,
@@ -173,13 +173,13 @@ export class AuthController {
   @UseGuards(AuthGuard('yandex'))
   @Post('yandex')
   @HttpCode(HttpStatus.OK)
-  yandexLogin(
+  async yandexLogin(
     @Body() oauthLoginDto: OAuthLoginDto,
     @Request() req,
     @Response({ passthrough: true }) res: express.Response,
-  ): ApiResponseDto<any> {
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = this.authService.login(req.user);
+      const data = await this.authService.loginWithDailyExp(req.user);
       setAuthCookies(res, data.access_token, data.refresh_token);
 
       return {
@@ -205,12 +205,12 @@ export class AuthController {
   @UseGuards(AuthGuard('yandex-token'))
   @Post('yandex-token')
   @HttpCode(HttpStatus.OK)
-  yandexTokenLogin(
+  async yandexTokenLogin(
     @Request() req,
     @Response({ passthrough: true }) res: express.Response,
-  ): ApiResponseDto<any> {
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = this.authService.login(req.user);
+      const data = await this.authService.loginWithDailyExp(req.user);
       setAuthCookies(res, data.access_token, data.refresh_token);
 
       return {
@@ -236,13 +236,13 @@ export class AuthController {
   @UseGuards(AuthGuard('vk'))
   @Post('vk')
   @HttpCode(HttpStatus.OK)
-  vkLogin(
+  async vkLogin(
     @Body() oauthLoginDto: OAuthLoginDto,
     @Request() req,
     @Response({ passthrough: true }) res: express.Response,
-  ): ApiResponseDto<any> {
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = this.authService.login(req.user);
+      const data = await this.authService.loginWithDailyExp(req.user);
       setAuthCookies(res, data.access_token, data.refresh_token);
 
       return {
@@ -268,13 +268,13 @@ export class AuthController {
   @UseGuards(AuthGuard('vk-id'))
   @Post('vk-id')
   @HttpCode(HttpStatus.OK)
-  vkIdLogin(
+  async vkIdLogin(
     @Body() vkIdLoginDto: VkIdLoginDto,
     @Request() req,
     @Response({ passthrough: true }) res: express.Response,
-  ): ApiResponseDto<any> {
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = this.authService.login(req.user);
+      const data = await this.authService.loginWithDailyExp(req.user);
       setAuthCookies(res, data.access_token, data.refresh_token);
 
       return {
@@ -301,13 +301,13 @@ export class AuthController {
   @UseGuards(AuthGuard('vk-id'))
   @Post('vk-token')
   @HttpCode(HttpStatus.OK)
-  vkTokenLogin(
+  async vkTokenLogin(
     @Body() vkIdLoginDto: VkIdLoginDto,
     @Request() req,
     @Response({ passthrough: true }) res: express.Response,
-  ): ApiResponseDto<any> {
+  ): Promise<ApiResponseDto<any>> {
     try {
-      const data = this.authService.login(req.user);
+      const data = await this.authService.loginWithDailyExp(req.user);
       setAuthCookies(res, data.access_token, data.refresh_token);
 
       return {

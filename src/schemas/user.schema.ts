@@ -64,6 +64,10 @@ export class User {
   @Prop()
   lastStreakDate: Date;
 
+  /** Дата последнего начисления опыта за вход (раз в день) */
+  @Prop()
+  lastLoginExpDate: Date;
+
   /** Количество завершённых тайтлов (из закладок "completed") */
   @Prop({ default: 0 })
   completedTitlesCount: number;

@@ -113,6 +113,112 @@ export class AuthService {
   /** Refresh token TTL (long-lived). */
   private readonly refreshTokenExpiresIn = '7d';
 
+  /** Опыт за ежедневный вход */
+  private static readonly DAILY_LOGIN_EXP = 5;
+
+  /**
+   * Вычисляет опыт до следующего уровня
+   */
+  private calculateNextLevelExp(level: number): number {
+    return Math.floor(100 * Math.pow(level, 1.5));
+  }
+
+  /**
+   * Проверяет и начисляет опыт за ежедневный вход (раз в день).
+   * Возвращает информацию о начислении или null.
+   */
+  private async awardDailyLoginExp(
+    userId: string,
+  ): Promise<{
+    expGained: number;
+    levelUp: boolean;
+    newLevel?: number;
+  } | null> {
+    if (!userId || !Types.ObjectId.isValid(userId)) {
+      return null;
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) {
+      return null;
+    }
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const lastLoginExpDate = user.lastLoginExpDate
+      ? new Date(user.lastLoginExpDate)
+      : null;
+
+    // Проверяем, был ли уже вход сегодня
+    if (lastLoginExpDate) {
+      const lastDate = new Date(
+        lastLoginExpDate.getFullYear(),
+        lastLoginExpDate.getMonth(),
+        lastLoginExpDate.getDate(),
+      );
+      if (lastDate.getTime() === today.getTime()) {
+        // Уже был вход сегодня — не начисляем
+        return null;
+      }
+    }
+
+    // Начисляем опыт за вход
+    const oldLevel = user.level;
+    user.experience += AuthService.DAILY_LOGIN_EXP;
+    user.lastLoginExpDate = today;
+
+    let leveledUp = false;
+
+    while (user.experience >= this.calculateNextLevelExp(user.level)) {
+      user.level += 1;
+      leveledUp = true;
+      user.balance += user.level * 10;
+    }
+
+    await user.save();
+
+    this.logger.log(
+      `User ${userId} awarded ${AuthService.DAILY_LOGIN_EXP} XP for daily login. Level: ${user.level}`,
+    );
+
+    return {
+      expGained: AuthService.DAILY_LOGIN_EXP,
+      levelUp: leveledUp,
+      newLevel: leveledUp ? user.level : undefined,
+    };
+  }
+
+  /**
+   * Выполняет логин и начисляет опыт за ежедневный вход.
+   */
+  async loginWithDailyExp(user: any): Promise<{
+    access_token: string;
+    refresh_token: string;
+    user: {
+      id: string;
+      email: string;
+      username: string;
+      role: string;
+    };
+    dailyLoginReward?: {
+      expGained: number;
+      levelUp: boolean;
+      newLevel?: number;
+    };
+  }> {
+    const loginResult = this.login(user);
+
+    // Начисляем опыт за ежедневный вход (асинхронно)
+    const dailyLoginReward = await this.awardDailyLoginExp(
+      user._id?.toString?.() ?? user._id,
+    );
+
+    return {
+      ...loginResult,
+      dailyLoginReward: dailyLoginReward ?? undefined,
+    };
+  }
+
   login(user: any) {
     const payload = {
       email: user.email,
