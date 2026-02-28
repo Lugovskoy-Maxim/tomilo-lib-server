@@ -32,6 +32,79 @@ export class User {
   @Prop({ default: 0 })
   balance: number;
 
+  /** Общее количество прочитанных глав (независимо от истории) */
+  @Prop({ default: 0 })
+  chaptersReadCount: number;
+
+  /** Количество уникальных прочитанных тайтлов */
+  @Prop({ default: 0 })
+  titlesReadCount: number;
+
+  /** Общее количество оставленных комментариев */
+  @Prop({ default: 0 })
+  commentsCount: number;
+
+  /** Количество полученных лайков на комментариях */
+  @Prop({ default: 0 })
+  likesReceivedCount: number;
+
+  /** Время чтения в минутах (примерное) */
+  @Prop({ default: 0 })
+  readingTimeMinutes: number;
+
+  /** Количество дней подряд с активностью (streak) */
+  @Prop({ default: 0 })
+  currentStreak: number;
+
+  /** Максимальный streak */
+  @Prop({ default: 0 })
+  longestStreak: number;
+
+  /** Дата последней активности для streak */
+  @Prop()
+  lastStreakDate: Date;
+
+  /** Количество завершённых тайтлов (из закладок "completed") */
+  @Prop({ default: 0 })
+  completedTitlesCount: number;
+
+  // Кастомизация профиля
+
+  /** Краткое описание / статус */
+  @Prop({ maxlength: 200 })
+  bio: string;
+
+  /** Любимый жанр */
+  @Prop()
+  favoriteGenre: string;
+
+  /** Ссылки на соцсети */
+  @Prop({
+    type: {
+      telegram: { type: String, default: '' },
+      discord: { type: String, default: '' },
+      vk: { type: String, default: '' },
+    },
+    default: { telegram: '', discord: '', vk: '' },
+  })
+  socialLinks: {
+    telegram: string;
+    discord: string;
+    vk: string;
+  };
+
+  /** Показывать ли статистику в профиле */
+  @Prop({ default: true })
+  showStats: boolean;
+
+  /** Показывать ли достижения в профиле */
+  @Prop({ default: true })
+  showAchievements: boolean;
+
+  /** Показывать ли любимых персонажей */
+  @Prop({ default: true })
+  showFavoriteCharacters: boolean;
+
   // Bot detection fields
   @Prop({ default: false })
   isBot: boolean;
@@ -288,6 +361,25 @@ export class User {
     isAdult: boolean;
     theme: 'light' | 'dark' | 'system';
   };
+
+  /** Достижения пользователя */
+  @Prop({
+    type: [
+      {
+        achievementId: { type: String, required: true },
+        level: { type: Number, default: 1 },
+        unlockedAt: { type: Date, default: Date.now },
+        progress: { type: Number, default: 0 },
+      },
+    ],
+    default: [],
+  })
+  achievements: {
+    achievementId: string;
+    level: number;
+    unlockedAt: Date;
+    progress: number;
+  }[];
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

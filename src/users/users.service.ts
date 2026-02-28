@@ -17,6 +17,8 @@ import { FilesService } from '../files/files.service';
 import { ChaptersService } from '../chapters/chapters.service';
 import { LoggerService } from '../common/logger/logger.service';
 import { BotDetectionService } from '../common/services/bot-detection.service';
+import { ReadingProgressResponseDto } from './dto/reading-progress-response.dto';
+import { AchievementsService } from '../achievements/achievements.service';
 /** Категории закладок: читаю, в планах, прочитано, избранное, брошено */
 export const BOOKMARK_CATEGORIES = [
   'reading',
@@ -82,6 +84,7 @@ export class UsersService {
     private filesService: FilesService,
     private chaptersService: ChaptersService,
     private botDetectionService: BotDetectionService,
+    private achievementsService: AchievementsService,
     @Inject(CACHE_MANAGER)
     private cacheManager: {
       get: (k: string) => Promise<unknown>;
@@ -734,7 +737,7 @@ export class UsersService {
     userId: string,
     titleId: string,
     chapterId: string,
-  ): Promise<User> {
+  ): Promise<ReadingProgressResponseDto> {
     this.logger.log(
       `Adding to reading history for user ${userId}, title ${titleId}, chapter ${chapterId}`,
     );
@@ -825,6 +828,8 @@ export class UsersService {
           chapterTitle,
           readAt: currentTime,
         });
+        // Инкрементируем счётчик прочитанных глав
+        user.chaptersReadCount = (user.chaptersReadCount ?? 0) + 1;
         // Оставляем только последние N глав по тайтлу, чтобы не раздувать историю
         if (existingEntry.chapters.length > MAX_CHAPTERS_PER_TITLE_IN_HISTORY) {
           existingEntry.chapters = existingEntry.chapters
@@ -856,6 +861,11 @@ export class UsersService {
         readAt: currentTime,
       };
 
+      // Инкрементируем счётчик прочитанных глав
+      user.chaptersReadCount = (user.chaptersReadCount ?? 0) + 1;
+      // Инкрементируем счётчик уникальных тайтлов
+      user.titlesReadCount = (user.titlesReadCount ?? 0) + 1;
+
       // Добавляем в начало и ограничиваем размер (не более N тайтлов)
       user.readingHistory.unshift(newEntry);
       if (user.readingHistory.length > MAX_READING_HISTORY_TITLES) {
@@ -865,7 +875,13 @@ export class UsersService {
         );
       }
       this.logger.log(`Added new title to user ${userId}'s reading history`);
-    } // <- Добавлена закрывающая скобка для блока else
+    }
+
+    // Обновляем streak (серию дней активности)
+    this.updateStreak(user);
+
+    // Добавляем примерное время чтения (4 минуты на главу)
+    this.addReadingTime(user, 4);
 
     // 🛡️ Проверка на ботов перед начислением XP
     const botDetectionResult = await this.botDetectionService.checkActivity(
@@ -894,23 +910,95 @@ export class UsersService {
 
     // Award experience for reading (только если не бот) — применяем к тому же user,
     // чтобы не было version conflict (addExperience load+save инкрементит __v, и наш save падает)
+    let progressEvent: {
+      expGained: number;
+      reason: string;
+      levelUp: boolean;
+      newLevel?: number;
+      oldLevel?: number;
+      bonusCoins?: number;
+    } | undefined = undefined;
+    let oldRankInfo: { rank: number; stars: number; name: string; minLevel: number } | undefined = undefined;
+    let newRankInfo: { rank: number; stars: number; name: string; minLevel: number } | undefined = undefined;
+
     if (!botDetectionResult.isBot) {
+      const oldLevel = user.level;
+      const oldRank = this.levelToRank(oldLevel);
+      oldRankInfo = oldRank;
+
       user.experience += 10;
+      let leveledUp = false;
+      let totalBonusCoins = 0;
+
       while (user.experience >= this.calculateNextLevelExp(user.level)) {
         user.level += 1;
-        user.balance += user.level * 10; // 10 coins per level
+        leveledUp = true;
+        const coins = user.level * 10;
+        user.balance += coins;
+        totalBonusCoins += coins;
       }
+
+      const newRank = this.levelToRank(user.level);
+      newRankInfo = newRank;
+
+      progressEvent = {
+        expGained: 10,
+        reason: 'Чтение главы',
+        levelUp: leveledUp,
+        oldLevel: leveledUp ? oldLevel : undefined,
+        newLevel: leveledUp ? user.level : undefined,
+        bonusCoins: leveledUp ? totalBonusCoins : undefined,
+      };
     } else {
       this.logger.warn(`Skipping XP award for bot user ${userId}`);
+    }
+
+    // Проверка достижений
+    const totalChaptersRead = user.chaptersReadCount ?? 0;
+    const totalBookmarks = user.bookmarks?.length ?? 0;
+    const createdAt = (user as any).createdAt as Date | undefined;
+    const daysSinceJoined = createdAt
+      ? Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+    const socialConnections =
+      (user.emailVerified ? 1 : 0) + (user.oauthProviders?.length ?? 0);
+
+    const { updatedAchievements, newUnlocked } =
+      this.achievementsService.checkAchievements(
+        user.achievements ?? [],
+        {
+          chaptersRead: totalChaptersRead,
+          bookmarksCount: totalBookmarks,
+          userLevel: user.level,
+          daysSinceJoined,
+          socialConnections,
+        },
+      );
+
+    if (newUnlocked.length > 0) {
+      user.achievements = updatedAchievements;
+      this.logger.log(
+        `User ${userId} unlocked ${newUnlocked.length} achievement(s): ${newUnlocked.map((a) => a.name).join(', ')}`,
+      );
     }
 
     // Убираем битые закладки, чтобы не падать на валидации при save
     this.sanitizeBookmarksBeforeSave(user as UserDocument);
     await user.save();
     this.logger.log(`Reading history updated successfully for user ${userId}`);
-    return (await this.userModel
-      .findById(new Types.ObjectId(userId))
-      .select('-password')) as User;
+
+    return {
+      user: {
+        _id: user._id.toString(),
+        level: user.level,
+        experience: user.experience,
+        balance: user.balance,
+      },
+      progress: progressEvent,
+      oldRank: oldRankInfo,
+      newRank: newRankInfo,
+      newAchievements: newUnlocked.length > 0 ? newUnlocked : undefined,
+    };
   }
 
   async getReadingHistory(
@@ -1189,6 +1277,100 @@ export class UsersService {
   private calculateNextLevelExp(level: number): number {
     // Simple exponential growth: 100 * level^1.5
     return Math.floor(100 * Math.pow(level, 1.5));
+  }
+
+  private static readonly RANK_NAMES = [
+    '',
+    'Ученик боевых искусств',
+    'Царство единого начала - Воин',
+    'Царство двойственности - Мастер',
+    'Царство трёх начал - Великий мастер',
+    'Царство четырёх стихий - Лорд',
+    'Царство пяти стихий - Король',
+    'Царство шести направлений - Предок',
+    'Царство семи созвездий - Повелитель',
+    'Царство восьми пустынь - Почётный воин',
+    'Царство девяти небес - Боевой император',
+  ];
+
+  private levelToRank(level: number): {
+    rank: number;
+    stars: number;
+    name: string;
+    minLevel: number;
+  } {
+    const clampedLevel = Math.max(0, Math.min(90, level));
+    let rank = Math.floor(clampedLevel / 10) + 1;
+    let stars = (clampedLevel % 10) + 1;
+
+    if (clampedLevel >= 90) {
+      rank = 9;
+      stars = 9;
+    } else if (clampedLevel === 0) {
+      rank = 1;
+      stars = 1;
+    }
+
+    rank = Math.min(9, Math.max(1, rank));
+    stars = Math.min(9, Math.max(1, stars));
+
+    return {
+      rank,
+      stars,
+      name: UsersService.RANK_NAMES[rank] || 'Неизвестный ранг',
+      minLevel: clampedLevel,
+    };
+  }
+
+  /**
+   * Обновляет streak (серию дней активности) пользователя
+   */
+  private updateStreak(user: UserDocument): void {
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const lastStreakDate = user.lastStreakDate
+      ? new Date(user.lastStreakDate)
+      : null;
+
+    if (!lastStreakDate) {
+      user.currentStreak = 1;
+      user.longestStreak = Math.max(user.longestStreak ?? 0, 1);
+      user.lastStreakDate = today;
+      return;
+    }
+
+    const lastDate = new Date(
+      lastStreakDate.getFullYear(),
+      lastStreakDate.getMonth(),
+      lastStreakDate.getDate(),
+    );
+    const diffDays = Math.floor(
+      (today.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    if (diffDays === 0) {
+      // Уже была активность сегодня — ничего не меняем
+      return;
+    } else if (diffDays === 1) {
+      // Активность вчера — продолжаем streak
+      user.currentStreak = (user.currentStreak ?? 0) + 1;
+      user.longestStreak = Math.max(
+        user.longestStreak ?? 0,
+        user.currentStreak,
+      );
+      user.lastStreakDate = today;
+    } else {
+      // Пропуск более 1 дня — сбрасываем streak
+      user.currentStreak = 1;
+      user.lastStreakDate = today;
+    }
+  }
+
+  /**
+   * Добавляет время чтения (вызывается при прочтении главы)
+   */
+  private addReadingTime(user: UserDocument, minutes: number): void {
+    user.readingTimeMinutes = (user.readingTimeMinutes ?? 0) + minutes;
   }
 
   async addExperience(userId: string, expAmount: number): Promise<User> {
