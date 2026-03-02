@@ -676,10 +676,7 @@ export class TitlesService {
     const skip = (Math.max(1, page) - 1) * limit;
     const needed = skip + limit;
 
-    const cacheKey = `${CACHE_RECENT_UPDATES_PREFIX}:${page}:${limit}:${canViewAdult}`;
-    const cached = await this.cacheManager.get(cacheKey);
-    if (cached) return cached as any[];
-
+    // Кеш отключён: при параллельном добавлении глав у нескольких тайтлов данные всегда актуальные
     const titleSelect =
       'name slug _id altNames description genres tags artist coverImage status author views totalChapters averageRating releaseYear ageLimit chaptersRemovedByCopyrightHolder isPublished type createdAt updatedAt';
     const fetchMultiplier = Math.min(50, Math.max(20, Math.ceil(300 / limit)));
@@ -798,10 +795,6 @@ export class TitlesService {
         lastUpdate,
       };
     });
-
-    if (result.length > 0) {
-      await this.cacheManager.set(cacheKey, result);
-    }
 
     return result;
   }
