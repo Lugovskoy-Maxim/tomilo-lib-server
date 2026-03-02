@@ -4,18 +4,22 @@ import {
   Patch,
   Param,
   Body,
+  Req,
   UseGuards,
   UsePipes,
   ValidationPipe,
   UseInterceptors,
-  UploadedFile,
   BadRequestException,
 } from '@nestjs/common';
+import * as Express from 'express';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import * as path from 'path';
+import * as fs from 'fs';
 import { ShopService } from './shop.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { FileUploadInterceptor } from '../common/interceptors/file-upload.interceptor';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { DecorationType } from './shop.controller';
 
@@ -86,14 +90,41 @@ export class ShopAdminController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
   @UseInterceptors(
-    FileUploadInterceptor.create('file', {
-      destination: './uploads/decorations',
-      fileTypes: /\/(jpg|jpeg|png|webp|gif)$/,
-      fileSize: 20 * 1024 * 1024, // 20MB (GIF can be large)
-      filenamePrefix: 'decoration',
+    FileInterceptor('file', {
+        storage: diskStorage({
+          destination: (_req, _file, cb) => {
+            const dir = './uploads/decorations';
+            fs.mkdirSync(dir, { recursive: true });
+            cb(null, dir);
+          },
+          filename: (_req, file, cb) => {
+            const ext =
+              path.extname(file.originalname) ||
+              (file.mimetype === 'image/gif'
+                ? '.gif'
+                : file.mimetype === 'image/webp'
+                  ? '.webp'
+                  : '.png');
+            cb(
+              null,
+              `decoration-${Date.now()}-${Math.random().toString(36).slice(2, 9)}${ext}`,
+            );
+          },
+        }),
+        limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+        fileFilter: (_req, file, cb) => {
+          if (!file.mimetype.startsWith('image/')) {
+            return cb(
+              new BadRequestException('Only image files are allowed'),
+              false,
+            );
+          }
+          cb(null, true);
+        },
     }),
   )
   async uploadDecoration(
+    @Req() req: Express.Request,
     @Body()
     body: {
       type: DecorationType;
@@ -107,10 +138,10 @@ export class ShopAdminController {
       /** Алиас, который шлёт фронтенд (stock === quantity) */
       stock?: number | string | null;
     },
-    @UploadedFile() file: Express.Multer.File,
   ): Promise<ApiResponseDto<any>> {
     try {
-      if (!file) {
+      const file = (req as any).file ?? req.file ?? null;
+      if (!file || !file.filename) {
         throw new BadRequestException('Image file is required');
       }
       const rawQuantityInput =
@@ -144,14 +175,8 @@ export class ShopAdminController {
         method: 'POST',
       };
     } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to upload decoration',
-        errors: [(error as Error).message],
-        timestamp: new Date().toISOString(),
-        path: 'shop/admin/decorations/upload',
-        method: 'POST',
-      };
+      if (error instanceof BadRequestException) throw error;
+      throw error;
     }
   }
 }

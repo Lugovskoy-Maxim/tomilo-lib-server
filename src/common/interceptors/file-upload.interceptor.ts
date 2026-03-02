@@ -15,10 +15,12 @@ export class FileUploadInterceptor {
     return FileInterceptor(field, {
       storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
-        if (!file.mimetype.match(options.fileTypes)) {
+        const isImage = file.mimetype.startsWith('image/');
+        const matchesRegex = options.fileTypes ? file.mimetype.match(options.fileTypes) : true;
+        if (!isImage && !matchesRegex) {
           return cb(
             new BadRequestException(
-              `Only files with types ${options.fileTypes} are allowed`,
+              `Only image files are allowed (got ${file.mimetype})`,
             ),
             false,
           );
@@ -44,10 +46,12 @@ export class FileUploadInterceptor {
     return FilesInterceptor(field, options.maxFiles || 10, {
       storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
-        if (!file.mimetype.match(options.fileTypes)) {
+        const isImage = file.mimetype.startsWith('image/');
+        const matchesRegex = options.fileTypes ? file.mimetype.match(options.fileTypes) : true;
+        if (!isImage && !matchesRegex) {
           return cb(
             new BadRequestException(
-              `Only files with types ${options.fileTypes} are allowed`,
+              `Only image files are allowed (got ${file.mimetype})`,
             ),
             false,
           );
