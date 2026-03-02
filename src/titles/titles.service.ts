@@ -1110,6 +1110,27 @@ export class TitlesService {
     return titles as TitleDocument[];
   }
 
+  async invalidateRecentUpdatesCache(): Promise<void> {
+    const pagesToClear = [1, 2, 3];
+    const limits = [18, 10, 20, 36];
+    const adultFlags = [true, false];
+
+    for (const page of pagesToClear) {
+      for (const limit of limits) {
+        for (const canViewAdult of adultFlags) {
+          const cacheKey = `${CACHE_RECENT_UPDATES_PREFIX}:${page}:${limit}:${canViewAdult}`;
+          try {
+            if (typeof (this.cacheManager as any).del === 'function') {
+              await (this.cacheManager as any).del(cacheKey);
+            }
+          } catch {
+            // ignore cache deletion errors
+          }
+        }
+      }
+    }
+  }
+
   async getRecommendedTitles(
     userId: string,
     limit: number = 10,

@@ -18,6 +18,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 const CHAPTERS_COUNT_CACHE_TTL_MS = 2 * 60 * 1000; // 2 min
 const CHAPTERS_COUNT_CACHE_PREFIX = 'chapters_count';
+const CACHE_RECENT_UPDATES_PREFIX = 'recent_updates';
 
 @Injectable()
 export class ChaptersService {
@@ -29,8 +30,29 @@ export class ChaptersService {
     private filesService: FilesService,
     private notificationsService: NotificationsService,
     @Inject(CACHE_MANAGER)
-    private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown, ttl?: number) => Promise<void> },
+    private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown, ttl?: number) => Promise<void>; del?: (k: string) => Promise<void> },
   ) {}
+
+  private async invalidateRecentUpdatesCache(): Promise<void> {
+    const pagesToClear = [1, 2, 3];
+    const limits = [18, 10, 20, 36];
+    const adultFlags = [true, false];
+
+    for (const page of pagesToClear) {
+      for (const limit of limits) {
+        for (const canViewAdult of adultFlags) {
+          const cacheKey = `${CACHE_RECENT_UPDATES_PREFIX}:${page}:${limit}:${canViewAdult}`;
+          try {
+            if (typeof this.cacheManager.del === 'function') {
+              await this.cacheManager.del(cacheKey);
+            }
+          } catch {
+            // ignore cache deletion errors
+          }
+        }
+      }
+    }
+  }
 
   async findAll({
     page = 1,
@@ -254,6 +276,9 @@ export class ChaptersService {
         `Failed to create notifications for new chapter: ${(error as Error).message}`,
       );
     }
+
+    // Инвалидируем кеш последних обновлений, чтобы новая глава сразу появилась
+    await this.invalidateRecentUpdatesCache();
 
     return savedChapter.populate('titleId');
   }
