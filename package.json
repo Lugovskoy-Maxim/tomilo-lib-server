@@ -19,6 +19,7 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "migrate:bookmarks": "ts-node -r tsconfig-paths/register scripts/migrate-bookmarks.ts",
+    "migrate:recalculate-counts": "ts-node -r tsconfig-paths/register scripts/recalculate-user-counts.ts",
     "check:autoparser": "ts-node -r tsconfig-paths/register scripts/check-autoparser-sources.ts",
     "migrate:s3": "ts-node -r tsconfig-paths/register scripts/migrate-uploads-to-s3.ts",
     "s3:cleanup": "ts-node -r tsconfig-paths/register scripts/sync-s3-cleanup.ts",
