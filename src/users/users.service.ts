@@ -37,7 +37,7 @@ const CAN_VIEW_ADULT_CACHE_PREFIX = 'user:canViewAdult:';
 const CAN_VIEW_ADULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 const LEADERBOARD_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-export type LeaderboardCategory = 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak';
+export type LeaderboardCategory = 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak' | 'chaptersRead';
 export type LeaderboardPeriod = 'all' | 'month';
 
 export interface LeaderboardUser {
@@ -48,7 +48,7 @@ export interface LeaderboardUser {
   level?: number;
   experience?: number;
   readingTimeMinutes?: number;
-  chaptersReadCount?: number;
+  chaptersRead?: number;
   ratingsCount?: number;
   commentsCount?: number;
   likesReceivedCount?: number;
@@ -285,6 +285,10 @@ export class UsersService {
       case 'readingTime':
         sortField = 'readingTimeMinutes';
         break;
+      case 'chaptersRead':
+        sortField = 'chaptersReadCount';
+        secondarySortField = 'readingTimeMinutes';
+        break;
       case 'ratings':
         sortField = 'ratingsCount';
         break;
@@ -335,6 +339,8 @@ export class UsersService {
       baseFilter.level = { $gte: 1 };
     } else if (category === 'readingTime') {
       baseFilter.readingTimeMinutes = { $gt: 0 };
+    } else if (category === 'chaptersRead') {
+      baseFilter.chaptersReadCount = { $gt: 0 };
     } else if (category === 'ratings') {
       baseFilter.ratingsCount = { $gt: 0 };
     } else if (category === 'comments') {
@@ -379,7 +385,7 @@ export class UsersService {
       level: user.level ?? 1,
       experience: user.experience ?? 0,
       readingTimeMinutes: user.readingTimeMinutes ?? 0,
-      chaptersReadCount: user.chaptersReadCount ?? 0,
+      chaptersRead: user.chaptersReadCount ?? 0,
       ratingsCount: user.ratingsCount ?? 0,
       commentsCount: user.commentsCount ?? 0,
       likesReceivedCount: user.likesReceivedCount ?? 0,

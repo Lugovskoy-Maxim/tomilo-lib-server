@@ -879,9 +879,9 @@ export class UsersController {
     @Query('page') page?: string,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const validCategories = ['level', 'readingTime', 'ratings', 'comments', 'streak'];
+      const validCategories = ['level', 'readingTime', 'ratings', 'comments', 'streak', 'chaptersRead'];
       const safeCategory = validCategories.includes(category || '')
-        ? (category as 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak')
+        ? (category as 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak' | 'chaptersRead')
         : 'level';
 
       const validPeriods = ['all', 'month'];
