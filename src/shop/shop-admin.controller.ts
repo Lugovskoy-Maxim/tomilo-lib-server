@@ -40,10 +40,19 @@ export class ShopAdminController {
       rarity?: 'common' | 'rare' | 'epic' | 'legendary';
       description?: string;
       isAvailable?: boolean;
+      /** Лимит количества (основное имя поля) */
       quantity?: number | null;
+      /** Алиас для фронтенда: stock === quantity */
+      stock?: number | null;
     },
   ): Promise<ApiResponseDto<any>> {
     try {
+      const quantity =
+        body.quantity !== undefined && body.quantity !== null
+          ? body.quantity
+          : body.stock !== undefined
+            ? body.stock
+            : undefined;
       const data = await this.shopService.updateDecoration(id, {
         name: body.name,
         imageUrl: body.imageUrl,
@@ -51,7 +60,7 @@ export class ShopAdminController {
         rarity: body.rarity,
         description: body.description,
         isAvailable: body.isAvailable,
-        quantity: body.quantity,
+        quantity,
       });
       return {
         success: true,
@@ -93,7 +102,10 @@ export class ShopAdminController {
       rarity: 'common' | 'rare' | 'epic' | 'legendary';
       description?: string;
       isAvailable?: string;
+      /** Основное имя лимита на бэкенде */
       quantity?: number | string | null;
+      /** Алиас, который шлёт фронтенд (stock === quantity) */
+      stock?: number | string | null;
     },
     @UploadedFile() file: Express.Multer.File,
   ): Promise<ApiResponseDto<any>> {
@@ -101,10 +113,14 @@ export class ShopAdminController {
       if (!file) {
         throw new BadRequestException('Image file is required');
       }
+      const rawQuantityInput =
+        body.quantity !== undefined && body.quantity !== null && body.quantity !== ''
+          ? body.quantity
+          : body.stock;
       const quantityRaw =
-        body.quantity === undefined || body.quantity === null || body.quantity === ''
+        rawQuantityInput === undefined || rawQuantityInput === null || rawQuantityInput === ''
           ? undefined
-          : Number(body.quantity);
+          : Number(rawQuantityInput);
       const quantity =
         quantityRaw !== undefined && !Number.isNaN(quantityRaw) ? quantityRaw : undefined;
       const data = await this.shopService.uploadDecoration(
