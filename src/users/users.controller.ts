@@ -247,6 +247,100 @@ export class UsersController {
     }
   }
 
+  // 🔍 Проверить статус закладки для тайтла (есть ли в закладках и в какой категории)
+  @Get('profile/bookmarks/:titleId/status')
+  @UseGuards(JwtAuthGuard)
+  async getBookmarkStatus(
+    @Request() req,
+    @Param('titleId') titleId: string,
+  ): Promise<ApiResponseDto<{ isBookmarked: boolean; category: string | null }>> {
+    try {
+      const data = await this.usersService.getBookmarkStatus(
+        req.user.userId,
+        titleId,
+      );
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `users/profile/bookmarks/${titleId}/status`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch bookmark status',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `users/profile/bookmarks/${titleId}/status`,
+      };
+    }
+  }
+
+  // 📊 Получить количество закладок по категориям
+  @Get('profile/bookmarks/counts')
+  @UseGuards(JwtAuthGuard)
+  async getBookmarksCounts(
+    @Request() req,
+  ): Promise<ApiResponseDto<{ reading: number; planned: number; completed: number; favorites: number; dropped: number; total: number }>> {
+    try {
+      const data = await this.usersService.getBookmarksCounts(req.user.userId);
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/bookmarks/counts',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch bookmark counts',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/bookmarks/counts',
+      };
+    }
+  }
+
+  // 📖 Получить прогресс чтения для тайтла (последняя глава, процент)
+  @Get('profile/progress/:titleId')
+  @UseGuards(JwtAuthGuard)
+  async getReadingProgress(
+    @Request() req,
+    @Param('titleId') titleId: string,
+  ): Promise<ApiResponseDto<{
+    titleId: string;
+    lastChapterId: string | null;
+    lastChapterNumber: number | null;
+    chaptersRead: number;
+    totalChapters: number;
+    progressPercent: number;
+    readAt: Date | null;
+  }>> {
+    try {
+      const data = await this.usersService.getReadingProgressForTitle(
+        req.user.userId,
+        titleId,
+      );
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `users/profile/progress/${titleId}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch reading progress',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `users/profile/progress/${titleId}`,
+      };
+    }
+  }
+
   // ➕ Добавить в закладки (query: ?category=reading|planned|completed|favorites|dropped)
   @Post('profile/bookmarks/:titleId')
   @UseGuards(JwtAuthGuard)

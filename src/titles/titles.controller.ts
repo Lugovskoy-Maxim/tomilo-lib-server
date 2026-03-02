@@ -915,6 +915,111 @@ export class TitlesController {
     }
   }
 
+  /**
+   * Получить похожие тайтлы (по жанрам и тегам)
+   */
+  @Get('titles/:id/similar')
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
+  async getSimilarTitles(
+    @Param('id') id: string,
+    @Query('limit') limit = 10,
+    @Query('includeAdult') includeAdult?: string,
+    @Req() req?: any,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const canViewAdult = await this.getCanViewAdult(req, includeAdult);
+      const titles = await this.titlesService.getSimilarTitles(
+        id,
+        Number(limit),
+        canViewAdult,
+      );
+
+      const data = titles.map((title) => ({
+        id: title._id?.toString(),
+        title: title.name,
+        slug: title.slug,
+        cover: title.coverImage,
+        rating: title.averageRating,
+        type: title.type,
+        releaseYear: title.releaseYear,
+        genres: title.genres,
+        isAdult: this.processAdultField(title.ageLimit),
+      }));
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}/similar`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch similar titles',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}/similar`,
+      };
+    }
+  }
+
+  /**
+   * Получить статистику тайтла (для отображения на странице)
+   */
+  @Get('titles/:id/stats')
+  @Header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
+  async getTitleStats(
+    @Param('id') id: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.titlesService.getTitleStats(id);
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}/stats`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch title stats',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}/stats`,
+      };
+    }
+  }
+
+  /**
+   * Проверить рейтинг пользователя для тайтла
+   */
+  @Get('titles/:id/my-rating')
+  @UseGuards(JwtAuthGuard)
+  async getMyRating(
+    @Param('id') id: string,
+    @Req() req: { user: { userId: string } },
+  ): Promise<ApiResponseDto<{ hasRated: boolean; rating: number | null }>> {
+    try {
+      const data = await this.titlesService.getUserRating(id, req.user.userId);
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}/my-rating`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch user rating',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `titles/${id}/my-rating`,
+      };
+    }
+  }
+
   @Get('titles/:id')
   async findOne(
     @Param('id') id: string,
@@ -1097,6 +1202,69 @@ export class TitlesController {
         errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `titles/${id}/chapters/count`,
+      };
+    }
+  }
+
+  /**
+   * Получить тайтлы по жанру (для страницы жанра)
+   */
+  @Get('titles/genre/:genre')
+  @Header('Cache-Control', 'public, max-age=120, stale-while-revalidate=600')
+  async getTitlesByGenre(
+    @Param('genre') genre: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+    @Query('sortBy') sortBy = 'weekViews',
+    @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
+    @Query('includeAdult') includeAdult?: string,
+    @Req() req?: any,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const canViewAdult = await this.getCanViewAdult(req, includeAdult);
+      const decodedGenre = this.decodeParam(genre) || genre;
+      
+      const result = await this.titlesService.findAll({
+        page: Number(page),
+        limit: Number(limit),
+        genres: [decodedGenre],
+        sortBy,
+        sortOrder,
+        populateChapters: false,
+        canViewAdult,
+      });
+
+      const data = {
+        genre: decodedGenre,
+        titles: result.titles.map((title) => ({
+          id: title._id?.toString(),
+          title: title.name,
+          slug: title.slug,
+          cover: title.coverImage,
+          rating: title.averageRating,
+          type: title.type,
+          releaseYear: title.releaseYear,
+          status: title.status,
+          genres: title.genres,
+          totalChapters: title.totalChapters,
+          isAdult: this.processAdultField(title.ageLimit),
+        })),
+        pagination: result.pagination,
+      };
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `titles/genre/${genre}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch titles by genre',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `titles/genre/${genre}`,
       };
     }
   }

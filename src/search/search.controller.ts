@@ -23,6 +23,66 @@ export class SearchController {
     private readonly usersService: UsersService,
   ) {}
 
+  /**
+   * Быстрый поиск для автодополнения (минимальные данные)
+   */
+  @Get('autocomplete')
+  async autocomplete(
+    @Request() req: any,
+    @Query('q') query: string,
+    @Query('limit') limit = 5,
+    @Query('includeAdult') includeAdult?: string,
+  ): Promise<ApiResponseDto<{ id: string; title: string; slug: string; cover: string; type: string }[]>> {
+    try {
+      if (!query || query.length < 2) {
+        return {
+          success: true,
+          data: [],
+          timestamp: new Date().toISOString(),
+          path: 'search/autocomplete',
+        };
+      }
+
+      let canViewAdult = false;
+      const userId = extractUserIdFromRequest(req);
+      if (userId) {
+        const userCanViewAdult = await this.usersService.getCanViewAdult(userId);
+        if (userCanViewAdult) {
+          canViewAdult = includeAdult !== undefined ? includeAdult === 'true' : true;
+        }
+      }
+
+      const titles = await this.searchService.autocomplete({
+        search: query,
+        limit: Math.min(Number(limit), 10),
+        canViewAdult,
+      });
+
+      const data = titles.map((title) => ({
+        id: title._id?.toString(),
+        title: title.name,
+        slug: title.slug,
+        cover: title.coverImage,
+        type: title.type,
+      }));
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'search/autocomplete',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to autocomplete',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'search/autocomplete',
+      };
+    }
+  }
+
   @Get()
   async searchTitles(
     @Request() req: any,

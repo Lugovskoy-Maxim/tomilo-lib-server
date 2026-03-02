@@ -654,6 +654,151 @@ export class UsersService {
       .select('-password')) as User;
   }
 
+  /**
+   * Проверить, добавлен ли тайтл в закладки и в какой категории
+   */
+  async getBookmarkStatus(
+    userId: string,
+    titleId: string,
+  ): Promise<{ isBookmarked: boolean; category: string | null }> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid user ID or title ID');
+    }
+
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('bookmarks');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const bookmark = (user.bookmarks as any[]).find(
+      (b: any) => this.getBookmarkTitleIdStr(b) === titleId,
+    );
+
+    return {
+      isBookmarked: !!bookmark,
+      category: bookmark?.category || null,
+    };
+  }
+
+  /**
+   * Получить количество закладок по категориям
+   */
+  async getBookmarksCounts(
+    userId: string,
+  ): Promise<{
+    reading: number;
+    planned: number;
+    completed: number;
+    favorites: number;
+    dropped: number;
+    total: number;
+  }> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('bookmarks');
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const counts = {
+      reading: 0,
+      planned: 0,
+      completed: 0,
+      favorites: 0,
+      dropped: 0,
+      total: 0,
+    };
+
+    for (const bookmark of user.bookmarks as any[]) {
+      const category = bookmark?.category || 'reading';
+      if (category in counts) {
+        counts[category as keyof typeof counts]++;
+      }
+      counts.total++;
+    }
+
+    return counts;
+  }
+
+  /**
+   * Получить прогресс чтения для конкретного тайтла
+   */
+  async getReadingProgressForTitle(
+    userId: string,
+    titleId: string,
+  ): Promise<{
+    titleId: string;
+    lastChapterId: string | null;
+    lastChapterNumber: number | null;
+    chaptersRead: number;
+    totalChapters: number;
+    progressPercent: number;
+    readAt: Date | null;
+  }> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid user ID or title ID');
+    }
+
+    const [user, title] = await Promise.all([
+      this.userModel
+        .findById(new Types.ObjectId(userId))
+        .select('readingHistory'),
+      this.titleModel
+        .findById(new Types.ObjectId(titleId))
+        .select('totalChapters'),
+    ]);
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const totalChapters = title?.totalChapters || 0;
+
+    const historyEntry = user.readingHistory.find(
+      (e) => this.getHistoryTitleIdStr(e) === titleId,
+    );
+
+    if (!historyEntry || !historyEntry.chapters?.length) {
+      return {
+        titleId,
+        lastChapterId: null,
+        lastChapterNumber: null,
+        chaptersRead: 0,
+        totalChapters,
+        progressPercent: 0,
+        readAt: null,
+      };
+    }
+
+    const sortedChapters = [...historyEntry.chapters].sort(
+      (a, b) => new Date(b.readAt).getTime() - new Date(a.readAt).getTime(),
+    );
+
+    const lastChapter = sortedChapters[0];
+    const chaptersRead = historyEntry.chapters.length;
+    const progressPercent = totalChapters > 0
+      ? Math.round((chaptersRead / totalChapters) * 100)
+      : 0;
+
+    return {
+      titleId,
+      lastChapterId: this.getHistoryChapterIdStr(lastChapter) || null,
+      lastChapterNumber: lastChapter.chapterNumber ?? null,
+      chaptersRead,
+      totalChapters,
+      progressPercent: Math.min(100, progressPercent),
+      readAt: historyEntry.readAt || null,
+    };
+  }
+
   async getUserBookmarks(
     userId: string,
     options?: { category?: BookmarkCategory; grouped?: boolean },
@@ -689,6 +834,21 @@ export class UsersService {
       return byCategory;
     }
     return list;
+  }
+
+  /**
+   * Подсчитать количество пользователей, добавивших тайтл в закладки
+   */
+  async countBookmarksForTitle(titleId: string): Promise<number> {
+    if (!Types.ObjectId.isValid(titleId)) {
+      return 0;
+    }
+
+    const count = await this.userModel.countDocuments({
+      'bookmarks.titleId': new Types.ObjectId(titleId),
+    });
+
+    return count;
   }
 
   // 🖼 Методы для работы с аватаром

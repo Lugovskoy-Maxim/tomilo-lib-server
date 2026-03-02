@@ -935,6 +935,134 @@ export class TitlesService {
     return collections;
   }
 
+  /**
+   * Получить похожие тайтлы по жанрам и тегам
+   */
+  async getSimilarTitles(
+    titleId: string,
+    limit: number = 10,
+    canViewAdult: boolean = true,
+  ): Promise<TitleDocument[]> {
+    if (!Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid title ID');
+    }
+
+    const title = await this.titleModel.findById(titleId).exec();
+    if (!title) {
+      throw new NotFoundException('Title not found');
+    }
+
+    const query: any = {
+      _id: { $ne: new Types.ObjectId(titleId) },
+    };
+
+    if (title.genres?.length || title.tags?.length) {
+      query.$or = [];
+      if (title.genres?.length) {
+        query.$or.push({ genres: { $in: title.genres } });
+      }
+      if (title.tags?.length) {
+        query.$or.push({ tags: { $in: title.tags } });
+      }
+    }
+
+    if (!canViewAdult) {
+      const adultFilter = {
+        $or: [
+          { ageLimit: { $lt: 18 } },
+          { ageLimit: { $exists: false } },
+          { ageLimit: null },
+        ],
+      };
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, adultFilter];
+        delete query.$or;
+      } else {
+        query.$or = adultFilter.$or;
+      }
+    }
+
+    const titles = await this.titleModel
+      .find(query)
+      .sort({ weekViews: -1, averageRating: -1 })
+      .limit(limit)
+      .exec();
+
+    return titles;
+  }
+
+  /**
+   * Получить статистику тайтла
+   */
+  async getTitleStats(titleId: string): Promise<{
+    views: number;
+    dayViews: number;
+    weekViews: number;
+    monthViews: number;
+    totalChapters: number;
+    averageRating: number;
+    totalRatings: number;
+    bookmarksCount: number;
+    commentsCount: number;
+  }> {
+    if (!Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid title ID');
+    }
+
+    const title = await this.titleModel
+      .findById(titleId)
+      .select('views dayViews weekViews monthViews totalChapters averageRating totalRatings')
+      .exec();
+
+    if (!title) {
+      throw new NotFoundException('Title not found');
+    }
+
+    const bookmarksCount = await this.usersService.countBookmarksForTitle(titleId);
+
+    return {
+      views: title.views || 0,
+      dayViews: title.dayViews || 0,
+      weekViews: title.weekViews || 0,
+      monthViews: title.monthViews || 0,
+      totalChapters: title.totalChapters || 0,
+      averageRating: title.averageRating || 0,
+      totalRatings: title.totalRatings || 0,
+      bookmarksCount,
+      commentsCount: 0,
+    };
+  }
+
+  /**
+   * Получить рейтинг пользователя для тайтла
+   */
+  async getUserRating(
+    titleId: string,
+    userId: string,
+  ): Promise<{ hasRated: boolean; rating: number | null }> {
+    if (!Types.ObjectId.isValid(titleId) || !Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid title ID or user ID');
+    }
+
+    const title = await this.titleModel
+      .findById(titleId)
+      .select('ratings')
+      .exec();
+
+    if (!title) {
+      throw new NotFoundException('Title not found');
+    }
+
+    const userRating = title.ratings?.find(
+      (r) => r.userId?.toString() === userId,
+    );
+
+    return {
+      hasRated: !!userRating,
+      rating: userRating?.rating ?? null,
+    };
+  }
+
   async getRandomTitles(
     limit = 10,
     canViewAdult = true,
