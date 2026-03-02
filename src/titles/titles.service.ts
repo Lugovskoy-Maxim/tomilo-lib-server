@@ -682,7 +682,7 @@ export class TitlesService {
 
     const titleSelect =
       'name slug _id altNames description genres tags artist coverImage status author views totalChapters averageRating releaseYear ageLimit chaptersRemovedByCopyrightHolder isPublished type createdAt updatedAt';
-    const fetchMultiplier = Math.min(20, Math.max(5, Math.ceil(100 / limit)));
+    const fetchMultiplier = Math.min(50, Math.max(20, Math.ceil(300 / limit)));
     const recentChapters = await this.chapterModel
       .find({ isPublished: true })
       .sort({ releaseDate: -1 })
@@ -691,44 +691,49 @@ export class TitlesService {
       .lean()
       .exec();
 
+
     // Группируем главы по тайтлам и сохраняем информацию о диапазонах глав
     const titleMap = new Map();
+    
     for (const chapter of recentChapters) {
-      if (chapter.titleId) {
-        const title = chapter.titleId as any;
-        const ageLimit = title.ageLimit;
+      // Проверяем, что titleId был успешно популирован как объект
+      if (!chapter.titleId || typeof chapter.titleId !== 'object' || !('_id' in (chapter.titleId as any))) {
+        continue;
+      }
+      
+      const title = chapter.titleId as any;
+      const ageLimit = title.ageLimit;
 
-        // Не показывать тайтлы, у которых главы удалены по просьбе правообладателя
-        if (title.chaptersRemovedByCopyrightHolder) {
-          continue;
-        }
+      // Не показывать тайтлы, у которых главы удалены по просьбе правообладателя
+      if (title.chaptersRemovedByCopyrightHolder) {
+        continue;
+      }
 
-        // Фильтрация взрослого контента на этапе группировки
-        // Если пользователь не может видеть взрослый контент, пропускаем взрослые тайтлы
-        if (!canViewAdult && ageLimit >= 18) {
-          continue;
-        }
+      // Фильтрация взрослого контента на этапе группировки
+      // Если пользователь не может видеть взрослый контент, пропускаем взрослые тайтлы
+      if (!canViewAdult && ageLimit >= 18) {
+        continue;
+      }
 
-        const titleId = title._id.toString();
-        if (!titleMap.has(titleId)) {
-          titleMap.set(titleId, {
-            title,
-            chapters: [chapter],
-            minChapter: chapter.chapterNumber,
-            maxChapter: chapter.chapterNumber,
-          });
-        } else {
-          const titleInfo = titleMap.get(titleId);
-          titleInfo.chapters.push(chapter);
-          titleInfo.minChapter = Math.min(
-            titleInfo.minChapter,
-            chapter.chapterNumber,
-          );
-          titleInfo.maxChapter = Math.max(
-            titleInfo.maxChapter,
-            chapter.chapterNumber,
-          );
-        }
+      const titleId = title._id.toString();
+      if (!titleMap.has(titleId)) {
+        titleMap.set(titleId, {
+          title,
+          chapters: [chapter],
+          minChapter: chapter.chapterNumber,
+          maxChapter: chapter.chapterNumber,
+        });
+      } else {
+        const titleInfo = titleMap.get(titleId);
+        titleInfo.chapters.push(chapter);
+        titleInfo.minChapter = Math.min(
+          titleInfo.minChapter,
+          chapter.chapterNumber,
+        );
+        titleInfo.maxChapter = Math.max(
+          titleInfo.maxChapter,
+          chapter.chapterNumber,
+        );
       }
 
       // Прерываем цикл, если уже набрали нужное количество уникальных тайтлов
@@ -736,6 +741,7 @@ export class TitlesService {
         break;
       }
     }
+
 
     // Преобразуем Map в массив и сортируем по дате последней главы
     const titlesWithChapters = Array.from(titleMap.values())
