@@ -39,6 +39,7 @@ import { StatsModule } from './stats/stats.module';
 import { AnnouncementsModule } from './announcements/announcements.module';
 import { S3Module } from './s3/s3.module';
 import { AchievementsModule } from './achievements/achievements.module';
+import { AdminModule } from './admin/admin.module';
 
 const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 
@@ -90,6 +91,7 @@ const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
     StatsModule,
     AnnouncementsModule,
     AchievementsModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [
