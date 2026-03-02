@@ -115,13 +115,20 @@ export class TitlesService {
     // Фильтрация взрослого контента
     // Если пользователь не может видеть взрослый контент, исключаем тайтлы с ageLimit >= 18
     if (!canViewAdult) {
-      // Исключаем тайтлы с возрастным ограничением 18+
-      // ageLimit < 18 или ageLimit не определен (null/undefined) - это не взрослый контент
-      query.$or = [
-        { ageLimit: { $lt: 18 } },
-        { ageLimit: { $exists: false } },
-        { ageLimit: null },
-      ];
+      const adultFilter = {
+        $or: [
+          { ageLimit: { $lt: 18 } },
+          { ageLimit: { $exists: false } },
+          { ageLimit: null },
+        ],
+      };
+      // Используем $and чтобы не перезаписать поисковый $or
+      if (query.$or) {
+        query.$and = [{ $or: query.$or }, adultFilter];
+        delete query.$or;
+      } else {
+        query.$or = adultFilter.$or;
+      }
     }
 
     if (tags && tags.length > 0) {
