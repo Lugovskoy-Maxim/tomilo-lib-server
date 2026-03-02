@@ -35,6 +35,41 @@ const MAX_CHAPTERS_PER_TITLE_IN_HISTORY = 6000;
 const HOMEPAGE_ACTIVE_USERS_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 const CAN_VIEW_ADULT_CACHE_PREFIX = 'user:canViewAdult:';
 const CAN_VIEW_ADULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
+const LEADERBOARD_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+export type LeaderboardCategory = 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak';
+
+export interface LeaderboardUser {
+  _id: string;
+  username: string;
+  avatar?: string;
+  role?: string;
+  level?: number;
+  experience?: number;
+  readingTimeMinutes?: number;
+  chaptersReadCount?: number;
+  ratingsCount?: number;
+  commentsCount?: number;
+  likesReceivedCount?: number;
+  currentStreak?: number;
+  longestStreak?: number;
+  lastStreakDate?: Date;
+  titlesReadCount?: number;
+  completedTitlesCount?: number;
+  createdAt?: Date;
+  equippedDecorations?: {
+    avatar?: string | null;
+    frame?: string | null;
+    background?: string | null;
+    card?: string | null;
+  } | null;
+}
+
+export interface LeaderboardResponse {
+  users: LeaderboardUser[];
+  total: number;
+  category: LeaderboardCategory;
+}
 
 type HomepageActiveUsersSortBy = 'lastActivityAt' | 'level' | 'createdAt';
 type HomepageActiveUsersSortOrder = 'asc' | 'desc';
@@ -208,6 +243,168 @@ export class UsersService {
     });
 
     return users;
+  }
+
+  /**
+   * Получить лидерборд пользователей по заданной категории.
+   * Кеширует результат на 1 час.
+   */
+  async getLeaderboard(options: {
+    category?: LeaderboardCategory;
+    limit?: number;
+    page?: number;
+  } = {}): Promise<LeaderboardResponse> {
+    const category: LeaderboardCategory = options.category || 'level';
+    const limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
+    const page = Math.max(1, Number(options.page) || 1);
+    const skip = (page - 1) * limit;
+
+    const cacheKey = `leaderboard:${category}:limit:${limit}:page:${page}`;
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) {
+      return cached as LeaderboardResponse;
+    }
+
+    let sortField: string;
+    let secondarySortField: string | null = null;
+    
+    switch (category) {
+      case 'level':
+        sortField = 'level';
+        secondarySortField = 'experience';
+        break;
+      case 'readingTime':
+        sortField = 'readingTimeMinutes';
+        break;
+      case 'ratings':
+        sortField = 'ratingsCount';
+        break;
+      case 'comments':
+        sortField = 'commentsCount';
+        break;
+      case 'streak':
+        sortField = 'currentStreak';
+        secondarySortField = 'longestStreak';
+        break;
+      default:
+        sortField = 'level';
+        secondarySortField = 'experience';
+    }
+
+    const sortOptions: Record<string, 1 | -1> = { [sortField]: -1 };
+    if (secondarySortField) {
+      sortOptions[secondarySortField] = -1;
+    }
+    sortOptions._id = -1;
+
+    const projection = [
+      '_id',
+      'username',
+      'avatar',
+      'role',
+      'level',
+      'experience',
+      'readingTimeMinutes',
+      'chaptersReadCount',
+      'ratingsCount',
+      'commentsCount',
+      'likesReceivedCount',
+      'currentStreak',
+      'longestStreak',
+      'lastStreakDate',
+      'titlesReadCount',
+      'completedTitlesCount',
+      'createdAt',
+      'equippedDecorations',
+    ].join(' ');
+
+    const baseFilter: Record<string, any> = {
+      isBot: { $ne: true },
+    };
+
+    if (category === 'level') {
+      baseFilter.level = { $gte: 1 };
+    } else if (category === 'readingTime') {
+      baseFilter.readingTimeMinutes = { $gt: 0 };
+    } else if (category === 'ratings') {
+      baseFilter.ratingsCount = { $gt: 0 };
+    } else if (category === 'comments') {
+      baseFilter.commentsCount = { $gt: 0 };
+    } else if (category === 'streak') {
+      baseFilter.currentStreak = { $gt: 0 };
+    }
+
+    const [users, total] = await Promise.all([
+      this.userModel
+        .find(baseFilter)
+        .sort(sortOptions)
+        .skip(skip)
+        .limit(limit)
+        .select(projection)
+        .populate({
+          path: 'equippedDecorations.avatar',
+          select: 'imageUrl',
+        })
+        .populate({
+          path: 'equippedDecorations.frame',
+          select: 'imageUrl',
+        })
+        .populate({
+          path: 'equippedDecorations.background',
+          select: 'imageUrl',
+        })
+        .populate({
+          path: 'equippedDecorations.card',
+          select: 'imageUrl',
+        })
+        .lean()
+        .exec(),
+      this.userModel.countDocuments(baseFilter),
+    ]);
+
+    const transformedUsers: LeaderboardUser[] = users.map((user: any) => ({
+      _id: user._id.toString(),
+      username: user.username,
+      avatar: user.avatar,
+      role: user.role,
+      level: user.level ?? 1,
+      experience: user.experience ?? 0,
+      readingTimeMinutes: user.readingTimeMinutes ?? 0,
+      chaptersReadCount: user.chaptersReadCount ?? 0,
+      ratingsCount: user.ratingsCount ?? 0,
+      commentsCount: user.commentsCount ?? 0,
+      likesReceivedCount: user.likesReceivedCount ?? 0,
+      currentStreak: user.currentStreak ?? 0,
+      longestStreak: user.longestStreak ?? 0,
+      lastStreakDate: user.lastStreakDate,
+      titlesReadCount: user.titlesReadCount ?? 0,
+      completedTitlesCount: user.completedTitlesCount ?? 0,
+      createdAt: user.createdAt,
+      equippedDecorations: user.equippedDecorations
+        ? {
+            avatar: user.equippedDecorations.avatar?.imageUrl ?? null,
+            frame: user.equippedDecorations.frame?.imageUrl ?? null,
+            background: user.equippedDecorations.background?.imageUrl ?? null,
+            card: user.equippedDecorations.card?.imageUrl ?? null,
+          }
+        : null,
+    }));
+
+    const result: LeaderboardResponse = {
+      users: transformedUsers,
+      total,
+      category,
+    };
+
+    await this.cacheManager.set(cacheKey, result, {
+      ttl: LEADERBOARD_CACHE_TTL_MS,
+    });
+
+    this.logger.log(
+      `Leaderboard fetched: category=${category}, limit=${limit}, page=${page}, total=${total}`,
+    );
+
+    return result;
   }
 
   /**
@@ -1744,6 +1941,24 @@ export class UsersService {
       newLevel: leveledUp ? user.level : undefined,
       bonusCoins: leveledUp ? totalBonusCoins : undefined,
     };
+  }
+
+  /**
+   * Инкрементирует счётчик оценок пользователя (ratingsCount)
+   */
+  async incrementRatingsCount(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    await this.userModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { $inc: { ratingsCount: 1 } },
+      )
+      .exec();
+
+    this.logger.log(`Incremented ratingsCount for user ${userId}`);
   }
 
   // 💰 Balance management

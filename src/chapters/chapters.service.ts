@@ -362,38 +362,52 @@ export class ChaptersService {
     // Подготавливаем обновления для счетчиков по периодам
     const update: any = { $inc: { views: 1 } };
 
-    // Проверяем, нужно ли сбросить дневной счетчик
-    if (
-      !title.lastDayReset ||
-      now.getDate() !== title.lastDayReset.getDate() ||
-      now.getMonth() !== title.lastDayReset.getMonth() ||
-      now.getFullYear() !== title.lastDayReset.getFullYear()
-    ) {
+    // Проверяем, нужно ли сбросить месячный счетчик (проверяем первым!)
+    const needMonthReset =
+      !title.lastMonthReset ||
+      now.getMonth() !== title.lastMonthReset.getMonth() ||
+      now.getFullYear() !== title.lastMonthReset.getFullYear();
+
+    if (needMonthReset) {
+      update.monthViews = 1;
+      update.lastMonthReset = now;
+      // При сбросе месяца также сбрасываем неделю и день
+      update.weekViews = 1;
+      update.lastWeekReset = now;
       update.dayViews = 1;
       update.lastDayReset = now;
     } else {
-      update.$inc.dayViews = 1;
-    }
-
-    // Проверяем, нужно ли сбросить недельный счетчик
-    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    if (!title.lastWeekReset || title.lastWeekReset < oneWeekAgo) {
-      update.weekViews = 1;
-      update.lastWeekReset = now;
-    } else {
-      update.$inc.weekViews = 1;
-    }
-
-    // Проверяем, нужно ли сбросить месячный счетчик
-    if (
-      !title.lastMonthReset ||
-      now.getMonth() !== title.lastMonthReset.getMonth() ||
-      now.getFullYear() !== title.lastMonthReset.getFullYear()
-    ) {
-      update.monthViews = 1;
-      update.lastMonthReset = now;
-    } else {
+      // Месяц не сбрасывается, инкрементируем
       update.$inc.monthViews = 1;
+
+      // Проверяем, нужно ли сбросить недельный счетчик
+      const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const needWeekReset = !title.lastWeekReset || title.lastWeekReset < oneWeekAgo;
+
+      if (needWeekReset) {
+        update.weekViews = 1;
+        update.lastWeekReset = now;
+        // При сбросе недели также сбрасываем день
+        update.dayViews = 1;
+        update.lastDayReset = now;
+      } else {
+        // Неделя не сбрасывается, инкрементируем
+        update.$inc.weekViews = 1;
+
+        // Проверяем, нужно ли сбросить дневной счетчик
+        const needDayReset =
+          !title.lastDayReset ||
+          now.getDate() !== title.lastDayReset.getDate() ||
+          now.getMonth() !== title.lastDayReset.getMonth() ||
+          now.getFullYear() !== title.lastDayReset.getFullYear();
+
+        if (needDayReset) {
+          update.dayViews = 1;
+          update.lastDayReset = now;
+        } else {
+          update.$inc.dayViews = 1;
+        }
+      }
     }
 
     await this.titleModel.findByIdAndUpdate(title._id, update);

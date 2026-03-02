@@ -48,6 +48,10 @@ export class User {
   @Prop({ default: 0 })
   likesReceivedCount: number;
 
+  /** Количество оценок, оставленных пользователем */
+  @Prop({ default: 0 })
+  ratingsCount: number;
+
   /** Время чтения в минутах (примерное) */
   @Prop({ default: 0 })
   readingTimeMinutes: number;
@@ -422,3 +426,11 @@ UserSchema.index({ 'readingHistory.readAt': -1 });
 UserSchema.index({ 'bookmarks.titleId': 1 });
 UserSchema.index({ birthDate: 1 });
 UserSchema.index({ 'oauthProviders.provider': 1, 'oauthProviders.providerId': 1 });
+
+// Индексы для лидерборда
+UserSchema.index({ level: -1, experience: -1 });
+UserSchema.index({ readingTimeMinutes: -1 });
+UserSchema.index({ ratingsCount: -1 });
+UserSchema.index({ commentsCount: -1 });
+UserSchema.index({ currentStreak: -1, longestStreak: -1 });
+UserSchema.index({ isBot: 1 });

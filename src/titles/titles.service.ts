@@ -439,18 +439,7 @@ export class TitlesService {
       },
       {
         $set: {
-          dayReset: {
-            $or: [
-              { $eq: [{ $ifNull: ['$lastDayReset', null] }, null] },
-              { $lt: ['$lastDayReset', '$startOfToday'] },
-            ],
-          },
-          weekReset: {
-            $or: [
-              { $eq: [{ $ifNull: ['$lastWeekReset', null] }, null] },
-              { $lt: ['$lastWeekReset', '$oneWeekAgo'] },
-            ],
-          },
+          // Сначала определяем, нужно ли сбросить месяц
           monthReset: {
             $or: [
               { $eq: [{ $ifNull: ['$lastMonthReset', null] }, null] },
@@ -458,20 +447,44 @@ export class TitlesService {
               { $ne: [{ $month: '$lastMonthReset' }, { $month: '$$NOW' }] },
             ],
           },
+          // Нужно ли сбросить неделю (без учёта месяца)
+          weekResetBase: {
+            $or: [
+              { $eq: [{ $ifNull: ['$lastWeekReset', null] }, null] },
+              { $lt: ['$lastWeekReset', '$oneWeekAgo'] },
+            ],
+          },
+          // Нужно ли сбросить день (без учёта недели/месяца)
+          dayResetBase: {
+            $or: [
+              { $eq: [{ $ifNull: ['$lastDayReset', null] }, null] },
+              { $lt: ['$lastDayReset', '$startOfToday'] },
+            ],
+          },
+        },
+      },
+      {
+        $set: {
+          // При сбросе месяца также сбрасываем неделю и день
+          weekReset: { $or: ['$monthReset', '$weekResetBase'] },
+          dayReset: { $or: ['$monthReset', '$weekResetBase', '$dayResetBase'] },
         },
       },
       {
         $set: {
           views: { $add: ['$views', 1] },
+          // dayViews сбрасывается если сбросился месяц, неделя или день
           dayViews: { $cond: ['$dayReset', 1, { $add: [{ $ifNull: ['$dayViews', 0] }, 1] }] },
           lastDayReset: { $cond: ['$dayReset', '$startOfToday', '$lastDayReset'] },
+          // weekViews сбрасывается если сбросился месяц или неделя
           weekViews: { $cond: ['$weekReset', 1, { $add: [{ $ifNull: ['$weekViews', 0] }, 1] }] },
           lastWeekReset: { $cond: ['$weekReset', '$$NOW', '$lastWeekReset'] },
+          // monthViews сбрасывается только если сбросился месяц
           monthViews: { $cond: ['$monthReset', 1, { $add: [{ $ifNull: ['$monthViews', 0] }, 1] }] },
           lastMonthReset: { $cond: ['$monthReset', '$startOfMonth', '$lastMonthReset'] },
         },
       },
-      { $unset: ['startOfToday', 'oneWeekAgo', 'startOfMonth', 'dayReset', 'weekReset', 'monthReset'] },
+      { $unset: ['startOfToday', 'oneWeekAgo', 'startOfMonth', 'dayReset', 'weekReset', 'monthReset', 'weekResetBase', 'dayResetBase'] },
     ];
 
     const updatedTitle = await this.titleModel
@@ -511,6 +524,8 @@ export class TitlesService {
       (r) => r.userId && r.userId.toString() === userObjectId.toString(),
     );
 
+    const isNewRating = existingIndex < 0;
+
     if (existingIndex >= 0) {
       ratings[existingIndex].rating = newRating;
     } else {
@@ -527,6 +542,15 @@ export class TitlesService {
     title.averageRating = totalCount > 0 ? (legacySum + newSum) / totalCount : 0;
 
     await title.save();
+
+    // Инкрементируем ratingsCount у пользователя только при первой оценке этого тайтла
+    if (isNewRating) {
+      try {
+        await this.usersService.incrementRatingsCount(userId);
+      } catch (error) {
+        this.logger.warn(`Failed to increment ratingsCount for user ${userId}: ${error.message}`);
+      }
+    }
 
     return title;
   }

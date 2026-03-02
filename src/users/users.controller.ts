@@ -870,6 +870,42 @@ export class UsersController {
     }
   }
 
+  // 🏆 Лидерборд пользователей
+  @Get('leaderboard')
+  async getLeaderboard(
+    @Query('category') category?: string,
+    @Query('limit') limit?: string,
+    @Query('page') page?: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const validCategories = ['level', 'readingTime', 'ratings', 'comments', 'streak'];
+      const safeCategory = validCategories.includes(category || '')
+        ? (category as 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak')
+        : 'level';
+
+      const data = await this.usersService.getLeaderboard({
+        category: safeCategory,
+        limit: limit != null ? parseInt(String(limit), 10) : undefined,
+        page: page != null ? parseInt(String(page), 10) : undefined,
+      });
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/leaderboard',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch leaderboard',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/leaderboard',
+      };
+    }
+  }
+
   // 🏠 Пользователи для главной страницы (активные за последнюю неделю)
   @Get('homepage/active')
   async getHomepageActiveUsers(
