@@ -74,11 +74,12 @@ export class Title {
       {
         userId: { type: Types.ObjectId, ref: 'User', required: true },
         rating: { type: Number, required: true, min: 0, max: 10 },
+        createdAt: { type: Date, default: Date.now },
       },
     ],
     default: [],
   })
-  ratings: { userId: Types.ObjectId; rating: number }[];
+  ratings: { userId: Types.ObjectId; rating: number; createdAt?: Date }[];
 
   @Prop({ default: 0 })
   totalRatings: number;

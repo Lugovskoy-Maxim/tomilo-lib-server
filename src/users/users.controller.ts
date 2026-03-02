@@ -874,6 +874,7 @@ export class UsersController {
   @Get('leaderboard')
   async getLeaderboard(
     @Query('category') category?: string,
+    @Query('period') period?: string,
     @Query('limit') limit?: string,
     @Query('page') page?: string,
   ): Promise<ApiResponseDto<any>> {
@@ -883,8 +884,14 @@ export class UsersController {
         ? (category as 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak')
         : 'level';
 
+      const validPeriods = ['all', 'month'];
+      const safePeriod = validPeriods.includes(period || '')
+        ? (period as 'all' | 'month')
+        : 'all';
+
       const data = await this.usersService.getLeaderboard({
         category: safeCategory,
+        period: safePeriod,
         limit: limit != null ? parseInt(String(limit), 10) : undefined,
         page: page != null ? parseInt(String(page), 10) : undefined,
       });

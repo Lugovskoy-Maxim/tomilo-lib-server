@@ -38,6 +38,7 @@ const CAN_VIEW_ADULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 const LEADERBOARD_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 export type LeaderboardCategory = 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak';
+export type LeaderboardPeriod = 'all' | 'month';
 
 export interface LeaderboardUser {
   _id: string;
@@ -69,6 +70,7 @@ export interface LeaderboardResponse {
   users: LeaderboardUser[];
   total: number;
   category: LeaderboardCategory;
+  period: LeaderboardPeriod;
 }
 
 type HomepageActiveUsersSortBy = 'lastActivityAt' | 'level' | 'createdAt';
@@ -251,18 +253,25 @@ export class UsersService {
    */
   async getLeaderboard(options: {
     category?: LeaderboardCategory;
+    period?: LeaderboardPeriod;
     limit?: number;
     page?: number;
   } = {}): Promise<LeaderboardResponse> {
     const category: LeaderboardCategory = options.category || 'level';
+    const period: LeaderboardPeriod = options.period || 'all';
     const limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
     const page = Math.max(1, Number(options.page) || 1);
     const skip = (page - 1) * limit;
 
-    const cacheKey = `leaderboard:${category}:limit:${limit}:page:${page}`;
+    const cacheKey = `leaderboard:${category}:${period}:limit:${limit}:page:${page}`;
     const cached = await this.cacheManager.get(cacheKey);
     if (cached) {
       return cached as LeaderboardResponse;
+    }
+
+    // Для периода "month" и категорий ratings/comments используем агрегацию
+    if (period === 'month' && (category === 'ratings' || category === 'comments')) {
+      return this.getLeaderboardByPeriod(category, period, limit, page, skip, cacheKey);
     }
 
     let sortField: string;
@@ -394,6 +403,7 @@ export class UsersService {
       users: transformedUsers,
       total,
       category,
+      period,
     };
 
     await this.cacheManager.set(cacheKey, result, {
@@ -401,7 +411,155 @@ export class UsersService {
     });
 
     this.logger.log(
-      `Leaderboard fetched: category=${category}, limit=${limit}, page=${page}, total=${total}`,
+      `Leaderboard fetched: category=${category}, period=${period}, limit=${limit}, page=${page}, total=${total}`,
+    );
+
+    return result;
+  }
+
+  /**
+   * Получить лидерборд за период (месяц) для ratings или comments через агрегацию.
+   */
+  private async getLeaderboardByPeriod(
+    category: 'ratings' | 'comments',
+    period: LeaderboardPeriod,
+    limit: number,
+    page: number,
+    skip: number,
+    cacheKey: string,
+  ): Promise<LeaderboardResponse> {
+    const monthAgo = new Date();
+    monthAgo.setMonth(monthAgo.getMonth() - 1);
+
+    let aggregationResult: { userId: string; count: number }[];
+
+    if (category === 'comments') {
+      // Агрегация комментариев за последний месяц
+      const commentModel = this.userModel.db.collection('comments');
+      const pipeline = [
+        {
+          $match: {
+            createdAt: { $gte: monthAgo },
+            isVisible: true,
+          },
+        },
+        {
+          $group: {
+            _id: '$userId',
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1 as const } },
+        { $skip: skip },
+        { $limit: limit + 50 }, // берём больше для подсчёта
+      ];
+      const results = await commentModel.aggregate(pipeline).toArray();
+      aggregationResult = results.map((r: any) => ({
+        userId: r._id.toString(),
+        count: r.count,
+      }));
+    } else {
+      // Агрегация оценок за последний месяц
+      const titleModel = this.userModel.db.collection('titles');
+      const pipeline = [
+        { $unwind: '$ratings' },
+        {
+          $match: {
+            'ratings.createdAt': { $gte: monthAgo },
+          },
+        },
+        {
+          $group: {
+            _id: '$ratings.userId',
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { count: -1 as const } },
+        { $skip: skip },
+        { $limit: limit + 50 },
+      ];
+      const results = await titleModel.aggregate(pipeline).toArray();
+      aggregationResult = results.map((r: any) => ({
+        userId: r._id.toString(),
+        count: r.count,
+      }));
+    }
+
+    if (aggregationResult.length === 0) {
+      const result: LeaderboardResponse = {
+        users: [],
+        total: 0,
+        category,
+        period,
+      };
+      await this.cacheManager.set(cacheKey, result, { ttl: LEADERBOARD_CACHE_TTL_MS });
+      return result;
+    }
+
+    // Получаем данные пользователей
+    const userIds = aggregationResult.slice(0, limit).map(r => new Types.ObjectId(r.userId));
+    const countMap = new Map(aggregationResult.map(r => [r.userId, r.count]));
+
+    const users = await this.userModel
+      .find({ _id: { $in: userIds }, isBot: { $ne: true } })
+      .select('_id username avatar role level experience equippedDecorations')
+      .populate({ path: 'equippedDecorations.avatar', select: 'imageUrl' })
+      .populate({ path: 'equippedDecorations.frame', select: 'imageUrl' })
+      .populate({ path: 'equippedDecorations.background', select: 'imageUrl' })
+      .populate({ path: 'equippedDecorations.card', select: 'imageUrl' })
+      .lean()
+      .exec();
+
+    // Сортируем по count из агрегации
+    const usersMap = new Map(users.map((u: any) => [u._id.toString(), u]));
+    const sortedUserIds = aggregationResult
+      .filter(r => usersMap.has(r.userId))
+      .slice(0, limit)
+      .map(r => r.userId);
+
+    const transformedUsers: LeaderboardUser[] = sortedUserIds.map(userId => {
+      const user = usersMap.get(userId) as any;
+      const periodCount = countMap.get(userId) ?? 0;
+      return {
+        _id: user._id.toString(),
+        username: user.username,
+        avatar: user.avatar,
+        role: user.role,
+        level: user.level ?? 1,
+        experience: user.experience ?? 0,
+        readingTimeMinutes: 0,
+        chaptersReadCount: 0,
+        ratingsCount: category === 'ratings' ? periodCount : (user.ratingsCount ?? 0),
+        commentsCount: category === 'comments' ? periodCount : (user.commentsCount ?? 0),
+        likesReceivedCount: 0,
+        currentStreak: 0,
+        longestStreak: 0,
+        lastStreakDate: undefined,
+        titlesReadCount: 0,
+        completedTitlesCount: 0,
+        createdAt: user.createdAt,
+        equippedDecorations: user.equippedDecorations
+          ? {
+              avatar: user.equippedDecorations.avatar?.imageUrl ?? null,
+              frame: user.equippedDecorations.frame?.imageUrl ?? null,
+              background: user.equippedDecorations.background?.imageUrl ?? null,
+              card: user.equippedDecorations.card?.imageUrl ?? null,
+            }
+          : null,
+      };
+    });
+
+    const result: LeaderboardResponse = {
+      users: transformedUsers,
+      total: aggregationResult.length,
+      category,
+      period,
+    };
+
+    await this.cacheManager.set(cacheKey, result, { ttl: LEADERBOARD_CACHE_TTL_MS });
+
+    this.logger.log(
+      `Leaderboard (period) fetched: category=${category}, period=${period}, limit=${limit}, page=${page}, total=${result.total}`,
     );
 
     return result;
@@ -1959,6 +2117,42 @@ export class UsersService {
       .exec();
 
     this.logger.log(`Incremented ratingsCount for user ${userId}`);
+  }
+
+  /**
+   * Инкрементирует счётчик комментариев пользователя (commentsCount)
+   */
+  async incrementCommentsCount(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    await this.userModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { $inc: { commentsCount: 1 } },
+      )
+      .exec();
+
+    this.logger.log(`Incremented commentsCount for user ${userId}`);
+  }
+
+  /**
+   * Декрементирует счётчик комментариев пользователя (commentsCount)
+   */
+  async decrementCommentsCount(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    await this.userModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { $inc: { commentsCount: -1 } },
+      )
+      .exec();
+
+    this.logger.log(`Decremented commentsCount for user ${userId}`);
   }
 
   // 💰 Balance management

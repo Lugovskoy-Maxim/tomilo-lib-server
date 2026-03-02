@@ -3,6 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -17,6 +19,7 @@ import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class CommentsService {
@@ -25,6 +28,8 @@ export class CommentsService {
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
     private notificationsService: NotificationsService,
+    @Inject(forwardRef(() => UsersService))
+    private usersService: UsersService,
   ) {}
 
   async create(
@@ -66,6 +71,14 @@ export class CommentsService {
     });
 
     const saved = await comment.save();
+
+    // Инкрементируем счётчик комментариев пользователя
+    try {
+      await this.usersService.incrementCommentsCount(userId);
+    } catch (error) {
+      // Не блокируем создание комментария при ошибке инкремента
+      console.warn(`Failed to increment commentsCount for user ${userId}:`, error.message);
+    }
 
     // Уведомление автору родительского комментария об ответе (не себе)
     if (createCommentDto.parentId && parentComment) {
@@ -269,9 +282,21 @@ export class CommentsService {
       throw new ForbiddenException('You can only delete your own comments');
     }
 
+    const commentOwnerId = comment.userId.toString();
+    const wasVisible = comment.isVisible;
+
     // Soft delete: mark as not visible instead of actually deleting
     comment.isVisible = false;
     await comment.save();
+
+    // Декрементируем счётчик комментариев владельца, только если комментарий был видимым
+    if (wasVisible) {
+      try {
+        await this.usersService.decrementCommentsCount(commentOwnerId);
+      } catch (error) {
+        console.warn(`Failed to decrement commentsCount for user ${commentOwnerId}:`, error.message);
+      }
+    }
   }
 
   /**
