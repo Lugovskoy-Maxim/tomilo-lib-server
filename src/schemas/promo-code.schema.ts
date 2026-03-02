@@ -40,7 +40,7 @@ export class PromoCode {
   @Prop({ type: [PromoCodeRewardSchema], default: [] })
   rewards: PromoCodeReward[];
 
-  @Prop({ default: null })
+  @Prop({ type: Number, default: null })
   maxUses: number | null;
 
   @Prop({ default: 0 })
