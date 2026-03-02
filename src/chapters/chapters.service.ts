@@ -639,6 +639,9 @@ export class ChaptersService {
         );
       }
 
+      // Инвалидируем кеш последних обновлений, чтобы новая глава сразу появилась
+      await this.invalidateRecentUpdatesCache();
+
       return savedChapter.populate('titleId');
     } catch (error) {
       // Если ошибка при загрузке файлов, удаляем созданную главу
