@@ -1117,8 +1117,8 @@ export class TitlesService {
   }
 
   async invalidateRecentUpdatesCache(): Promise<void> {
-    const pagesToClear = [1, 2, 3];
-    const limits = [18, 10, 20, 36];
+    const pagesToClear = [1, 2, 3, 4, 5];
+    const limits = [10, 18, 20, 24, 36, 48, 500];
     const adultFlags = [true, false];
 
     for (const page of pagesToClear) {

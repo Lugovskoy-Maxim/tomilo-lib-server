@@ -34,8 +34,8 @@ export class ChaptersService {
   ) {}
 
   private async invalidateRecentUpdatesCache(): Promise<void> {
-    const pagesToClear = [1, 2, 3];
-    const limits = [18, 10, 20, 36];
+    const pagesToClear = [1, 2, 3, 4, 5];
+    const limits = [10, 18, 20, 24, 36, 48, 100];
     const adultFlags = [true, false];
 
     for (const page of pagesToClear) {
@@ -300,6 +300,9 @@ export class ChaptersService {
       throw new NotFoundException('Chapter not found');
     }
 
+    // Инвалидируем кеш последних обновлений при любом изменении главы
+    await this.invalidateRecentUpdatesCache();
+
     return chapter;
   }
 
@@ -326,6 +329,9 @@ export class ChaptersService {
     });
 
     await this.chapterModel.findByIdAndDelete(id).exec();
+
+    // Инвалидируем кеш последних обновлений
+    await this.invalidateRecentUpdatesCache();
   }
 
   async bulkDelete(ids: string[]): Promise<{ deletedCount: number }> {
