@@ -19,6 +19,7 @@ import {
   Logger,
   Req,
   ForbiddenException,
+  Header,
 } from '@nestjs/common';
 import { Request } from 'express';
 import * as jwt from 'jsonwebtoken';
@@ -179,8 +180,8 @@ export class TitlesController {
     }
   }
 
-  // Эндпоинты для главной страницы
   @Get('titles/popular')
+  @Header('Cache-Control', 'public, max-age=120, stale-while-revalidate=600')
   async getPopularTitles(
     @Query('limit') limit = 10,
     @Query('includeAdult') includeAdult?: string,
@@ -225,6 +226,7 @@ export class TitlesController {
   }
 
   @Get('collections')
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   async getCollections(
     @Query('limit') limit = 10,
   ): Promise<ApiResponseDto<CollectionResponseDto[]>> {
@@ -262,6 +264,7 @@ export class TitlesController {
   }
 
   @Get('titles/filters/options')
+  @Header('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400')
   async getFilterOptions(): Promise<ApiResponseDto<FilterOptionsResponseDto>> {
     try {
       const filterOptions = await this.titlesService.getFilterOptions();
@@ -331,6 +334,7 @@ export class TitlesController {
   }
 
   @Get('titles/latest-updates')
+  @Header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
   async getLatestUpdates(
     @Query('page') page = 1,
     @Query('limit') limit = 18,
@@ -857,24 +861,8 @@ export class TitlesController {
     await this.checkIPActivity(req);
 
     try {
-      // Извлекаем userId из JWT токена
-      const authHeader =
-        req.headers?.authorization || req.headers?.Authorization;
-      let userId: string | null = null;
-
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        if (token) {
-          try {
-            const jwtSecret =
-              process.env.JWT_SECRET || 'your-super-secret-jwt-key';
-            const decoded = jwt.verify(token, jwtSecret) as { userId?: string };
-            userId = decoded.userId || null;
-          } catch {
-            userId = null;
-          }
-        }
-      }
+      // userId доступен через JwtAuthGuard
+      const userId = req.user?.userId || req.user?.id || req.user?._id?.toString();
 
       if (!userId) {
         return {
@@ -961,8 +949,9 @@ export class TitlesController {
     }
   }
 
-  @SkipThrottle() // Public read-only; skip rate limit to avoid 429 for frontends/scripts
+  @SkipThrottle()
   @Get('titles/slug/:slug')
+  @Header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
   async findBySlug(
     @Param('slug') slug: string,
     @Query('populateChapters') populateChapters: string = 'true',
@@ -1113,6 +1102,7 @@ export class TitlesController {
   }
 
   @Get('titles/top/day')
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   async getTopTitlesDay(
     @Query('limit') limit = 10,
     @Query('includeAdult') includeAdult?: string,
@@ -1156,6 +1146,7 @@ export class TitlesController {
   }
 
   @Get('titles/top/week')
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   async getTopTitlesWeek(
     @Query('limit') limit = 10,
     @Query('includeAdult') includeAdult?: string,
@@ -1199,6 +1190,7 @@ export class TitlesController {
   }
 
   @Get('titles/top/month')
+  @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   async getTopTitlesMonth(
     @Query('limit') limit = 10,
     @Query('includeAdult') includeAdult?: string,

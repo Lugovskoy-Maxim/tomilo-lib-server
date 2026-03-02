@@ -124,3 +124,7 @@ TitleSchema.index({ genres: 1 });
 TitleSchema.index({ status: 1 });
 TitleSchema.index({ averageRating: -1 });
 TitleSchema.index({ views: -1 });
+TitleSchema.index({ weekViews: -1, averageRating: -1 });
+TitleSchema.index({ ageLimit: 1 });
+TitleSchema.index({ type: 1 });
+TitleSchema.index({ createdAt: -1 });

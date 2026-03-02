@@ -2,7 +2,7 @@ import { Controller, Get, Query, Request } from '@nestjs/common';
 import { SearchService } from './search.service';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { UsersService } from '../users/users.service';
-import * as jwt from 'jsonwebtoken';
+import { extractUserIdFromRequest } from '../common/utils/jwt.util';
 
 // DTO для ответов API
 class TitleResponseDto {
@@ -30,24 +30,15 @@ export class SearchController {
     @Query('limit') limit = 10,
     @Query('sortBy') sortBy = 'createdAt',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
+    @Query('includeAdult') includeAdult?: string,
   ): Promise<ApiResponseDto<TitleResponseDto[]>> {
     try {
-      let canViewAdult = true;
-      const authHeader =
-        req.headers?.authorization || req.headers?.Authorization;
-      if (authHeader?.startsWith('Bearer ')) {
-        const token = authHeader.substring(7);
-        if (token) {
-          try {
-            const jwtSecret =
-              process.env.JWT_SECRET || 'your-super-secret-jwt-key';
-            const decoded = jwt.verify(token, jwtSecret) as { userId?: string };
-            if (decoded?.userId) {
-              canViewAdult = await this.usersService.getCanViewAdult(decoded.userId);
-            }
-          } catch {
-            canViewAdult = true;
-          }
+      let canViewAdult = false;
+      const userId = extractUserIdFromRequest(req);
+      if (userId) {
+        const userCanViewAdult = await this.usersService.getCanViewAdult(userId);
+        if (userCanViewAdult) {
+          canViewAdult = includeAdult !== undefined ? includeAdult === 'true' : true;
         }
       }
 

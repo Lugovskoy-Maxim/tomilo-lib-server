@@ -238,13 +238,34 @@ export class UsersService {
     const user = await this.userModel
       .findById(new Types.ObjectId(id))
       .select('-password')
-      .populate('bookmarks.titleId')
-      .populate('readingHistory.titleId')
-      .populate('readingHistory.chapters.chapterId')
-      .populate('equippedDecorations.avatar')
-      .populate('equippedDecorations.frame')
-      .populate('equippedDecorations.background')
-      .populate('equippedDecorations.card');
+      .populate({
+        path: 'bookmarks.titleId',
+        select: '_id title slug coverImage type status isAdult',
+      })
+      .populate({
+        path: 'readingHistory.titleId',
+        select: '_id title slug coverImage type',
+      })
+      .populate({
+        path: 'readingHistory.chapters.chapterId',
+        select: '_id chapterNumber title',
+      })
+      .populate({
+        path: 'equippedDecorations.avatar',
+        select: '_id name imageUrl type rarity',
+      })
+      .populate({
+        path: 'equippedDecorations.frame',
+        select: '_id name imageUrl type rarity',
+      })
+      .populate({
+        path: 'equippedDecorations.background',
+        select: '_id name imageUrl type rarity',
+      })
+      .populate({
+        path: 'equippedDecorations.card',
+        select: '_id name imageUrl type rarity',
+      });
 
     this.logger.log(
       `Database query result for user ${id}: ${user ? 'found' : 'not found'}`,
@@ -269,11 +290,26 @@ export class UsersService {
     const user = await this.userModel
       .findById(new Types.ObjectId(id))
       .select('-password -readingHistory')
-      .populate('bookmarks.titleId')
-      .populate('equippedDecorations.avatar')
-      .populate('equippedDecorations.frame')
-      .populate('equippedDecorations.background')
-      .populate('equippedDecorations.card');
+      .populate({
+        path: 'bookmarks.titleId',
+        select: '_id title slug coverImage type status isAdult',
+      })
+      .populate({
+        path: 'equippedDecorations.avatar',
+        select: '_id name imageUrl type rarity',
+      })
+      .populate({
+        path: 'equippedDecorations.frame',
+        select: '_id name imageUrl type rarity',
+      })
+      .populate({
+        path: 'equippedDecorations.background',
+        select: '_id name imageUrl type rarity',
+      })
+      .populate({
+        path: 'equippedDecorations.card',
+        select: '_id name imageUrl type rarity',
+      });
 
     this.logger.log(
       `Database query result: ${user ? 'User found' : 'User not found'}`,
@@ -628,7 +664,10 @@ export class UsersService {
 
     const user = await this.userModel
       .findById(new Types.ObjectId(userId))
-      .populate('bookmarks.titleId')
+      .populate({
+        path: 'bookmarks.titleId',
+        select: '_id title slug coverImage type status isAdult chaptersCount latestChapterNumber',
+      })
       .select('bookmarks');
 
     if (!user) {
@@ -1059,10 +1098,16 @@ export class UsersService {
 
     let query = this.userModel
       .findById(new Types.ObjectId(userId))
-      .populate('readingHistory.titleId')
+      .populate({
+        path: 'readingHistory.titleId',
+        select: '_id title slug coverImage type status isAdult',
+      })
       .select('readingHistory');
     if (!light) {
-      query = query.populate('readingHistory.chapters.chapterId');
+      query = query.populate({
+        path: 'readingHistory.chapters.chapterId',
+        select: '_id chapterNumber title',
+      });
     }
     const user = await query;
 
@@ -1132,10 +1177,9 @@ export class UsersService {
       return [];
     }
 
-    // Популируем информацию о тайтле и главах
     const populatedHistory = (await this.userModel.populate(titleHistory, [
-      { path: 'titleId' },
-      { path: 'chapters.chapterId' },
+      { path: 'titleId', select: '_id title slug coverImage type' },
+      { path: 'chapters.chapterId', select: '_id chapterNumber title' },
     ])) as unknown as PopulatedReadingHistoryEntry;
 
     // Возвращаем главы в обратном порядке (новые сначала)
@@ -1902,13 +1946,34 @@ export class UsersService {
     const targetUser = await this.userModel
       .findById(new Types.ObjectId(userId))
       .select('-password')
-      .populate('bookmarks.titleId')
-      .populate('readingHistory.titleId')
-      .populate('readingHistory.chapters.chapterId')
-      .populate('equippedDecorations.avatar')
-      .populate('equippedDecorations.frame')
-      .populate('equippedDecorations.background')
-      .populate('equippedDecorations.card')
+      .populate({
+        path: 'bookmarks.titleId',
+        select: '_id title slug coverImage type status isAdult',
+      })
+      .populate({
+        path: 'readingHistory.titleId',
+        select: '_id title slug coverImage type',
+      })
+      .populate({
+        path: 'readingHistory.chapters.chapterId',
+        select: '_id chapterNumber title',
+      })
+      .populate({
+        path: 'equippedDecorations.avatar',
+        select: '_id name imageUrl type rarity',
+      })
+      .populate({
+        path: 'equippedDecorations.frame',
+        select: '_id name imageUrl type rarity',
+      })
+      .populate({
+        path: 'equippedDecorations.background',
+        select: '_id name imageUrl type rarity',
+      })
+      .populate({
+        path: 'equippedDecorations.card',
+        select: '_id name imageUrl type rarity',
+      })
       .lean()
       .exec();
 

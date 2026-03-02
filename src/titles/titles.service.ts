@@ -18,6 +18,10 @@ const CACHE_FILTER_OPTIONS = 'filter_options';
 const CACHE_COLLECTIONS_PREFIX = 'collections';
 const CACHE_CHAPTERS_COUNT_PREFIX = 'chapters_count';
 const CACHE_TITLES_LIST_PREFIX = 'titles_list';
+const CACHE_RECENT_UPDATES_PREFIX = 'recent_updates';
+const CACHE_RECENT_UPDATES_TTL_MS = 60 * 1000; // 1 min
+const CACHE_RECOMMENDED_PREFIX = 'recommended';
+const CACHE_RECOMMENDED_TTL_MS = 5 * 60 * 1000; // 5 min
 
 @Injectable()
 export class TitlesService {
@@ -648,13 +652,17 @@ export class TitlesService {
     const skip = (Math.max(1, page) - 1) * limit;
     const needed = skip + limit;
 
-    // Лента последних обновлений не кешируется — всегда актуальные данные
+    const cacheKey = `${CACHE_RECENT_UPDATES_PREFIX}:${page}:${limit}:${canViewAdult}`;
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) return cached as any[];
+
     const titleSelect =
       'name slug _id altNames description genres tags artist coverImage status author views totalChapters averageRating releaseYear ageLimit chaptersRemovedByCopyrightHolder isPublished type createdAt updatedAt';
+    const fetchMultiplier = Math.min(20, Math.max(5, Math.ceil(100 / limit)));
     const recentChapters = await this.chapterModel
       .find({ isPublished: true })
       .sort({ releaseDate: -1 })
-      .limit(needed * 40)
+      .limit(needed * fetchMultiplier)
       .populate({ path: 'titleId', select: titleSelect })
       .lean()
       .exec();
@@ -760,6 +768,10 @@ export class TitlesService {
         lastUpdate,
       };
     });
+
+    if (result.length > 0) {
+      await this.cacheManager.set(cacheKey, result);
+    }
 
     return result;
   }
@@ -927,48 +939,23 @@ export class TitlesService {
     limit = 10,
     canViewAdult = true,
   ): Promise<TitleDocument[]> {
-    // Получаем общее количество тайтлов с учетом фильтрации
-    const filterQuery: any = {};
+    const matchStage: any = {};
     if (!canViewAdult) {
-      filterQuery.$or = [
+      matchStage.$or = [
         { ageLimit: { $lt: 18 } },
         { ageLimit: { $exists: false } },
         { ageLimit: null },
       ];
     }
 
-    const totalTitles = await this.titleModel.countDocuments(filterQuery);
-
-    // Генерируем случайные смещения
-    const randomOffsets: number[] = [];
-    const maxAttempts = Math.min(limit * 5, totalTitles); // Увеличиваем количество попыток
-
-    // Генерируем уникальные случайные смещения
-    while (randomOffsets.length < Math.min(limit, totalTitles)) {
-      const randomOffset = Math.floor(Math.random() * totalTitles);
-      if (!randomOffsets.includes(randomOffset)) {
-        randomOffsets.push(randomOffset);
-      }
-
-      // Защита от бесконечного цикла
-      if (randomOffsets.length >= maxAttempts) {
-        break;
-      }
+    const pipeline: any[] = [];
+    if (Object.keys(matchStage).length > 0) {
+      pipeline.push({ $match: matchStage });
     }
+    pipeline.push({ $sample: { size: limit } });
 
-    // Получаем тайтлы по случайным смещениям с фильтрацией
-    const promises = randomOffsets.map((offset) =>
-      this.titleModel.findOne(filterQuery).skip(offset).exec(),
-    );
-
-    const titles = await Promise.all(promises);
-
-    // Фильтруем null значения и ограничиваем количество результатов
-    // Преобразуем результаты в правильный тип
-    const validTitles = titles.filter(
-      (title): title is NonNullable<typeof title> => title !== null,
-    );
-    return validTitles.slice(0, limit);
+    const titles = await this.titleModel.aggregate(pipeline).exec();
+    return titles as TitleDocument[];
   }
 
   async getRecommendedTitles(
@@ -982,6 +969,11 @@ export class TitlesService {
         this.logger.warn(`Invalid user ID: ${userId}`);
         return this.getPopularTitles(limit, canViewAdult);
       }
+
+      // Проверяем кеш
+      const cacheKey = `${CACHE_RECOMMENDED_PREFIX}:${userId}:${limit}:${canViewAdult}`;
+      const cached = await this.cacheManager.get(cacheKey);
+      if (cached) return cached as TitleDocument[];
 
       // Получаем пользователя
       const user = await this.usersService.findById(userId);
@@ -1086,6 +1078,7 @@ export class TitlesService {
         .exec();
 
       // Если недостаточно рекомендаций, дополняем популярными
+      let result: TitleDocument[];
       if (recommendations.length < limit) {
         const popularTitles = await this.getPopularTitles(limit, canViewAdult);
         const recommendedIds = new Set(
@@ -1095,12 +1088,14 @@ export class TitlesService {
           (t) => !recommendedIds.has(t._id.toString()),
         );
 
-        // Объединяем и ограничиваем
-        const result = [...recommendations, ...popularFiltered].slice(0, limit);
-        return result;
+        result = [...recommendations, ...popularFiltered].slice(0, limit);
+      } else {
+        result = recommendations.slice(0, limit);
       }
 
-      return recommendations.slice(0, limit);
+      // Сохраняем в кеш
+      await this.cacheManager.set(cacheKey, result);
+      return result;
     } catch (error) {
       // В случае ошибки возвращаем рандомные тайтлы
       this.logger.warn(

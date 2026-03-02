@@ -47,3 +47,5 @@ export const ChapterSchema = SchemaFactory.createForClass(Chapter);
 
 ChapterSchema.index({ titleId: 1, chapterNumber: 1 }, { unique: true });
 ChapterSchema.index({ titleId: 1, releaseDate: -1 });
+ChapterSchema.index({ isPublished: 1, releaseDate: -1 });
+ChapterSchema.index({ releaseDate: -1 });
