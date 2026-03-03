@@ -93,47 +93,38 @@ export class TitlesController {
   /**
    * Вспомогательный метод для определения canViewAdult.
    * Логика:
-   * 1. Если пользователь НЕ авторизован → НЕ показывать 18+ (безопасный дефолт)
-   * 2. Если авторизован, но в настройках isAdult = false → НЕ показывать 18+
-   * 3. Если авторизован, isAdult = true, и includeAdult = true → показывать 18+
-   * 4. Если авторизован, isAdult = true, но includeAdult = false → НЕ показывать 18+
-   * 
+   * 1. Если передан includeAdult=true → показывать 18+ (и гости, и авторизованные).
+   * 2. Если пользователь НЕ авторизован и includeAdult не true → НЕ показывать 18+.
+   * 3. Если авторизован, но в настройках isAdult = false → НЕ показывать 18+.
+   * 4. Если авторизован, isAdult = true → показывать 18+ (по умолчанию или по includeAdult=true).
+   *
    * @param req - запрос
    * @param includeAdult - query параметр от клиента (опционально)
    */
   private async getCanViewAdult(req: any, includeAdult?: string): Promise<boolean> {
+    // Явный запрос 18+ от клиента — показываем и гостям, и авторизованным
+    if (includeAdult === 'true') return true;
+
     const authHeader = req.headers?.authorization || req.headers?.Authorization;
-    
-    // Неавторизованные пользователи НЕ видят взрослый контент
     if (!authHeader?.startsWith('Bearer ')) return false;
-    
+
     const token = authHeader.substring(7);
     if (!token) return false;
-    
+
     try {
       const jwtSecret = process.env.JWT_SECRET || 'your-super-secret-jwt-key';
       const decoded = jwt.verify(token, jwtSecret) as { userId?: string };
-      
+
       if (decoded?.userId) {
-        // Проверяем настройки пользователя в БД
         const userCanViewAdult = await this.usersService.getCanViewAdult(decoded.userId);
-        
-        // Если у пользователя отключен показ 18+ в настройках, не показываем
         if (!userCanViewAdult) return false;
-        
-        // Пользователь может видеть 18+, проверяем query параметр
-        // Если includeAdult явно передан, используем его значение
-        if (includeAdult !== undefined) {
-          return includeAdult === 'true';
-        }
-        
-        // По умолчанию показываем 18+ если пользователь разрешил в настройках
+        if (includeAdult !== undefined) return includeAdult === 'true';
         return true;
       }
     } catch {
       // Токен недействителен или истек
     }
-    
+
     return false;
   }
 
