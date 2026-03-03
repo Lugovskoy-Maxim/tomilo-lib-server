@@ -178,6 +178,9 @@ export class ParsingGateway {
         const originalDownloadTelemangaChapterImages = this.mangaParserService[
           'downloadTelemangaChapterImages'
         ].bind(this.mangaParserService);
+        const originalDownloadAb728TeamChapterImages = this.mangaParserService[
+          'downloadAb728TeamChapterImages'
+        ].bind(this.mangaParserService);
 
         let currentChapterIndex = 0;
 
@@ -311,6 +314,18 @@ export class ParsingGateway {
               titleId,
             ),
           );
+        this.mangaParserService['downloadAb728TeamChapterImages'] = async (
+          chapter: any,
+          chapterId: string,
+          titleId: string,
+        ) =>
+          wrapChapterDownload(chapter, () =>
+            originalDownloadAb728TeamChapterImages(
+              chapter,
+              chapterId,
+              titleId,
+            ),
+          );
 
         const result = await originalParseAndImportTitle(parseTitleDto);
 
@@ -322,6 +337,8 @@ export class ParsingGateway {
           originalDownloadMangaShiChapterImages;
         this.mangaParserService['downloadTelemangaChapterImages'] =
           originalDownloadTelemangaChapterImages;
+        this.mangaParserService['downloadAb728TeamChapterImages'] =
+          originalDownloadAb728TeamChapterImages;
 
         // Emit completion
         this.emitProgress(sessionId, {
@@ -396,6 +413,9 @@ export class ParsingGateway {
       // Override downloadMangaShiChapterImages for progress tracking
       const originalDownloadMangaShiChapterImages = this.mangaParserService[
         'downloadMangaShiChapterImages'
+      ].bind(this.mangaParserService);
+      const originalDownloadAb728TeamChapterImages = this.mangaParserService[
+        'downloadAb728TeamChapterImages'
       ].bind(this.mangaParserService);
 
       let currentChapterIndex = 0;
@@ -621,6 +641,79 @@ export class ParsingGateway {
         }
       };
 
+      this.mangaParserService['downloadAb728TeamChapterImages'] = async (
+        chapter: any,
+        chapterId: string,
+        titleId: string,
+      ) => {
+        currentChapterIndex++;
+        const chapterData: ChapterImportData = {
+          chapterNumber: chapter.number || 1,
+          chapterName: chapter.name,
+          status: 'downloading',
+        };
+
+        this.emitProgress(sessionId, {
+          type: 'chapter_import',
+          sessionId,
+          status: 'progress',
+          message: `Скачиваем главу ${chapterData.chapterNumber}: ${chapterData.chapterName}`,
+          data: chapterData,
+          progress: {
+            current: currentChapterIndex,
+            total: totalChapters,
+            percentage: Math.round((currentChapterIndex / totalChapters) * 100),
+          },
+        });
+
+        try {
+          const result = await originalDownloadAb728TeamChapterImages(
+            chapter,
+            chapterId,
+            titleId,
+          );
+
+          chapterData.status = 'completed';
+          this.emitProgress(sessionId, {
+            type: 'chapter_import',
+            sessionId,
+            status: 'progress',
+            message: `Глава ${chapterData.chapterNumber} скачана`,
+            data: chapterData,
+            progress: {
+              current: currentChapterIndex,
+              total: totalChapters,
+              percentage: Math.round(
+                (currentChapterIndex / totalChapters) * 100,
+              ),
+            },
+          });
+
+          return result;
+        } catch (error) {
+          chapterData.status = 'error';
+          chapterData.error =
+            error instanceof Error ? error.message : 'Unknown error';
+
+          this.emitProgress(sessionId, {
+            type: 'chapter_import',
+            sessionId,
+            status: 'progress',
+            message: `Ошибка при скачивании главы ${chapterData.chapterNumber}`,
+            data: chapterData,
+            progress: {
+              current: currentChapterIndex,
+              total: totalChapters,
+              percentage: Math.round(
+                (currentChapterIndex / totalChapters) * 100,
+              ),
+            },
+          });
+
+          throw error;
+        }
+      };
+
       const result = await this.mangaParserService.parseAndImportChapters(dto);
 
       // Restore original methods
@@ -630,6 +723,8 @@ export class ParsingGateway {
         originalDownloadMangabuffChapterImages;
       this.mangaParserService['downloadMangaShiChapterImages'] =
         originalDownloadMangaShiChapterImages;
+      this.mangaParserService['downloadAb728TeamChapterImages'] =
+        originalDownloadAb728TeamChapterImages;
 
       this.emitProgress(sessionId, {
         type: 'chapter_import',

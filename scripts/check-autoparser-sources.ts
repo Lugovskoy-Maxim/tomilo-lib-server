@@ -25,6 +25,7 @@ const PARSER_ORDER = [
   'senkuro.me',
   'mangabuff.ru',
   'telemanga.me',
+  'ab.728.team',
 ];
 
 function getParserKey(url: string): string | null {
@@ -128,6 +129,9 @@ async function parseViaParsers(url: string): Promise<ParsedMeta | null> {
         break;
       case 'mangahub.cc':
         ParserClass = load('mangahub-cc.parser.js').MangahubCcParser;
+        break;
+      case 'ab.728.team':
+        ParserClass = load('ab-728-team.parser.js').Ab728TeamParser;
         break;
       default:
         return null;

@@ -17,6 +17,7 @@ import { MangabuffParser } from './parsers/mangabuff.parser';
 import { MangahubParser } from './parsers/mangahub.parser';
 import { MangahubCcParser } from './parsers/mangahub-cc.parser';
 import { TelemangaParser } from './parsers/telemanga.parser';
+import { Ab728TeamParser } from './parsers/ab-728-team.parser';
 
 /**
  * Result of parsing chapters info from a single source
@@ -73,6 +74,7 @@ export class MangaParserService {
     this.parsers.set('mangahub.one', new MangahubParser());
     this.parsers.set('mangahub.cc', new MangahubCcParser());
     this.parsers.set('telemanga.me', new TelemangaParser());
+    this.parsers.set('ab.728.team', new Ab728TeamParser());
   }
 
   private sanitizeFilename(name: string): string {
@@ -639,6 +641,171 @@ export class MangaParserService {
     }
   }
 
+  /**
+   * Download chapter images for ab.728.team (HTML reader page)
+   */
+  private async downloadAb728TeamChapterImages(
+    chapter: ChapterInfo,
+    chapterId: string,
+    titleId: string,
+  ): Promise<string[]> {
+    if (!chapter.url) {
+      throw new BadRequestException(
+        'Chapter URL is required for downloading ab.728.team chapters',
+      );
+    }
+
+    const baseUrl = 'https://ab.728.team';
+    const headers = {
+      'User-Agent':
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+      Accept:
+        'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+      'Accept-Language': 'ru,en;q=0.9',
+      Origin: baseUrl,
+      Referer: `${baseUrl}/`,
+      'X-Requested-With': 'XMLHttpRequest',
+      'its-728': 'true',
+    };
+
+    try {
+      const urlMatch = chapter.url.match(/ab\.728\.team\/comic\/([^/]+)\/([^/?#]+)/);
+      const comicSlug = urlMatch?.[1];
+      const ordinal = urlMatch?.[2];
+      const apiHeaders = {
+        ...headers,
+        Accept: 'application/json',
+      };
+      let imageUrls: string[] = [];
+
+      if (comicSlug && ordinal) {
+        try {
+          const apiRes = await this.session.get(
+            `${baseUrl}/backend/chapter.get`,
+            {
+              params: { target: comicSlug, chapter: ordinal },
+              headers: apiHeaders,
+            },
+          );
+          const apiData = apiRes.data as {
+            end?: string;
+            server?: { chapter?: { pages?: string[] }; pages?: string[] };
+          };
+          if (apiData?.end === 'success') {
+            const pages =
+              apiData.server?.chapter?.pages ?? apiData.server?.pages;
+            if (Array.isArray(pages) && pages.length > 0) {
+              imageUrls = pages.map((p) =>
+                p.startsWith('http') ? p : `${baseUrl}/storage/${p.replace(/^\//, '')}`,
+              );
+            }
+          }
+        } catch {
+          // API not available or different shape, fall back to HTML
+        }
+      }
+
+      if (imageUrls.length === 0) {
+        const response = await this.session.get(chapter.url, { headers });
+        if (response.status !== 200) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const $ = cheerio.load(response.data);
+        const pushSrc = (src: string | undefined): void => {
+          if (!src || !src.trim()) return;
+          const absolute =
+            src.startsWith('http') ? src : new URL(src, chapter.url).href;
+          if (!imageUrls.includes(absolute)) imageUrls.push(absolute);
+        };
+        $('img[data-src]').each((_, el) => pushSrc($(el).attr('data-src')));
+        $('.reader img, .reader-page img, .chapter-reader img, [class*="reader"] img').each(
+          (_, el) => {
+            const img = $(el);
+            pushSrc(img.attr('data-src') || img.attr('src'));
+          },
+        );
+        $('img[src*="storage"], img[src*="upload"], img[data-src*="storage"]').each(
+          (_, el) => {
+            const img = $(el);
+            pushSrc(img.attr('data-src') || img.attr('src'));
+          },
+        );
+        if (imageUrls.length === 0) {
+          $('img').each((_, el) => {
+            const img = $(el);
+            const src = img.attr('data-src') || img.attr('src');
+            if (src && !/avatar|logo|icon|\.(svg|gif)/i.test(src)) pushSrc(src);
+          });
+        }
+        const scriptJson = $('script:not([src])')
+          .toArray()
+          .map((el) => $(el).html())
+          .join('\n');
+        const nuxtMatch = scriptJson.match(/__NUXT__(?:_DATA__)?\s*=\s*(\{[\s\S]*?\});?\s*(?:<\/script>|$)/m);
+        if (nuxtMatch && imageUrls.length === 0) {
+          try {
+            const data = JSON.parse(nuxtMatch[1]);
+            const pages =
+              data?.data?.[0]?.pages ||
+              data?.state?.data?.pages ||
+              data?.page?.images ||
+              data?.chapter?.pages;
+            if (Array.isArray(pages)) {
+              for (const p of pages) {
+                const url = typeof p === 'string' ? p : p?.url ?? p?.src ?? p?.image;
+                if (url) imageUrls.push(url.startsWith('http') ? url : new URL(url, chapter.url).href);
+              }
+            }
+          } catch {
+            // ignore JSON parse errors
+          }
+        }
+      }
+
+      if (imageUrls.length === 0) {
+        throw new Error('No images found in chapter page');
+      }
+
+      const pagePaths: string[] = [];
+      const referer = chapter.url?.startsWith('http') ? chapter.url : `${baseUrl}/`;
+      for (let i = 0; i < imageUrls.length; i++) {
+        try {
+          const pagePath = await this.filesService.downloadImageFromUrl(
+            imageUrls[i],
+            chapterId,
+            i + 1,
+            titleId,
+            {
+              headers: {
+                Referer: referer,
+                Accept: 'image/webp,image/apng,image/*,*/*;q=0.8',
+              },
+            },
+          );
+          pagePaths.push(pagePath);
+        } catch (imageError) {
+          this.logger.error(
+            `Failed to download ab.728.team image ${i + 1}: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`,
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      if (pagePaths.length === 0) {
+        throw new Error('No images could be downloaded');
+      }
+      return pagePaths;
+    } catch (error) {
+      this.logger.error(
+        `Failed to download ab.728.team chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      throw new BadRequestException(
+        `Failed to download chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
   async parseAndImportTitle(
     parseTitleDto: ParseTitleDto,
   ): Promise<{ title: any; importedChapters: any[]; totalChapters: number }> {
@@ -763,6 +930,12 @@ export class MangaParserService {
                 chapter,
                 createdChapter._id.toString(),
                 mangaSlug,
+                createdTitle._id.toString(),
+              );
+            } else if (domain.includes('ab.728.team')) {
+              pagePaths = await this.downloadAb728TeamChapterImages(
+                chapter,
+                createdChapter._id.toString(),
                 createdTitle._id.toString(),
               );
             } else {
@@ -892,6 +1065,12 @@ export class MangaParserService {
                 mangaSlug,
                 titleId,
               );
+            } else if (domain.includes('ab.728.team')) {
+              pagePaths = await this.downloadAb728TeamChapterImages(
+                chapter,
+                createdChapter._id.toString(),
+                titleId,
+              );
             } else {
               throw new BadRequestException(`Unsupported domain: ${domain}`);
             }
@@ -942,6 +1121,11 @@ export class MangaParserService {
     const match = url.match(/telemanga\.me\/manga\/([^/]+)/);
     if (match) {
       return decodeURIComponent(match[1]);
+    }
+    // Format: https://ab.728.team/comic/{slug}
+    const abMatch = url.match(/ab\.728\.team\/comic\/([^/?#]+)/);
+    if (abMatch) {
+      return decodeURIComponent(abMatch[1]);
     }
     return null;
   }
