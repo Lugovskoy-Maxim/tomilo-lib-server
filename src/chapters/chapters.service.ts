@@ -5,6 +5,7 @@ import {
   BadRequestException,
   Logger,
   Inject,
+  forwardRef,
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
@@ -16,6 +17,7 @@ import { CreateChapterDto } from './dto/create-chapter.dto';
 import { UpdateChapterDto } from './dto/update-chapter.dto';
 import { FilesService } from '../files/files.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { UsersService } from '../users/users.service';
 
 const CHAPTERS_COUNT_CACHE_TTL_MS = 2 * 60 * 1000; // 2 min
 const CHAPTERS_COUNT_CACHE_PREFIX = 'chapters_count';
@@ -30,6 +32,8 @@ export class ChaptersService {
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     private filesService: FilesService,
     private notificationsService: NotificationsService,
+    @Inject(forwardRef(() => UsersService))
+    private usersService: UsersService,
     @Inject(CACHE_MANAGER)
     private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown, ttl?: number) => Promise<void>; del?: (k: string) => Promise<void> },
   ) {}
@@ -747,6 +751,7 @@ export class ChaptersService {
       ? (chapter as any).ratingByUser.map((r: any) => ({
           userId: new Types.ObjectId(r.userId),
           value: Number(r.value),
+          createdAt: r.createdAt ? new Date(r.createdAt) : new Date(),
         }))
       : [];
     const existingIdx = ratingByUser.findIndex(
@@ -755,8 +760,9 @@ export class ChaptersService {
     const oldValue = existingIdx >= 0 ? ratingByUser[existingIdx].value : null;
     if (existingIdx >= 0) {
       ratingByUser[existingIdx].value = value;
+      // createdAt не меняем — учитывается дата первой оценки
     } else {
-      ratingByUser.push({ userId: userIdObj, value });
+      ratingByUser.push({ userId: userIdObj, value, createdAt: new Date() });
     }
 
     const ratingSum =
@@ -770,6 +776,17 @@ export class ChaptersService {
         ratingByUser,
       },
     });
+
+    // Учитываем оценку главы в лидерборде по оценкам (только при первой оценке этой главы)
+    if (existingIdx < 0) {
+      try {
+        await this.usersService.incrementRatingsCount(userId);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to increment ratingsCount for user ${userId} (chapter rating): ${(error as Error).message}`,
+        );
+      }
+    }
 
     const averageRating =
       ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 100) / 100 : undefined;

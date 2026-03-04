@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ChaptersService } from './chapters.service';
 import { ChaptersController } from './chapters.controller';
@@ -7,6 +7,7 @@ import { Title, TitleSchema } from '../schemas/title.schema';
 import { FilesModule } from '../files/files.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { BotDetectionModule } from '../common/services/bot-detection.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { BotDetectionModule } from '../common/services/bot-detection.module';
     FilesModule,
     NotificationsModule,
     BotDetectionModule,
+    forwardRef(() => UsersModule),
   ],
   controllers: [ChaptersController],
   providers: [ChaptersService],

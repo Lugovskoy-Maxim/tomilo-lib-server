@@ -440,6 +440,7 @@ export class UsersService {
     monthAgo.setMonth(monthAgo.getMonth() - 1);
 
     let aggregationResult: { userId: string; count: number }[];
+    let totalCount: number | null = null;
 
     if (category === 'comments') {
       // Агрегация комментариев за последний месяц
@@ -467,42 +468,63 @@ export class UsersService {
         count: r.count,
       }));
     } else {
-      // Агрегация оценок за последний месяц
+      // Агрегация оценок за последний месяц: тайтлы + главы
       const titleModel = this.userModel.db.collection('titles');
-      const pipeline = [
-        { $unwind: '$ratings' },
-        {
-          $match: {
-            'ratings.createdAt': { $gte: monthAgo },
-          },
-        },
-        {
-          $group: {
-            _id: '$ratings.userId',
-            count: { $sum: 1 },
-          },
-        },
-        { $sort: { count: -1 as const } },
-        { $skip: skip },
-        { $limit: limit + 50 },
-      ];
-      const results = await titleModel.aggregate(pipeline).toArray();
-      aggregationResult = results.map((r: any) => ({
-        userId: r._id.toString(),
-        count: r.count,
-      }));
+      const chapterModel = this.userModel.db.collection('chapters');
+      const [titleResults, chapterResults] = await Promise.all([
+        titleModel
+          .aggregate([
+            { $unwind: '$ratings' },
+            { $match: { 'ratings.createdAt': { $gte: monthAgo } } },
+            { $group: { _id: '$ratings.userId', count: { $sum: 1 } } },
+          ])
+          .toArray(),
+        chapterModel
+          .aggregate([
+            { $unwind: '$ratingByUser' },
+            {
+              $match: {
+                'ratingByUser.createdAt': { $gte: monthAgo },
+              },
+            },
+            {
+              $group: {
+                _id: '$ratingByUser.userId',
+                count: { $sum: 1 },
+              },
+            },
+          ])
+          .toArray(),
+      ]);
+
+      const countByUser = new Map<string, number>();
+      for (const r of titleResults as any[]) {
+        const id = r._id?.toString();
+        if (id) countByUser.set(id, (countByUser.get(id) ?? 0) + (r.count ?? 0));
+      }
+      for (const r of chapterResults as any[]) {
+        const id = r._id?.toString();
+        if (id) countByUser.set(id, (countByUser.get(id) ?? 0) + (r.count ?? 0));
+      }
+      const fullRatingsList = [...countByUser.entries()]
+        .map(([userId, count]) => ({ userId, count }))
+        .sort((a, b) => b.count - a.count);
+      totalCount = fullRatingsList.length;
+      aggregationResult = fullRatingsList.slice(skip, skip + limit);
     }
 
     if (aggregationResult.length === 0) {
       const result: LeaderboardResponse = {
         users: [],
-        total: 0,
+        total: totalCount ?? 0,
         category,
         period,
       };
       await this.cacheManager.set(cacheKey, result, { ttl: LEADERBOARD_CACHE_TTL_MS });
       return result;
     }
+
+    const totalForResponse = totalCount ?? aggregationResult.length;
 
     // Получаем данные пользователей
     const userIds = aggregationResult.slice(0, limit).map(r => new Types.ObjectId(r.userId));
@@ -559,7 +581,7 @@ export class UsersService {
 
     const result: LeaderboardResponse = {
       users: transformedUsers,
-      total: aggregationResult.length,
+      total: totalForResponse,
       category,
       period,
     };

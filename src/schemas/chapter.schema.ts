@@ -50,10 +50,16 @@ export class Chapter {
   ratingCount: number;
 
   @Prop({
-    type: [{ userId: { type: Types.ObjectId, ref: 'User' }, value: Number }],
+    type: [
+      {
+        userId: { type: Types.ObjectId, ref: 'User' },
+        value: Number,
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
     default: [],
   })
-  ratingByUser: { userId: Types.ObjectId; value: number }[];
+  ratingByUser: { userId: Types.ObjectId; value: number; createdAt?: Date }[];
 
   // Реакции как в комментариях (эмодзи + пользователи)
   @Prop({

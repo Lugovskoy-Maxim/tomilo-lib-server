@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
@@ -11,7 +11,7 @@ import { BotDetectionModule } from '../common/services/bot-detection.module';
   imports: [
     MongooseModule.forFeature([{ name: User.name, schema: UserSchema }]),
     FilesModule,
-    ChaptersModule,
+    forwardRef(() => ChaptersModule),
     BotDetectionModule,
   ],
   controllers: [UsersController],
