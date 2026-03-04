@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Req,
@@ -32,6 +33,54 @@ import { DecorationType } from './shop.controller';
 export class ShopAdminController {
   constructor(private readonly shopService: ShopService) {}
 
+  @Post('decorations')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async createDecoration(
+    @Body()
+    body: {
+      name: string;
+      description?: string;
+      price: number;
+      imageUrl: string;
+      type: 'avatar' | 'frame' | 'background' | 'card';
+      rarity?: 'common' | 'rare' | 'epic' | 'legendary';
+      isAvailable?: boolean;
+      stock?: number | null;
+    },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const stock = body.stock ?? undefined;
+      const data = await this.shopService.createDecoration({
+        name: body.name,
+        description: body.description,
+        price: Number(body.price),
+        imageUrl: body.imageUrl,
+        type: body.type,
+        rarity: body.rarity,
+        isAvailable: body.isAvailable,
+        quantity: stock,
+      });
+      return {
+        success: true,
+        data,
+        message: 'Decoration created successfully',
+        timestamp: new Date().toISOString(),
+        path: 'shop/admin/decorations',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to create decoration',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'shop/admin/decorations',
+        method: 'POST',
+      };
+    }
+  }
+
   @Get('decorations')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
@@ -53,6 +102,34 @@ export class ShopAdminController {
         timestamp: new Date().toISOString(),
         path: 'shop/admin/decorations',
         method: 'GET',
+      };
+    }
+  }
+
+  @Delete('decorations/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async deleteDecoration(
+    @Param('id') id: string,
+  ): Promise<ApiResponseDto<{ message: string }>> {
+    try {
+      const data = await this.shopService.deleteDecoration(id);
+      return {
+        success: true,
+        data,
+        message: data.message,
+        timestamp: new Date().toISOString(),
+        path: `shop/admin/decorations/${id}`,
+        method: 'DELETE',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to delete decoration',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `shop/admin/decorations/${id}`,
+        method: 'DELETE',
       };
     }
   }

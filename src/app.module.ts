@@ -40,6 +40,7 @@ import { AnnouncementsModule } from './announcements/announcements.module';
 import { S3Module } from './s3/s3.module';
 import { AchievementsModule } from './achievements/achievements.module';
 import { AdminModule } from './admin/admin.module';
+import { GenresModule } from './genres/genres.module';
 import { PromocodesModule } from './promocodes/promocodes.module';
 
 const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
@@ -93,6 +94,7 @@ const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
     AnnouncementsModule,
     AchievementsModule,
     AdminModule,
+    GenresModule,
     PromocodesModule,
   ],
   controllers: [AppController],

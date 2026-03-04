@@ -651,6 +651,30 @@ export class AdminController {
   }
 
   /**
+   * Health check для админки (status, uptime, memory, db, cache)
+   */
+  @Get('health')
+  async getHealth(): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.adminService.getSystemHealth();
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'admin/health',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch system health',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'admin/health',
+      };
+    }
+  }
+
+  /**
    * Системная информация (версия, uptime, память)
    */
   @Get('system')

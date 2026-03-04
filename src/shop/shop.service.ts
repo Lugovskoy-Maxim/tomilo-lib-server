@@ -435,6 +435,93 @@ export class ShopService {
     return decoration;
   }
 
+  /** Admin: create decoration from JSON (no file). */
+  async createDecoration(payload: {
+    name: string;
+    description?: string;
+    price: number;
+    imageUrl: string;
+    type: 'avatar' | 'frame' | 'background' | 'card';
+    rarity?: 'common' | 'rare' | 'epic' | 'legendary';
+    isAvailable?: boolean;
+    quantity?: number | null;
+  }) {
+    const doc: Record<string, unknown> = {
+      name: payload.name,
+      imageUrl: payload.imageUrl,
+      price: Number(payload.price),
+      rarity: payload.rarity ?? 'common',
+      description: payload.description ?? '',
+      isAvailable: payload.isAvailable !== false,
+    };
+    if (payload.quantity !== undefined && payload.quantity !== null) {
+      doc.quantity = payload.quantity;
+    }
+    let decoration;
+    switch (payload.type) {
+      case 'avatar':
+        decoration = await this.avatarDecorationModel.create(doc);
+        break;
+      case 'frame':
+        decoration = await this.avatarFrameDecorationModel.create(doc);
+        break;
+      case 'background':
+        decoration = await this.backgroundDecorationModel.create(doc);
+        break;
+      case 'card':
+        decoration = await this.cardDecorationModel.create(doc);
+        break;
+      default:
+        throw new BadRequestException('Invalid decoration type');
+    }
+    await this.cacheManager.set('shop:decorations:all', undefined as unknown);
+    await this.cacheManager.set(
+      `shop:decorations:${payload.type}`,
+      undefined as unknown,
+    );
+    if (typeof this.cacheManager.del === 'function') {
+      await this.cacheManager.del('shop:decorations:all');
+      await this.cacheManager.del(`shop:decorations:${payload.type}`);
+    }
+    this.logger.log(
+      `Admin created ${payload.type} decoration: ${decoration._id} (${payload.name})`,
+    );
+    return decoration;
+  }
+
+  /** Admin: delete decoration by id (searches all decoration collections). */
+  async deleteDecoration(id: string) {
+    const oid = new Types.ObjectId(id);
+    let deleted = false;
+    let type: string = '';
+    for (const [model, name] of [
+      [this.avatarDecorationModel, 'avatar'],
+      [this.avatarFrameDecorationModel, 'frame'],
+      [this.backgroundDecorationModel, 'background'],
+      [this.cardDecorationModel, 'card'],
+    ] as const) {
+      const res = await (model as Model<{ _id: Types.ObjectId }>).findByIdAndDelete(oid);
+      if (res) {
+        deleted = true;
+        type = name;
+        break;
+      }
+    }
+    if (!deleted) {
+      throw new NotFoundException('Decoration not found');
+    }
+    await this.cacheManager.set('shop:decorations:all', undefined as unknown);
+    if (type) {
+      await this.cacheManager.set(`shop:decorations:${type}`, undefined as unknown);
+      if (typeof this.cacheManager.del === 'function') {
+        await this.cacheManager.del('shop:decorations:all');
+        await this.cacheManager.del(`shop:decorations:${type}`);
+      }
+    }
+    this.logger.log(`Admin deleted decoration: ${id}`);
+    return { message: 'Decoration deleted successfully' };
+  }
+
   // Admin: update decoration by id (searches avatar, frame, background, card)
   async updateDecoration(
     id: string,

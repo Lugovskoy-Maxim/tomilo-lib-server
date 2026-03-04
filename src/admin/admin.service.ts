@@ -5,8 +5,8 @@ import {
   Inject,
 } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { Model, Types, Connection } from 'mongoose';
 import * as os from 'os';
 import { User, UserDocument } from '../schemas/user.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
@@ -34,6 +34,7 @@ export class AdminService {
     @InjectModel(Comment.name) private commentModel: Model<CommentDocument>,
     @InjectModel(AdminLog.name) private adminLogModel: Model<AdminLogDocument>,
     @Inject(CACHE_MANAGER) private cacheManager: CacheStore,
+    @InjectConnection() private connection: Connection,
   ) {
     this.logger.setContext(AdminService.name);
   }
@@ -610,6 +611,51 @@ export class AdminService {
     }
 
     return csv;
+  }
+
+  /** Health check for admin panel: status, uptime, memory, cpu, db, cache. */
+  async getSystemHealth(): Promise<{
+    status: 'healthy' | 'degraded' | 'down';
+    uptime: number;
+    memoryUsage: number;
+    cpuUsage: number;
+    dbStatus: 'connected' | 'disconnected';
+    cacheStatus: 'connected' | 'disconnected';
+  }> {
+    const uptimeSeconds = Math.floor((Date.now() - this.startTime) / 1000);
+    const memUsedMb = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+    const loadAvg = os.loadavg();
+    const cpuUsage = Math.min(100, Math.round((loadAvg[0] ?? 0) * 100));
+
+    let dbStatus: 'connected' | 'disconnected' = 'disconnected';
+    if (this.connection?.readyState === 1) {
+      dbStatus = 'connected';
+    }
+
+    let cacheStatus: 'connected' | 'disconnected' = 'disconnected';
+    try {
+      await this.cacheManager.set('health:ping', 1);
+      const v = await this.cacheManager.get('health:ping');
+      if (v !== undefined) cacheStatus = 'connected';
+    } catch {
+      // leave disconnected
+    }
+
+    const status: 'healthy' | 'degraded' | 'down' =
+      dbStatus === 'connected'
+        ? cacheStatus === 'connected'
+          ? 'healthy'
+          : 'degraded'
+        : 'down';
+
+    return {
+      status,
+      uptime: uptimeSeconds,
+      memoryUsage: memUsedMb,
+      cpuUsage,
+      dbStatus,
+      cacheStatus,
+    };
   }
 
   async getSystemInfo(): Promise<{
