@@ -83,6 +83,18 @@ export class ShopService {
     return result;
   }
 
+  /** Admin: all decorations (including unavailable/out of stock). No cache. */
+  async getAllDecorationsAdmin() {
+    this.logger.log('Fetching all decorations (admin)');
+    const [avatars, frames, backgrounds, cards] = await Promise.all([
+      this.avatarDecorationModel.find({}),
+      this.avatarFrameDecorationModel.find({}),
+      this.backgroundDecorationModel.find({}),
+      this.cardDecorationModel.find({}),
+    ]);
+    return { avatars, frames, backgrounds, cards };
+  }
+
   // Get decorations by type
   async getDecorationsByType(
     type: 'avatar' | 'frame' | 'background' | 'card',

@@ -1,5 +1,6 @@
 import {
   Controller,
+  Get,
   Post,
   Patch,
   Param,
@@ -30,6 +31,31 @@ import { DecorationType } from './shop.controller';
 @UsePipes(new ValidationPipe())
 export class ShopAdminController {
   constructor(private readonly shopService: ShopService) {}
+
+  @Get('decorations')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async getAdminDecorations(): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.shopService.getAllDecorationsAdmin();
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'shop/admin/decorations',
+        method: 'GET',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch admin decorations',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'shop/admin/decorations',
+        method: 'GET',
+      };
+    }
+  }
 
   @Patch('decorations/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
