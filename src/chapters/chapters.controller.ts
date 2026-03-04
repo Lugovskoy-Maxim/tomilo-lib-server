@@ -203,10 +203,10 @@ export class ChaptersController {
   }
 
   @Get('reactions/emojis')
-  async getReactionEmojis(): Promise<ApiResponseDto<{ emojis: string[] }>> {
+  async getReactionEmojis(): Promise<ApiResponseDto<string[]>> {
     return {
       success: true,
-      data: { emojis: [...ALLOWED_REACTION_EMOJIS] },
+      data: [...ALLOWED_REACTION_EMOJIS],
       timestamp: new Date().toISOString(),
       path: 'chapters/reactions/emojis',
     };

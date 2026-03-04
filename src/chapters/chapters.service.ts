@@ -724,7 +724,12 @@ export class ChaptersService {
     chapterId: string,
     userId: string,
     value: number,
-  ): Promise<{ average: number; count: number; userRating: number }> {
+  ): Promise<{
+    ratingSum: number;
+    ratingCount: number;
+    averageRating?: number;
+    userRating: number;
+  }> {
     if (!Types.ObjectId.isValid(chapterId)) {
       throw new BadRequestException('Invalid chapter ID');
     }
@@ -766,10 +771,12 @@ export class ChaptersService {
       },
     });
 
-    const average = ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : 0;
+    const averageRating =
+      ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 100) / 100 : undefined;
     return {
-      average,
-      count: ratingCount,
+      ratingSum,
+      ratingCount,
+      averageRating,
       userRating: value,
     };
   }
@@ -777,7 +784,12 @@ export class ChaptersService {
   async getRating(
     chapterId: string,
     userId?: string,
-  ): Promise<{ average: number; count: number; userRating?: number }> {
+  ): Promise<{
+    ratingSum: number;
+    ratingCount: number;
+    averageRating?: number;
+    userRating?: number | null;
+  }> {
     if (!Types.ObjectId.isValid(chapterId)) {
       throw new BadRequestException('Invalid chapter ID');
     }
@@ -787,16 +799,22 @@ export class ChaptersService {
     }
     const ratingSum = Number((chapter as any).ratingSum) || 0;
     const ratingCount = Number((chapter as any).ratingCount) || 0;
-    const average = ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : 0;
-    let userRating: number | undefined;
+    const averageRating =
+      ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 100) / 100 : undefined;
+    let userRating: number | null | undefined;
     if (userId) {
       const ratingByUser = (chapter as any).ratingByUser || [];
       const entry = ratingByUser.find(
         (r: any) => r.userId?.toString() === userId,
       );
-      if (entry != null) userRating = Number(entry.value);
+      userRating = entry != null ? Number(entry.value) : null;
     }
-    return { average, count: ratingCount, userRating };
+    return {
+      ratingSum,
+      ratingCount,
+      averageRating,
+      userRating,
+    };
   }
 
   /** Реакции как в комментариях: переключение эмодзи */
