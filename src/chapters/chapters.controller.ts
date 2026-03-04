@@ -22,6 +22,7 @@ import {
 import { Request } from 'express';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { ChaptersService } from './chapters.service';
 import { CreateChapterDto } from './dto/create-chapter.dto';
@@ -542,6 +543,7 @@ export class ChaptersController {
   }
 
   @Get(':id/rating')
+  @UseGuards(OptionalJwtAuthGuard)
   async getRating(
     @Param('id') id: string,
     @Req() req?: any,
@@ -567,6 +569,7 @@ export class ChaptersController {
   }
 
   @Get(':id/reactions')
+  @UseGuards(OptionalJwtAuthGuard)
   async getReactions(
     @Param('id') id: string,
     @Req() req?: any,
@@ -626,6 +629,7 @@ export class ChaptersController {
   }
 
   @Get(':id/reactions/count')
+  @UseGuards(OptionalJwtAuthGuard)
   async getReactionsCount(
     @Param('id') id: string,
     @Req() req?: any,
