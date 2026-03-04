@@ -719,7 +719,7 @@ export class ChaptersService {
     return { deletedCount };
   }
 
-  /** Рейтинг главы: один пользователь — одна оценка 1–5, можно изменить */
+  /** Рейтинг главы: один пользователь — одна оценка 1–10, можно изменить */
   async setRating(
     chapterId: string,
     userId: string,
@@ -733,8 +733,8 @@ export class ChaptersService {
     if (!Types.ObjectId.isValid(chapterId)) {
       throw new BadRequestException('Invalid chapter ID');
     }
-    if (value < 1 || value > 5 || !Number.isInteger(value)) {
-      throw new BadRequestException('Rating must be an integer from 1 to 5');
+    if (value < 1 || value > 10 || !Number.isInteger(value)) {
+      throw new BadRequestException('Rating must be an integer from 1 to 10');
     }
 
     const chapter = await this.chapterModel.findById(chapterId).lean();
