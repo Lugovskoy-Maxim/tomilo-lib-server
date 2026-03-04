@@ -569,9 +569,11 @@ export class ChaptersController {
   @Get(':id/reactions')
   async getReactions(
     @Param('id') id: string,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.chaptersService.getReactionsCount(id);
+      const userId = req?.user?.userId;
+      const data = await this.chaptersService.getReactionsCount(id, userId);
       return {
         success: true,
         data,
@@ -626,9 +628,11 @@ export class ChaptersController {
   @Get(':id/reactions/count')
   async getReactionsCount(
     @Param('id') id: string,
+    @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.chaptersService.getReactionsCount(id);
+      const userId = req?.user?.userId;
+      const data = await this.chaptersService.getReactionsCount(id, userId);
       return {
         success: true,
         data,

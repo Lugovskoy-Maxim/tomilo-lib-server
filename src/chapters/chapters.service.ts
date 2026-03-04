@@ -879,7 +879,11 @@ export class ChaptersService {
 
   async getReactionsCount(
     chapterId: string,
-  ): Promise<{ reactions: { emoji: string; count: number }[] }> {
+    userId?: string,
+  ): Promise<{
+    reactions: { emoji: string; count: number }[];
+    userReaction?: string | null;
+  }> {
     if (!Types.ObjectId.isValid(chapterId)) {
       throw new BadRequestException('Invalid chapter ID');
     }
@@ -888,14 +892,22 @@ export class ChaptersService {
       throw new NotFoundException('Chapter not found');
     }
     const list = (chapter as any).reactions || [];
-    return {
-      reactions: list
-        .filter((r: any) => (r.userIds?.length ?? 0) > 0)
-        .map((r: any) => ({
-          emoji: r.emoji,
-          count: r.userIds.length,
-        })),
-    };
+    const reactions = list
+      .filter((r: any) => (r.userIds?.length ?? 0) > 0)
+      .map((r: any) => ({
+        emoji: r.emoji,
+        count: r.userIds.length,
+      }));
+    let userReaction: string | null | undefined;
+    if (userId) {
+      const entry = list.find(
+        (r: any) =>
+          Array.isArray(r.userIds) &&
+          r.userIds.some((oid: any) => oid?.toString() === userId),
+      );
+      userReaction = entry ? entry.emoji : null;
+    }
+    return { reactions, userReaction };
   }
 
   /**
