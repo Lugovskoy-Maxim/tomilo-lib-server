@@ -223,33 +223,6 @@ export class ChaptersController {
     };
   }
 
-  @Get(':id')
-  async findOne(
-    @Param('id') id: string,
-    @Req() req?: any,
-  ): Promise<ApiResponseDto<any>> {
-    await this.checkIPActivity(req);
-
-    try {
-      const data = await this.chaptersService.findById(id);
-
-      return {
-        success: true,
-        data,
-        timestamp: new Date().toISOString(),
-        path: `chapters/${id}`,
-      };
-    } catch (error) {
-      return {
-        success: false,
-        message: 'Failed to fetch chapter',
-        errors: [error.message],
-        timestamp: new Date().toISOString(),
-        path: `chapters/${id}`,
-      };
-    }
-  }
-
   @Get(':id/next')
   async getNextChapter(
     @Param('id') id: string,
@@ -639,6 +612,34 @@ export class ChaptersController {
         errors: [error.message],
         timestamp: new Date().toISOString(),
         path: `chapters/${id}/reactions/count`,
+      };
+    }
+  }
+
+  /** GET one chapter by id — declared last so static paths (e.g. rating/health) and :id/… routes match first */
+  @Get(':id')
+  async findOne(
+    @Param('id') id: string,
+    @Req() req?: any,
+  ): Promise<ApiResponseDto<any>> {
+    await this.checkIPActivity(req);
+
+    try {
+      const data = await this.chaptersService.findById(id);
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `chapters/${id}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch chapter',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `chapters/${id}`,
       };
     }
   }
