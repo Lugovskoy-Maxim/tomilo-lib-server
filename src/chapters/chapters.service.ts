@@ -897,4 +897,30 @@ export class ChaptersService {
         })),
     };
   }
+
+  /**
+   * Обогащает массив глав полями рейтинга и реакций (для списков глав по спецификации).
+   */
+  async enrichChaptersWithRatingAndReactions(
+    chapters: any[],
+    userId?: string,
+  ): Promise<any[]> {
+    if (!chapters?.length) return chapters;
+    const enriched = await Promise.all(
+      chapters.map(async (ch) => {
+        const id = ch._id?.toString?.() ?? ch.id;
+        if (!id) return ch;
+        try {
+          const [rating, { reactions }] = await Promise.all([
+            this.getRating(id, userId),
+            this.getReactionsCount(id),
+          ]);
+          return { ...ch, ...rating, reactions };
+        } catch {
+          return ch;
+        }
+      }),
+    );
+    return enriched;
+  }
 }

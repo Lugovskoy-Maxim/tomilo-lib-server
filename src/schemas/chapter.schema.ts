@@ -42,7 +42,7 @@ export class Chapter {
   @Prop({ type: Date, default: null })
   lastViewedAt: Date | null;
 
-  // Рейтинг главы (1-5), один пользователь — один голос
+  // Рейтинг главы (1-10), один пользователь — один голос
   @Prop({ default: 0 })
   ratingSum: number;
 

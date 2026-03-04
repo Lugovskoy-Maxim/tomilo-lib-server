@@ -308,6 +308,11 @@ export class ChaptersController {
         sortBy: 'chapterNumber',
         sortOrder,
       });
+      const userId = req?.user?.userId ?? undefined;
+      data.chapters = await this.chaptersService.enrichChaptersWithRatingAndReactions(
+        data.chapters,
+        userId,
+      );
 
       return {
         success: true,
@@ -338,10 +343,35 @@ export class ChaptersController {
     await this.checkIPActivity(req);
 
     try {
-      const data = await this.chaptersService.findByTitleAndNumber(
+      const chapter = await this.chaptersService.findByTitleAndNumber(
         titleId,
         Number(chapterNumber),
       );
+      if (!chapter) {
+        return {
+          success: false,
+          message: 'Chapter not found',
+          errors: ['Chapter not found'],
+          timestamp: new Date().toISOString(),
+          path: `chapters/by-number/${titleId}`,
+        };
+      }
+      const chapterId = (chapter as any)._id?.toString?.() ?? (chapter as any).id;
+      const chapterObj =
+        typeof (chapter as any).toObject === 'function'
+          ? (chapter as any).toObject()
+          : chapter;
+      const userId = req?.user?.userId ?? null;
+      const rating = await this.chaptersService.getRating(
+        chapterId,
+        userId ?? undefined,
+      );
+      const { reactions } = await this.chaptersService.getReactionsCount(chapterId);
+      const data = {
+        ...chapterObj,
+        ...rating,
+        reactions,
+      };
 
       return {
         success: true,
@@ -625,7 +655,19 @@ export class ChaptersController {
     await this.checkIPActivity(req);
 
     try {
-      const data = await this.chaptersService.findById(id);
+      const chapter = await this.chaptersService.findById(id);
+      const chapterObj =
+        typeof (chapter as any).toObject === 'function'
+          ? (chapter as any).toObject()
+          : chapter;
+      const userId = req?.user?.userId ?? null;
+      const rating = await this.chaptersService.getRating(id, userId ?? undefined);
+      const { reactions } = await this.chaptersService.getReactionsCount(id);
+      const data = {
+        ...chapterObj,
+        ...rating,
+        reactions,
+      };
 
       return {
         success: true,

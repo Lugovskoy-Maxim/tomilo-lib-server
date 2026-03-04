@@ -4,7 +4,7 @@ import { Type } from 'class-transformer';
 export class SetChapterRatingDto {
   @IsInt()
   @Min(1)
-  @Max(5)
+  @Max(10)
   @Type(() => Number)
   value: number;
 }
