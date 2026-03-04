@@ -27,6 +27,7 @@ import {
 } from '../schemas/card-decoration.schema';
 import { CreatePromoCodeDto, UpdatePromoCodeDto, PromoCodeRewardDto } from './dto';
 import { LoggerService } from '../common/logger/logger.service';
+import { escapeRegex } from '../common/utils/regex.util';
 
 const NEW_USER_DAYS_THRESHOLD = 7;
 
@@ -64,7 +65,7 @@ export class PromocodesService {
       filter.status = status;
     }
     if (search) {
-      filter.code = { $regex: search, $options: 'i' };
+      filter.code = { $regex: escapeRegex(search), $options: 'i' };
     }
 
     const [data, total] = await Promise.all([

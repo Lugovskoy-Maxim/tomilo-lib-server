@@ -10,6 +10,7 @@ import { UpdateTitleDto } from './dto/update-title.dto';
 import { FilesService } from '../files/files.service';
 import { UsersService } from '../users/users.service';
 import { LoggerService } from '../common/logger/logger.service';
+import { escapeRegex } from '../common/utils/regex.util';
 
 /** Макс. кол-во тайтлов в кеше (покрывает limit до ~20) */
 const POPULAR_CACHE_FETCH_LIMIT = 60;
@@ -89,10 +90,11 @@ export class TitlesService {
     const query: any = {};
 
     if (search) {
+      const escaped = escapeRegex(search);
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { altNames: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
+        { name: { $regex: escaped, $options: 'i' } },
+        { altNames: { $regex: escaped, $options: 'i' } },
+        { description: { $regex: escaped, $options: 'i' } },
       ];
     }
 
@@ -321,7 +323,7 @@ export class TitlesService {
 
   async findByName(name: string): Promise<TitleDocument | null> {
     return this.titleModel
-      .findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } })
+      .findOne({ name: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } })
       .exec();
   }
 

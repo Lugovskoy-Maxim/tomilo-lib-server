@@ -13,6 +13,7 @@ import {
   ACHIEVEMENT_RARITIES,
 } from '../schemas/achievement.schema';
 import { User, UserDocument } from '../schemas/user.schema';
+import { escapeRegex } from '../common/utils/regex.util';
 
 const ACHIEVEMENT_TYPE_VALUES = ACHIEVEMENT_TYPES as unknown as string[];
 const ACHIEVEMENT_RARITY_VALUES = ACHIEVEMENT_RARITIES as unknown as string[];
@@ -37,7 +38,7 @@ export class AchievementsAdminService {
 
     const filter: Record<string, unknown> = {};
     if (params.search?.trim()) {
-      const s = params.search.trim();
+      const s = escapeRegex(params.search.trim());
       filter.$or = [
         { id: new RegExp(s, 'i') },
         { name: new RegExp(s, 'i') },

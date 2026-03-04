@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { escapeRegex } from '../common/utils/regex.util';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Title, TitleDocument } from '../schemas/title.schema';
@@ -52,10 +53,11 @@ export class SearchService {
       return [];
     }
 
+    const escaped = escapeRegex(search);
     const query: any = {
       $or: [
-        { name: { $regex: search, $options: 'i' } },
-        { altNames: { $regex: search, $options: 'i' } },
+        { name: { $regex: escaped, $options: 'i' } },
+        { altNames: { $regex: escaped, $options: 'i' } },
       ],
     };
 

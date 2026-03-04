@@ -16,6 +16,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { FilesService } from '../files/files.service';
 import { ChaptersService } from '../chapters/chapters.service';
 import { LoggerService } from '../common/logger/logger.service';
+import { escapeRegex } from '../common/utils/regex.util';
 import { BotDetectionService } from '../common/services/bot-detection.service';
 import { ReadingProgressResponseDto } from './dto/reading-progress-response.dto';
 import { AchievementsService } from '../achievements/achievements.service';
@@ -148,8 +149,8 @@ export class UsersService {
     const query = search
       ? {
           $or: [
-            { username: { $regex: search, $options: 'i' } },
-            { email: { $regex: search, $options: 'i' } },
+            { username: { $regex: escapeRegex(search), $options: 'i' } },
+            { email: { $regex: escapeRegex(search), $options: 'i' } },
           ],
         }
       : {};

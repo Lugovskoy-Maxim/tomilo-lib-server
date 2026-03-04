@@ -10,6 +10,7 @@ import { Collection, CollectionDocument } from '../schemas/collection.schema';
 import { CreateCollectionDto } from './dto/create-collection.dto';
 import { UpdateCollectionDto } from './dto/update-collection.dto';
 import { LoggerService } from '../common/logger/logger.service';
+import { escapeRegex } from '../common/utils/regex.util';
 import { FilesService } from '../files/files.service';
 
 @Injectable()
@@ -36,9 +37,10 @@ export class CollectionsService {
     const query: any = {};
 
     if (search) {
+      const escaped = escapeRegex(search);
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
+        { name: { $regex: escaped, $options: 'i' } },
+        { description: { $regex: escaped, $options: 'i' } },
       ];
     }
 
@@ -75,7 +77,7 @@ export class CollectionsService {
 
   async findByName(name: string): Promise<CollectionDocument | null> {
     return this.collectionModel
-      .findOne({ name: { $regex: new RegExp(`^${name}$`, 'i') } })
+      .findOne({ name: { $regex: new RegExp(`^${escapeRegex(name)}$`, 'i') } })
       .exec();
   }
 

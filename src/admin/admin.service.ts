@@ -14,6 +14,7 @@ import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
 import { Comment, CommentDocument } from '../schemas/comment.schema';
 import { AdminLog, AdminLogDocument } from '../schemas/admin-log.schema';
 import { LoggerService } from '../common/logger/logger.service';
+import { escapeRegex } from '../common/utils/regex.util';
 
 type CacheStore = {
   get: (k: string) => Promise<unknown>;
@@ -726,9 +727,10 @@ export class AdminService {
     const query: any = {};
 
     if (search) {
+      const escaped = escapeRegex(search);
       query.$or = [
-        { username: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
+        { username: { $regex: escaped, $options: 'i' } },
+        { email: { $regex: escaped, $options: 'i' } },
       ];
     }
 

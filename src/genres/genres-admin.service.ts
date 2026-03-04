@@ -8,6 +8,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Genre, GenreDocument } from '../schemas/genre.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
+import { escapeRegex } from '../common/utils/regex.util';
 
 @Injectable()
 export class GenresAdminService {
@@ -37,7 +38,7 @@ export class GenresAdminService {
 
     const filter: Record<string, unknown> = {};
     if (params.search?.trim()) {
-      const s = params.search.trim();
+      const s = escapeRegex(params.search.trim());
       filter.$or = [
         { name: new RegExp(s, 'i') },
         { slug: new RegExp(s, 'i') },
@@ -127,7 +128,7 @@ export class GenresAdminService {
     }
     const slug = body.slug?.trim() || this.slugify(name);
     const existing = await this.genreModel.findOne({
-      $or: [{ slug }, { name: new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }],
+      $or: [{ slug }, { name: new RegExp(`^${escapeRegex(name)}$`, 'i') }],
     });
     if (existing) {
       throw new ConflictException('Genre with this name or slug already exists');
