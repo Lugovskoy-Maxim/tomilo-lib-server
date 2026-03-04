@@ -212,6 +212,17 @@ export class ChaptersController {
     };
   }
 
+  /** Health check for rating feature: GET /api/chapters/rating/health → 200 if route is registered (after deploy). */
+  @Get('rating/health')
+  async ratingHealth(): Promise<ApiResponseDto<{ rating: string }>> {
+    return {
+      success: true,
+      data: { rating: 'available' },
+      timestamp: new Date().toISOString(),
+      path: 'chapters/rating/health',
+    };
+  }
+
   @Get(':id')
   async findOne(
     @Param('id') id: string,
@@ -548,6 +559,29 @@ export class ChaptersController {
         errors: [error.message],
         timestamp: new Date().toISOString(),
         path: `chapters/${id}/rating`,
+      };
+    }
+  }
+
+  @Get(':id/reactions')
+  async getReactions(
+    @Param('id') id: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.chaptersService.getReactionsCount(id);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `chapters/${id}/reactions`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to get chapter reactions',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `chapters/${id}/reactions`,
       };
     }
   }
