@@ -29,6 +29,9 @@ import { UpdateChapterDto } from './dto/update-chapter.dto';
 import { FileUploadInterceptor } from '../common/interceptors/file-upload.interceptor';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { BotDetectionService } from '../common/services/bot-detection.service';
+import { SetChapterRatingDto } from './dto/set-chapter-rating.dto';
+import { ToggleChapterReactionDto } from './dto/toggle-chapter-reaction.dto';
+import { ALLOWED_REACTION_EMOJIS } from '../schemas/comment.schema';
 
 @Controller('chapters')
 export class ChaptersController {
@@ -197,6 +200,16 @@ export class ChaptersController {
         path: 'chapters/count',
       };
     }
+  }
+
+  @Get('reactions/emojis')
+  async getReactionEmojis(): Promise<ApiResponseDto<{ emojis: string[] }>> {
+    return {
+      success: true,
+      data: { emojis: [...ALLOWED_REACTION_EMOJIS] },
+      timestamp: new Date().toISOString(),
+      path: 'chapters/reactions/emojis',
+    };
   }
 
   @Get(':id')
@@ -476,6 +489,122 @@ export class ChaptersController {
         timestamp: new Date().toISOString(),
         path: `chapters/${id}/view`,
         method: 'POST',
+      };
+    }
+  }
+
+  @Post(':id/rating')
+  @UseGuards(JwtAuthGuard)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async setRating(
+    @Param('id') id: string,
+    @Body() dto: SetChapterRatingDto,
+    @Req() req: any,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.chaptersService.setRating(
+        id,
+        req.user.userId,
+        dto.value,
+      );
+      return {
+        success: true,
+        data,
+        message: 'Chapter rating updated',
+        timestamp: new Date().toISOString(),
+        path: `chapters/${id}/rating`,
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to set chapter rating',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `chapters/${id}/rating`,
+        method: 'POST',
+      };
+    }
+  }
+
+  @Get(':id/rating')
+  async getRating(
+    @Param('id') id: string,
+    @Req() req?: any,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const userId = req?.user?.userId;
+      const data = await this.chaptersService.getRating(id, userId);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `chapters/${id}/rating`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to get chapter rating',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `chapters/${id}/rating`,
+      };
+    }
+  }
+
+  @Post(':id/reactions')
+  @UseGuards(JwtAuthGuard)
+  @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
+  async toggleReaction(
+    @Param('id') id: string,
+    @Body() dto: ToggleChapterReactionDto,
+    @Req() req: any,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.chaptersService.toggleReaction(
+        id,
+        req.user.userId,
+        dto.emoji,
+      );
+      return {
+        success: true,
+        data,
+        message: 'Chapter reaction toggled',
+        timestamp: new Date().toISOString(),
+        path: `chapters/${id}/reactions`,
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to toggle chapter reaction',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `chapters/${id}/reactions`,
+        method: 'POST',
+      };
+    }
+  }
+
+  @Get(':id/reactions/count')
+  async getReactionsCount(
+    @Param('id') id: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.chaptersService.getReactionsCount(id);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `chapters/${id}/reactions/count`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to get chapter reactions count',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: `chapters/${id}/reactions/count`,
       };
     }
   }

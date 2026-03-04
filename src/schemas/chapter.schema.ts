@@ -41,6 +41,31 @@ export class Chapter {
   // Activity tracking for stats
   @Prop({ type: Date, default: null })
   lastViewedAt: Date | null;
+
+  // Рейтинг главы (1-5), один пользователь — один голос
+  @Prop({ default: 0 })
+  ratingSum: number;
+
+  @Prop({ default: 0 })
+  ratingCount: number;
+
+  @Prop({
+    type: [{ userId: { type: Types.ObjectId, ref: 'User' }, value: Number }],
+    default: [],
+  })
+  ratingByUser: { userId: Types.ObjectId; value: number }[];
+
+  // Реакции как в комментариях (эмодзи + пользователи)
+  @Prop({
+    type: [
+      {
+        emoji: { type: String, required: true },
+        userIds: [{ type: Types.ObjectId, ref: 'User' }],
+      },
+    ],
+    default: [],
+  })
+  reactions: { emoji: string; userIds: Types.ObjectId[] }[];
 }
 
 export const ChapterSchema = SchemaFactory.createForClass(Chapter);

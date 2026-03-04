@@ -11,6 +11,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
+import { ALLOWED_REACTION_EMOJIS } from '../schemas/comment.schema';
 import { CreateChapterDto } from './dto/create-chapter.dto';
 import { UpdateChapterDto } from './dto/update-chapter.dto';
 import { FilesService } from '../files/files.service';
@@ -716,5 +717,166 @@ export class ChaptersService {
 
     this.logger.log(`Deleted ${deletedCount} chapters without titleId`);
     return { deletedCount };
+  }
+
+  /** Рейтинг главы: один пользователь — одна оценка 1–5, можно изменить */
+  async setRating(
+    chapterId: string,
+    userId: string,
+    value: number,
+  ): Promise<{ average: number; count: number; userRating: number }> {
+    if (!Types.ObjectId.isValid(chapterId)) {
+      throw new BadRequestException('Invalid chapter ID');
+    }
+    if (value < 1 || value > 5 || !Number.isInteger(value)) {
+      throw new BadRequestException('Rating must be an integer from 1 to 5');
+    }
+
+    const chapter = await this.chapterModel.findById(chapterId).lean();
+    if (!chapter) {
+      throw new NotFoundException('Chapter not found');
+    }
+
+    const userIdObj = new Types.ObjectId(userId);
+    const ratingByUser = Array.isArray((chapter as any).ratingByUser)
+      ? (chapter as any).ratingByUser.map((r: any) => ({
+          userId: new Types.ObjectId(r.userId),
+          value: Number(r.value),
+        }))
+      : [];
+    const existingIdx = ratingByUser.findIndex(
+      (r) => r.userId.toString() === userId,
+    );
+    const oldValue = existingIdx >= 0 ? ratingByUser[existingIdx].value : null;
+    if (existingIdx >= 0) {
+      ratingByUser[existingIdx].value = value;
+    } else {
+      ratingByUser.push({ userId: userIdObj, value });
+    }
+
+    const ratingSum =
+      (Number((chapter as any).ratingSum) || 0) - (oldValue ?? 0) + value;
+    const ratingCount = ratingByUser.length;
+
+    await this.chapterModel.findByIdAndUpdate(chapterId, {
+      $set: {
+        ratingSum,
+        ratingCount,
+        ratingByUser,
+      },
+    });
+
+    const average = ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : 0;
+    return {
+      average,
+      count: ratingCount,
+      userRating: value,
+    };
+  }
+
+  async getRating(
+    chapterId: string,
+    userId?: string,
+  ): Promise<{ average: number; count: number; userRating?: number }> {
+    if (!Types.ObjectId.isValid(chapterId)) {
+      throw new BadRequestException('Invalid chapter ID');
+    }
+    const chapter = await this.chapterModel.findById(chapterId).lean();
+    if (!chapter) {
+      throw new NotFoundException('Chapter not found');
+    }
+    const ratingSum = Number((chapter as any).ratingSum) || 0;
+    const ratingCount = Number((chapter as any).ratingCount) || 0;
+    const average = ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 10) / 10 : 0;
+    let userRating: number | undefined;
+    if (userId) {
+      const ratingByUser = (chapter as any).ratingByUser || [];
+      const entry = ratingByUser.find(
+        (r: any) => r.userId?.toString() === userId,
+      );
+      if (entry != null) userRating = Number(entry.value);
+    }
+    return { average, count: ratingCount, userRating };
+  }
+
+  /** Реакции как в комментариях: переключение эмодзи */
+  async toggleReaction(
+    chapterId: string,
+    userId: string,
+    emoji: string,
+  ): Promise<ChapterDocument> {
+    if (!ALLOWED_REACTION_EMOJIS.includes(emoji as any)) {
+      throw new BadRequestException(
+        `Invalid emoji. Allowed: ${ALLOWED_REACTION_EMOJIS.join(', ')}`,
+      );
+    }
+    if (!Types.ObjectId.isValid(chapterId)) {
+      throw new BadRequestException('Invalid chapter ID');
+    }
+
+    const chapter = await this.chapterModel.findById(chapterId).lean();
+    if (!chapter) {
+      throw new NotFoundException('Chapter not found');
+    }
+
+    const userIdObj = new Types.ObjectId(userId);
+    const existing = (chapter as any).reactions || [];
+    const reactions = existing.map((r: any) => ({
+      emoji: r.emoji,
+      userIds: Array.isArray(r.userIds)
+        ? r.userIds.map((oid: any) => new Types.ObjectId(oid.toString()))
+        : [],
+    }));
+
+    let entry = reactions.find((r) => r.emoji === emoji);
+    if (!entry) {
+      entry = { emoji, userIds: [] };
+      reactions.push(entry);
+    }
+
+    const idx = entry.userIds.findIndex((oid) => oid.toString() === userId);
+    if (idx >= 0) {
+      entry.userIds.splice(idx, 1);
+    } else {
+      entry.userIds.push(userIdObj);
+    }
+
+    const newReactions = reactions
+      .filter((r) => r.userIds.length > 0)
+      .map((r) => ({ emoji: r.emoji, userIds: r.userIds }));
+
+    const updated = await this.chapterModel.findByIdAndUpdate(
+      chapterId,
+      { $set: { reactions: newReactions } },
+      { new: true },
+    )
+      .populate({ path: 'titleId', select: 'name slug _id' })
+      .exec();
+
+    if (!updated) {
+      throw new NotFoundException('Chapter not found');
+    }
+    return updated;
+  }
+
+  async getReactionsCount(
+    chapterId: string,
+  ): Promise<{ reactions: { emoji: string; count: number }[] }> {
+    if (!Types.ObjectId.isValid(chapterId)) {
+      throw new BadRequestException('Invalid chapter ID');
+    }
+    const chapter = await this.chapterModel.findById(chapterId).lean();
+    if (!chapter) {
+      throw new NotFoundException('Chapter not found');
+    }
+    const list = (chapter as any).reactions || [];
+    return {
+      reactions: list
+        .filter((r: any) => (r.userIds?.length ?? 0) > 0)
+        .map((r: any) => ({
+          emoji: r.emoji,
+          count: r.userIds.length,
+        })),
+    };
   }
 }
