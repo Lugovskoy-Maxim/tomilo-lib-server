@@ -153,6 +153,58 @@ export class UsersController {
     }
   }
 
+  // 🗑️ Запланировать удаление профиля (scheduledDeletionAt = now + 7 дней)
+  @Post('profile/schedule-deletion')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async scheduleDeletion(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.scheduleDeletion(req.user.userId);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/schedule-deletion',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to schedule deletion',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/schedule-deletion',
+        method: 'POST',
+      };
+    }
+  }
+
+  // ↩️ Отменить запланированное удаление профиля
+  @Post('profile/cancel-deletion')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async cancelDeletion(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.cancelDeletion(req.user.userId);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/cancel-deletion',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to cancel deletion',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/cancel-deletion',
+        method: 'POST',
+      };
+    }
+  }
+
   // 🔧 Админ: обновить пользователя
   @Put('admin/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)

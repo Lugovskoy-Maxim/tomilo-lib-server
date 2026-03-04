@@ -19,6 +19,7 @@ import { LoggerService } from '../common/logger/logger.service';
 import { BotDetectionService } from '../common/services/bot-detection.service';
 import { ReadingProgressResponseDto } from './dto/reading-progress-response.dto';
 import { AchievementsService } from '../achievements/achievements.service';
+import { Cron } from '@nestjs/schedule';
 /** Категории закладок: читаю, в планах, прочитано, избранное, брошено */
 export const BOOKMARK_CATEGORIES = [
   'reading',
@@ -740,6 +741,70 @@ export class UsersService {
     }
 
     return user;
+  }
+
+  /** Установить запланированное удаление профиля (now + 7 дней). Возвращает профиль в формате GET /users/profile. */
+  async scheduleDeletion(userId: string): Promise<User> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    const now = new Date();
+    const sevenDaysLater = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    await this.userModel
+      .findByIdAndUpdate(new Types.ObjectId(userId), {
+        $set: { scheduledDeletionAt: sevenDaysLater },
+      })
+      .exec();
+    return this.findProfileById(userId);
+  }
+
+  /** Отменить запланированное удаление (обнулить scheduledDeletionAt). Возвращает профиль в формате GET /users/profile. */
+  async cancelDeletion(userId: string): Promise<User> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    await this.userModel
+      .findByIdAndUpdate(new Types.ObjectId(userId), {
+        $unset: { scheduledDeletionAt: 1 },
+      })
+      .exec();
+    return this.findProfileById(userId);
+  }
+
+  /** Найти пользователей с scheduledDeletionAt <= now и без deletedAt, проставить deletedAt = now (и очистить scheduledDeletionAt). */
+  async processScheduledDeletions(): Promise<number> {
+    const now = new Date();
+    const result = await this.userModel
+      .updateMany(
+        {
+          scheduledDeletionAt: { $lte: now },
+          $or: [{ deletedAt: { $exists: false } }, { deletedAt: null }],
+        },
+        {
+          $set: { deletedAt: now },
+          $unset: { scheduledDeletionAt: 1 },
+        },
+      )
+      .exec();
+    const count = result.modifiedCount ?? 0;
+    if (count > 0) {
+      this.logger.log(`Processed scheduled deletions: ${count} user(s) marked as deleted`);
+    }
+    return count;
+  }
+
+  /**
+   * Крон: раз в день помечать профили с истёкшим scheduledDeletionAt как удалённые (deletedAt = now).
+   */
+  @Cron('0 3 * * *')
+  async runScheduledDeletionsCron(): Promise<void> {
+    try {
+      await this.processScheduledDeletions();
+    } catch (error) {
+      this.logger.error(
+        `Scheduled deletions cron failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
   }
 
   /**
@@ -2591,6 +2656,8 @@ export class UsersService {
         readingHistoryVisibility:
           targetUser.privacy?.readingHistoryVisibility ?? 'private',
       },
+      scheduledDeletionAt: (targetUser as any).scheduledDeletionAt ?? null,
+      deletedAt: (targetUser as any).deletedAt ?? null,
     };
 
     if (showExtendedProfile) {

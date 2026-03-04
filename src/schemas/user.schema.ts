@@ -370,6 +370,14 @@ export class User {
     theme: 'light' | 'dark' | 'system';
   };
 
+  /** Дата/время запланированного удаления профиля (now + 7 дней при запросе удаления) */
+  @Prop()
+  scheduledDeletionAt?: Date;
+
+  /** Дата фактического «удаления» (проставляется кроном; профиль помечен удалённым) */
+  @Prop()
+  deletedAt?: Date;
+
   /** Достижения пользователя */
   @Prop({
     type: [
@@ -434,3 +442,4 @@ UserSchema.index({ ratingsCount: -1 });
 UserSchema.index({ commentsCount: -1 });
 UserSchema.index({ currentStreak: -1, longestStreak: -1 });
 UserSchema.index({ isBot: 1 });
+UserSchema.index({ scheduledDeletionAt: 1, deletedAt: 1 });

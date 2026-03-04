@@ -26,8 +26,10 @@ Authorization: Bearer <jwt_token>
 
 ### Users
 - `GET /users` - Get all users (admin only, paginated)
-- `GET /users/profile` - Get current user profile
+- `GET /users/profile` - Get current user profile (includes `scheduledDeletionAt`, `deletedAt` if set)
 - `PUT /users/profile` - Update current user profile
+- `POST /users/profile/schedule-deletion` - Schedule profile deletion (sets `scheduledDeletionAt` = now + 7 days); auth required; body empty or `{}`; returns updated user
+- `POST /users/profile/cancel-deletion` - Cancel scheduled deletion (clears `scheduledDeletionAt`); auth required; body empty or `{}`; returns updated user
 - `PUT /users/admin/:id` - Update user by admin
 - `DELETE /users/admin/:id` - Delete user by admin
 - `GET /users/profile/bookmarks` - Get user bookmarks (query: `category=reading|planned|completed|favorites|dropped`, `grouped=true` для разбивки по категориям)
@@ -46,7 +48,7 @@ Authorization: Bearer <jwt_token>
 - `PUT /users/profile/avatar` - Update user avatar
 - `POST /users/avatar/admin/:id` - Update avatar by admin
 - `POST /users/avatar` - Remove user avatar
-- `GET /users/:id` - Get user by ID
+- `GET /users/:id` - Get user by ID (includes `scheduledDeletionAt`, `deletedAt` for banners / "Удалён" label)
 
 #### Bot Detection (Admin)
 - `GET /users/admin/suspicious-users` - Get list of suspicious/bot users
