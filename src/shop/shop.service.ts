@@ -522,6 +522,23 @@ export class ShopService {
     return { message: 'Decoration deleted successfully' };
   }
 
+  /** Admin: update decoration with optional new image file (multipart). */
+  async updateDecorationWithFile(
+    id: string,
+    file: Express.Multer.File | null,
+    updates: Partial<{
+      name: string;
+      price: number;
+      rarity: 'common' | 'rare' | 'epic' | 'legendary';
+      description: string;
+      isAvailable: boolean;
+      quantity: number | null;
+    }>,
+  ) {
+    const imageUrl = file?.filename ? `/uploads/decorations/${file.filename}` : undefined;
+    return this.updateDecoration(id, { ...updates, ...(imageUrl && { imageUrl }) });
+  }
+
   // Admin: update decoration by id (searches avatar, frame, background, card)
   async updateDecoration(
     id: string,

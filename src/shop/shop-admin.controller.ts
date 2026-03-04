@@ -137,37 +137,96 @@ export class ShopAdminController {
   @Patch('decorations/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const dir = './uploads/decorations';
+          fs.mkdirSync(dir, { recursive: true });
+          cb(null, dir);
+        },
+        filename: (_req, file, cb) => {
+          const ext =
+            path.extname(file.originalname) ||
+            (file.mimetype === 'image/gif'
+              ? '.gif'
+              : file.mimetype === 'image/webp'
+                ? '.webp'
+                : '.png');
+          cb(
+            null,
+            `decoration-${Date.now()}-${Math.random().toString(36).slice(2, 9)}${ext}`,
+          );
+        },
+      }),
+      limits: { fileSize: 20 * 1024 * 1024 },
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          return cb(new BadRequestException('Only image files are allowed'), false);
+        }
+        cb(null, true);
+      },
+    }),
+  )
   async updateDecoration(
     @Param('id') id: string,
     @Body()
     body: {
       name?: string;
       imageUrl?: string;
-      price?: number;
+      price?: number | string;
       rarity?: 'common' | 'rare' | 'epic' | 'legendary';
       description?: string;
-      isAvailable?: boolean;
-      /** Лимит количества (основное имя поля) */
-      quantity?: number | null;
-      /** Алиас для фронтенда: stock === quantity */
-      stock?: number | null;
+      isAvailable?: boolean | string;
+      type?: DecorationType;
+      quantity?: number | string | null;
+      stock?: number | string | null;
     },
+    @Req() req: Express.Request,
   ): Promise<ApiResponseDto<any>> {
     try {
+      const file = (req as any).file ?? req.file ?? null;
       const quantity =
-        body.quantity !== undefined && body.quantity !== null
-          ? body.quantity
-          : body.stock !== undefined
-            ? body.stock
+        body.quantity !== undefined && body.quantity !== null && body.quantity !== ''
+          ? Number(body.quantity)
+          : body.stock !== undefined && body.stock !== null && body.stock !== ''
+            ? Number(body.stock)
             : undefined;
+      const isAvailable =
+        body.isAvailable === undefined
+          ? undefined
+          : body.isAvailable === true || body.isAvailable === 'true';
+
+      if (file?.filename) {
+        const data = await this.shopService.updateDecorationWithFile(id, file, {
+          name: body.name,
+          price: body.price !== undefined ? Number(body.price) : undefined,
+          rarity: body.rarity,
+          description: body.description,
+          isAvailable: isAvailable as boolean | undefined,
+          quantity: quantity !== undefined && !Number.isNaN(quantity) ? quantity : undefined,
+        });
+        return {
+          success: true,
+          data,
+          message: 'Decoration updated successfully',
+          timestamp: new Date().toISOString(),
+          path: `shop/admin/decorations/${id}`,
+          method: 'PATCH',
+        };
+      }
+
       const data = await this.shopService.updateDecoration(id, {
         name: body.name,
         imageUrl: body.imageUrl,
         price: body.price !== undefined ? Number(body.price) : undefined,
         rarity: body.rarity,
         description: body.description,
-        isAvailable: body.isAvailable,
-        quantity,
+        isAvailable: isAvailable as boolean | undefined,
+        quantity:
+          quantity !== undefined && !Number.isNaN(quantity)
+            ? quantity
+            : (body.quantity as number | null) ?? (body.stock as number | null) ?? undefined,
       });
       return {
         success: true,
@@ -231,14 +290,12 @@ export class ShopAdminController {
     @Body()
     body: {
       type: DecorationType;
-      name: string;
-      price: number;
-      rarity: 'common' | 'rare' | 'epic' | 'legendary';
+      name?: string;
+      price?: number | string;
+      rarity?: 'common' | 'rare' | 'epic' | 'legendary';
       description?: string;
       isAvailable?: string;
-      /** Основное имя лимита на бэкенде */
       quantity?: number | string | null;
-      /** Алиас, который шлёт фронтенд (stock === quantity) */
       stock?: number | string | null;
     },
   ): Promise<ApiResponseDto<any>> {
@@ -257,14 +314,22 @@ export class ShopAdminController {
           : Number(rawQuantityInput);
       const quantity =
         quantityRaw !== undefined && !Number.isNaN(quantityRaw) ? quantityRaw : undefined;
+      const priceNum =
+        body.price !== undefined && body.price !== null && body.price !== ''
+          ? Number(body.price)
+          : 0;
+      const name =
+        body.name !== undefined && String(body.name).trim() !== ''
+          ? String(body.name).trim()
+          : (file.originalname && file.originalname.replace(/\.[^.]+$/, '')) || 'Unnamed';
       const data = await this.shopService.uploadDecoration(
         body.type,
         file,
         {
-          name: body.name,
-          price: Number(body.price),
-          rarity: body.rarity,
-          description: body.description,
+          name,
+          price: !Number.isNaN(priceNum) ? priceNum : 0,
+          rarity: body.rarity ?? 'common',
+          description: body.description ?? '',
           isAvailable: body.isAvailable === 'true' || body.isAvailable === undefined,
           quantity,
         },
