@@ -7,8 +7,10 @@ import {
   IsBoolean,
   IsEnum,
   IsObject,
+  IsDateString,
   MaxLength,
   ValidateNested,
+  ValidateIf,
 } from 'class-validator';
 import { CreateUserDto } from './create-user.dto';
 import { Types } from 'mongoose';
@@ -99,4 +101,10 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @ValidateNested()
   @Type(() => DisplaySettingsDto)
   displaySettings?: DisplaySettingsDto;
+
+  /** Дата окончания премиум-подписки (ISO). Передать null, чтобы снять подписку. Только для админа. */
+  @IsOptional()
+  @ValidateIf((_, v) => v != null)
+  @IsDateString()
+  subscriptionExpiresAt?: string | null;
 }
