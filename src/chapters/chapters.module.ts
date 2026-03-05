@@ -3,6 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ChaptersService } from './chapters.service';
 import { ChaptersController } from './chapters.controller';
 import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
+import { ChapterUnlock, ChapterUnlockSchema } from '../schemas/chapter-unlock.schema';
 import { Title, TitleSchema } from '../schemas/title.schema';
 import { FilesModule } from '../files/files.module';
 import { NotificationsModule } from '../notifications/notifications.module';
@@ -13,6 +14,7 @@ import { UsersModule } from '../users/users.module';
   imports: [
     MongooseModule.forFeature([
       { name: Chapter.name, schema: ChapterSchema },
+      { name: ChapterUnlock.name, schema: ChapterUnlockSchema },
       { name: Title.name, schema: TitleSchema },
     ]),
     FilesModule,

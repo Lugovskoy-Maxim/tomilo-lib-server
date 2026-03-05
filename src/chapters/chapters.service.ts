@@ -11,6 +11,7 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
+import { ChapterUnlock, ChapterUnlockDocument } from '../schemas/chapter-unlock.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
 import { ALLOWED_REACTION_EMOJIS } from '../schemas/comment.schema';
 import { CreateChapterDto } from './dto/create-chapter.dto';
@@ -29,6 +30,7 @@ export class ChaptersService {
 
   constructor(
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
+    @InjectModel(ChapterUnlock.name) private chapterUnlockModel: Model<ChapterUnlockDocument>,
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     private filesService: FilesService,
     private notificationsService: NotificationsService,
@@ -473,8 +475,16 @@ export class ChaptersService {
       throw new BadRequestException('Invalid unlock price');
     }
 
-    // Balance checking and deduction will be handled in the controller
-    // to avoid circular dependency issues
+    // Balance checking and deduction are done in the controller; here we persist the unlock
+    const existing = await this.chapterUnlockModel
+      .findOne({ userId: new Types.ObjectId(userId), chapterId: new Types.ObjectId(chapterId) })
+      .exec();
+    if (!existing) {
+      await this.chapterUnlockModel.create({
+        userId: new Types.ObjectId(userId),
+        chapterId: new Types.ObjectId(chapterId),
+      });
+    }
 
     this.logger.log(
       `User ${userId} unlocked paid chapter ${chapterId} for ${chapter.unlockPrice} coins`,
@@ -492,16 +502,30 @@ export class ChaptersService {
       return false;
     }
 
-    // Free chapters are always accessible
     if (!chapter.isPaid) {
       return true;
     }
 
-    // For paid chapters, check if user has unlocked it
-    // This could be implemented with a separate collection tracking unlocks
-    // For now, we'll assume paid chapters require unlocking each time
-    // In a real implementation, you'd want to cache unlocks or use a separate table
-    return false; // Paid chapters not accessible without explicit unlock
+    const now = new Date();
+    if (chapter.freeAt && now >= new Date(chapter.freeAt)) {
+      return true;
+    }
+
+    if (userId && Types.ObjectId.isValid(userId)) {
+      const hasSubscription = await this.usersService.getSubscriptionExpiresAt(userId);
+      if (hasSubscription && now < new Date(hasSubscription)) {
+        return true;
+      }
+
+      const unlocked = await this.chapterUnlockModel
+        .findOne({ userId: new Types.ObjectId(userId), chapterId: new Types.ObjectId(chapterId) })
+        .exec();
+      if (unlocked) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   async getNextChapter(

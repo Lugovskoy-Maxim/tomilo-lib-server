@@ -273,6 +273,46 @@ export class AdminController {
   }
 
   /**
+   * Список тайтлов для админки (все / только неопубликованные / только опубликованные)
+   */
+  @Get('titles')
+  async getTitles(
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+    @Query('isPublished') isPublished?: string,
+    @Query('sortBy') sortBy = 'createdAt',
+    @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const isPublishedFilter =
+        isPublished === 'true' ? true : isPublished === 'false' ? false : undefined;
+
+      const data = await this.adminService.getTitles({
+        page: Number(page),
+        limit: Number(limit),
+        isPublished: isPublishedFilter,
+        sortBy,
+        sortOrder,
+      });
+
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'admin/titles',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch titles',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'admin/titles',
+      };
+    }
+  }
+
+  /**
    * Массовое удаление тайтлов
    */
   @Post('titles/bulk-delete')

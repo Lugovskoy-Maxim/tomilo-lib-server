@@ -38,6 +38,10 @@ export class Chapter {
   @Prop({ default: 0 })
   unlockPrice: number;
 
+  /** Дата, после которой глава становится бесплатной для всех */
+  @Prop({ type: Date, default: null })
+  freeAt: Date | null;
+
   // Activity tracking for stats
   @Prop({ type: Date, default: null })
   lastViewedAt: Date | null;

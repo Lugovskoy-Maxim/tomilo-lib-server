@@ -32,6 +32,7 @@ export class SearchService {
       sortBy,
       sortOrder,
       canViewAdult,
+      publishedOnly: true,
     });
 
     return result.titles;

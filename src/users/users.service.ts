@@ -613,6 +613,19 @@ export class UsersService {
     return canViewAdult;
   }
 
+  /**
+   * Дата окончания подписки. Если в будущем — у пользователя есть подписка (доступ к платным главам по подписке).
+   */
+  async getSubscriptionExpiresAt(userId: string): Promise<Date | null> {
+    if (!userId || !Types.ObjectId.isValid(userId)) return null;
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('subscriptionExpiresAt')
+      .lean()
+      .exec();
+    return user?.subscriptionExpiresAt ?? null;
+  }
+
   async findById(id: string): Promise<User> {
     this.logger.log(`Finding user by ID: ${id}`);
     if (!Types.ObjectId.isValid(id)) {

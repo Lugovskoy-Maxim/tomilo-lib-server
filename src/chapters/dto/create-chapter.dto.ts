@@ -38,4 +38,17 @@ export class CreateChapterDto {
   // @IsDate()
   @IsOptional()
   releaseDate?: Date;
+
+  @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  isPaid?: boolean;
+
+  @IsNumber()
+  @IsOptional()
+  @Type(() => Number)
+  unlockPrice?: number;
+
+  @IsOptional()
+  freeAt?: Date | null;
 }

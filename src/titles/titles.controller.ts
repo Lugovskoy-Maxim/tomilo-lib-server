@@ -425,6 +425,7 @@ export class TitlesController {
         sortOrder,
         populateChapters: false,
         canViewAdult,
+        publishedOnly: true,
       });
 
       const data = result.titles.map((title) => ({
@@ -736,6 +737,7 @@ export class TitlesController {
         sortOrder,
         populateChapters: false,
         canViewAdult,
+        publishedOnly: true,
       });
 
       const data = {
@@ -1223,6 +1225,7 @@ export class TitlesController {
         sortOrder,
         populateChapters: false,
         canViewAdult,
+        publishedOnly: true,
       });
 
       const data = {

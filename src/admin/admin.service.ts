@@ -345,6 +345,55 @@ export class AdminService {
     return user;
   }
 
+  /**
+   * Список тайтлов для админки с фильтром по публикации.
+   * @param isPublished true — только опубликованные, false — только неопубликованные, undefined — все
+   */
+  async getTitles(options: {
+    page?: number;
+    limit?: number;
+    isPublished?: boolean;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  }): Promise<{
+    titles: TitleDocument[];
+    pagination: { total: number; page: number; limit: number; pages: number };
+  }> {
+    const page = Math.max(1, options.page ?? 1);
+    const limit = Math.min(100, Math.max(1, options.limit ?? 20));
+    const sortBy = options.sortBy ?? 'createdAt';
+    const sortOrder = options.sortOrder ?? 'desc';
+
+    const query: Record<string, unknown> = {};
+    if (options.isPublished === true) query.isPublished = true;
+    if (options.isPublished === false) query.isPublished = false;
+
+    const skip = (page - 1) * limit;
+    const sort: Record<string, 1 | -1> = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+
+    const [titles, total] = await Promise.all([
+      this.titleModel
+        .find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .select('name slug _id status type isPublished totalChapters createdAt updatedAt chaptersRemovedByCopyrightHolder')
+        .lean()
+        .exec(),
+      this.titleModel.countDocuments(query),
+    ]);
+
+    return {
+      titles: titles as TitleDocument[],
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit) || 1,
+      },
+    };
+  }
+
   async bulkDeleteTitles(
     ids: string[],
     adminId: string,

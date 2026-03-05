@@ -32,6 +32,10 @@ export class User {
   @Prop({ default: 0 })
   balance: number;
 
+  /** Подписка: дата окончания. Если дата в будущем — пользователь имеет доступ к платным главам тайтлов с подпиской */
+  @Prop({ type: Date, default: null })
+  subscriptionExpiresAt: Date | null;
+
   /** Общее количество прочитанных глав (независимо от истории) */
   @Prop({ default: 0 })
   chaptersReadCount: number;

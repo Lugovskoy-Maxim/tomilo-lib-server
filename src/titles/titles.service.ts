@@ -54,6 +54,7 @@ export class TitlesService {
     sortOrder = 'desc',
     populateChapters = true,
     canViewAdult = true,
+    publishedOnly = true,
   }: {
     page?: number;
     limit?: number;
@@ -68,6 +69,8 @@ export class TitlesService {
     sortOrder?: 'asc' | 'desc';
     populateChapters?: boolean;
     canViewAdult?: boolean;
+    /** При true (по умолчанию) в выборку попадают только опубликованные тайтлы. Для админки передать false. */
+    publishedOnly?: boolean;
   }) {
     const isDefaultFirstPage =
       page === 1 &&
@@ -79,7 +82,8 @@ export class TitlesService {
       !ageLimits?.length &&
       !tags?.length &&
       sortBy === 'createdAt' &&
-      sortOrder === 'desc';
+      sortOrder === 'desc' &&
+      publishedOnly === true;
     if (isDefaultFirstPage) {
       const cacheKey = `${CACHE_TITLES_LIST_PREFIX}:${limit}:${canViewAdult}`;
       const cached = await this.cacheManager.get(cacheKey);
@@ -88,6 +92,10 @@ export class TitlesService {
 
     const skip = (page - 1) * limit;
     const query: any = {};
+
+    if (publishedOnly === true) {
+      query.isPublished = true;
+    }
 
     if (search) {
       const escaped = escapeRegex(search);

@@ -39,10 +39,12 @@ function setAuthCookies(
 ) {
   const isProduction = process.env.NODE_ENV === 'production';
   // В production: SameSite=None и Secure для отправки cookies при cross-origin (фронт и API на разных поддоменах/портах)
-  const cookieOptions = {
+  const cookieOptions: express.CookieOptions = {
     httpOnly: true,
-    sameSite: (isProduction ? 'none' : 'lax') as 'lax' | 'none',
+    sameSite: isProduction ? 'none' : 'lax',
     secure: isProduction,
+    path: '/',
+    ...(isProduction && { domain: '.tomilo-lib.ru' }),
   };
   res.cookie(COOKIE_ACCESS_TOKEN, accessToken, {
     ...cookieOptions,
@@ -568,8 +570,15 @@ export class AuthController {
     @Body() body: { refresh_token?: string },
     @Response({ passthrough: true }) res: express.Response,
   ): Promise<ApiResponseDto<any>> {
-    const refreshToken =
-      req.cookies?.[COOKIE_REFRESH_TOKEN] ?? body?.refresh_token;
+    // Refresh token: cookie (при same-origin), body (если клиент передаёт явно), заголовок Authorization: Refresh <token>
+    const fromCookie = req.cookies?.[COOKIE_REFRESH_TOKEN];
+    const fromBody = body?.refresh_token;
+    const authHeader = req.headers?.authorization;
+    const fromHeader =
+      typeof authHeader === 'string' && authHeader.startsWith('Refresh ')
+        ? authHeader.slice(8).trim()
+        : undefined;
+    const refreshToken = fromCookie ?? fromBody ?? fromHeader;
     const data = await this.authService.refreshTokens(refreshToken);
     if (!data) {
       throw new UnauthorizedException('Invalid or expired refresh token');
