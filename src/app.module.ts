@@ -42,6 +42,7 @@ import { AchievementsModule } from './achievements/achievements.module';
 import { AdminModule } from './admin/admin.module';
 import { GenresModule } from './genres/genres.module';
 import { PromocodesModule } from './promocodes/promocodes.module';
+import { TranslatorTeamsModule } from './translator-teams/translator-teams.module';
 
 const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 
@@ -96,6 +97,7 @@ const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
     AdminModule,
     GenresModule,
     PromocodesModule,
+    TranslatorTeamsModule,
   ],
   controllers: [AppController],
   providers: [
