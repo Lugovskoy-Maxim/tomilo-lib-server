@@ -113,8 +113,8 @@ export class AuthService {
   /** Refresh token TTL (long-lived). */
   private readonly refreshTokenExpiresIn = '7d';
 
-  /** Опыт за ежедневный вход */
-  private static readonly DAILY_LOGIN_EXP = 5;
+  /** Опыт за ежедневный вход — удвоенный бонус */
+  private static readonly DAILY_LOGIN_EXP = 10;
 
   /**
    * Вычисляет опыт до следующего уровня

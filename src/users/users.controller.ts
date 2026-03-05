@@ -113,6 +113,58 @@ export class UsersController {
     }
   }
 
+  // 🎁 Ежедневный бонус (опыт за вход раз в день)
+  @Post('daily-bonus')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async claimDailyBonus(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const result = await this.usersService.awardDailyLoginExp(
+        req.user.userId,
+      );
+      const path = 'users/daily-bonus';
+      if (!result) {
+        const profile = await this.usersService.findProfileById(
+          req.user.userId,
+        );
+        return {
+          success: true,
+          data: {
+            success: true,
+            message: 'Бонус уже получен сегодня',
+            currentStreak: profile?.currentStreak ?? 0,
+            experienceGained: 0,
+          },
+          timestamp: new Date().toISOString(),
+          path,
+          method: 'POST',
+        };
+      }
+      return {
+        success: true,
+        data: {
+          success: true,
+          message: 'Ежедневный бонус получен!',
+          currentStreak: result.currentStreak,
+          experienceGained: result.expGained,
+          coinsGained: result.bonusCoins,
+        },
+        timestamp: new Date().toISOString(),
+        path,
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'An error occurred',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/daily-bonus',
+        method: 'POST',
+      };
+    }
+  }
+
   // ✏️ Обновить профиль пользователя
   @Put('profile')
   @UseGuards(JwtAuthGuard)

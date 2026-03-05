@@ -2146,8 +2146,8 @@ export class UsersService {
     return user;
   }
 
-  /** Опыт за ежедневный вход (раз в день) */
-  private static readonly DAILY_LOGIN_EXP = 5;
+  /** Опыт за ежедневный вход (раз в день) — удвоенный бонус */
+  private static readonly DAILY_LOGIN_EXP = 10;
 
   /**
    * Начисляет опыт за ежедневный вход (раз в день).
@@ -2163,6 +2163,7 @@ export class UsersService {
     newLevel?: number;
     oldLevel?: number;
     bonusCoins?: number;
+    currentStreak: number;
   } | null> {
     if (!Types.ObjectId.isValid(userId)) {
       return null;
@@ -2222,6 +2223,7 @@ export class UsersService {
       oldLevel: leveledUp ? oldLevel : undefined,
       newLevel: leveledUp ? user.level : undefined,
       bonusCoins: leveledUp ? totalBonusCoins : undefined,
+      currentStreak: user.currentStreak ?? 0,
     };
   }
 
