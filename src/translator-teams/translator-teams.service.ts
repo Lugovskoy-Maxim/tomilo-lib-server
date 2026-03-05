@@ -10,6 +10,7 @@ import {
   TranslatorTeam,
   TranslatorTeamDocument,
 } from '../schemas/translator-team.schema';
+import { Title, TitleDocument } from '../schemas/title.schema';
 import { CreateTranslatorTeamDto } from './dto/create-translator-team.dto';
 import { UpdateTranslatorTeamDto } from './dto/update-translator-team.dto';
 import { AddMemberDto } from './dto/add-member.dto';
@@ -49,7 +50,25 @@ export class TranslatorTeamsService {
   constructor(
     @InjectModel(TranslatorTeam.name)
     private teamModel: Model<TranslatorTeamDocument>,
+    @InjectModel(Title.name)
+    private titleModel: Model<TitleDocument>,
   ) {}
+
+  async getTitlesForTeam(titleIds: Types.ObjectId[]) {
+    if (!titleIds?.length) return [];
+    const titles = await this.titleModel
+      .find({ _id: { $in: titleIds } })
+      .select('name slug coverImage totalChapters')
+      .lean()
+      .exec();
+    return titles.map((t: any) => ({
+      _id: t._id?.toString?.() ?? t._id,
+      name: t.name,
+      slug: t.slug,
+      coverImage: t.coverImage,
+      totalChapters: t.totalChapters ?? 0,
+    }));
+  }
 
   async findAll(options: {
     page?: number;

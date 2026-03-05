@@ -85,9 +85,12 @@ export class TranslatorTeamsController {
     const team = await this.translatorTeamsService.findBySlug(
       decodeURIComponent(slug),
     );
+    const titles = await this.translatorTeamsService.getTitlesForTeam(
+      team.titleIds || [],
+    );
     return {
       success: true,
-      data: toResponse(team),
+      data: { ...toResponse(team), titles },
       timestamp: new Date().toISOString(),
       path: `translator-teams/slug/${slug}`,
     };
@@ -96,9 +99,12 @@ export class TranslatorTeamsController {
   @Get(':id')
   async findById(@Param('id') id: string): Promise<ApiResponseDto<any>> {
     const team = await this.translatorTeamsService.findById(id);
+    const titles = await this.translatorTeamsService.getTitlesForTeam(
+      team.titleIds || [],
+    );
     return {
       success: true,
-      data: toResponse(team),
+      data: { ...toResponse(team), titles },
       timestamp: new Date().toISOString(),
       path: `translator-teams/${id}`,
     };
