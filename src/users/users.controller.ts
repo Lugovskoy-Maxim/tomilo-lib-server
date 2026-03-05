@@ -829,8 +829,10 @@ export class UsersController {
     }
   }
 
-  // 🖼 Админ: удалить аватар любого пользователя
+  // 🖼 Админ: обновить аватар любого пользователя
   @Post('avatar/admin/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
   @UseInterceptors(
     FileUploadInterceptor.create('avatar', {
       destination: './uploads/avatars',
@@ -839,7 +841,6 @@ export class UsersController {
       filenamePrefix: 'avatar',
     }),
   )
-  @Roles('admin')
   async uploadAvatarForAdmin(
     @Param('id') userId: string,
     @UploadedFile() file: Express.Multer.File,

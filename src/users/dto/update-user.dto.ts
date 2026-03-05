@@ -7,6 +7,7 @@ import {
   IsBoolean,
   IsEnum,
   IsObject,
+  MaxLength,
   ValidateNested,
 } from 'class-validator';
 import { CreateUserDto } from './create-user.dto';
@@ -51,6 +52,12 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @IsOptional()
   @IsString()
   avatar?: string;
+
+  /** Краткое описание / био (для админа — модерация правил), до 200 символов */
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  bio?: string;
 
   @IsOptional()
   @IsArray()
