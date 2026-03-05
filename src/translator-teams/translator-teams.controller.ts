@@ -8,14 +8,18 @@ import {
   Param,
   Query,
   UseGuards,
+  UseInterceptors,
   UsePipes,
   ValidationPipe,
+  BadRequestException,
 } from '@nestjs/common';
+import { UploadedFile } from '@nestjs/common';
 import { TranslatorTeamsService } from './translator-teams.service';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
+import { FileUploadInterceptor } from '../common/interceptors/file-upload.interceptor';
 import { CreateTranslatorTeamDto } from './dto/create-translator-team.dto';
 import { UpdateTranslatorTeamDto } from './dto/update-translator-team.dto';
 import { AddMemberDto } from './dto/add-member.dto';
@@ -124,6 +128,34 @@ export class TranslatorTeamsController {
       timestamp: new Date().toISOString(),
       path: 'translator-teams',
       method: 'POST',
+    };
+  }
+
+  @Put(':id/avatar')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  @UseInterceptors(
+    FileUploadInterceptor.create('avatar', {
+      fileTypes: /\/(jpg|jpeg|png|webp)$/,
+      fileSize: 2 * 1024 * 1024, // 2MB
+      filenamePrefix: 'avatar',
+    }),
+  )
+  async uploadAvatar(
+    @Param('id') id: string,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<ApiResponseDto<any>> {
+    if (!file) {
+      throw new BadRequestException('Файл аватара обязателен');
+    }
+    const team = await this.translatorTeamsService.uploadAvatar(id, file);
+    return {
+      success: true,
+      data: toResponse(team),
+      message: 'Аватар загружен',
+      timestamp: new Date().toISOString(),
+      path: `translator-teams/${id}/avatar`,
+      method: 'PUT',
     };
   }
 

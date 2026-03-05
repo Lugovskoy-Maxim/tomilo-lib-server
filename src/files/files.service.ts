@@ -331,6 +331,58 @@ export class FilesService {
     );
   }
 
+  /** Аватар команды переводчиков: сохраняет в translator-teams/{teamId}/avatar/ */
+  async saveTranslatorTeamAvatar(
+    file: Express.Multer.File,
+    teamId: string,
+  ): Promise<string> {
+    if (!file) {
+      throw new BadRequestException('Нет файла для загрузки');
+    }
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Файл должен быть изображением');
+    }
+    const fileExtension = file.originalname.split('.').pop() || 'jpg';
+    const fileName = `avatar.${fileExtension}`;
+    let fileBuffer: Buffer;
+    if (file.path) {
+      fileBuffer = await fs.readFile(file.path);
+    } else if (file.buffer) {
+      fileBuffer = file.buffer;
+    } else {
+      throw new BadRequestException('Отсутствует содержимое файла');
+    }
+    try {
+      await this.deleteTranslatorTeamAvatar(teamId);
+      const localPath = `translator-teams/${teamId}/avatar/${fileName}`;
+      const s3Key = localPath;
+      const resultPath = await this.saveFileWithBackup(
+        fileBuffer,
+        localPath,
+        s3Key,
+        file.mimetype,
+      );
+      if (file.path) {
+        await fs.unlink(file.path);
+      }
+      return `/uploads/${resultPath.startsWith('/') ? resultPath.slice(1) : resultPath}`;
+    } catch (error) {
+      this.logger.error(
+        `Ошибка при сохранении аватара команды: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      throw new BadRequestException(
+        `Не удалось сохранить аватар: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  async deleteTranslatorTeamAvatar(teamId: string): Promise<void> {
+    await this.deleteFolderWithBackup(
+      `translator-teams/${teamId}/avatar`,
+      `translator-teams/${teamId}/avatar`,
+    );
+  }
+
   async getUserAvatarPath(userId: string): Promise<string | null> {
     if (this.useS3()) {
       const files = await this.s3Service.listFiles(`users/${userId}/avatar/`);

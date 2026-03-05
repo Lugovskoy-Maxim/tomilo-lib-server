@@ -11,6 +11,7 @@ import {
   TranslatorTeamDocument,
 } from '../schemas/translator-team.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
+import { FilesService } from '../files/files.service';
 import { CreateTranslatorTeamDto } from './dto/create-translator-team.dto';
 import { UpdateTranslatorTeamDto } from './dto/update-translator-team.dto';
 import { AddMemberDto } from './dto/add-member.dto';
@@ -52,6 +53,7 @@ export class TranslatorTeamsService {
     private teamModel: Model<TranslatorTeamDocument>,
     @InjectModel(Title.name)
     private titleModel: Model<TitleDocument>,
+    private filesService: FilesService,
   ) {}
 
   async getTitlesForTeam(titleIds: Types.ObjectId[]) {
@@ -297,6 +299,22 @@ export class TranslatorTeamsService {
         { $pull: { titleIds: new Types.ObjectId(titleId) } },
         { new: true },
       )
+      .exec();
+    if (!updated) throw new NotFoundException('Translator team not found');
+    return updated;
+  }
+
+  async uploadAvatar(
+    teamId: string,
+    file: Express.Multer.File,
+  ): Promise<TranslatorTeamDocument> {
+    const team = await this.findById(teamId);
+    const avatarUrl = await this.filesService.saveTranslatorTeamAvatar(
+      file,
+      teamId,
+    );
+    const updated = await this.teamModel
+      .findByIdAndUpdate(teamId, { avatar: avatarUrl }, { new: true })
       .exec();
     if (!updated) throw new NotFoundException('Translator team not found');
     return updated;
