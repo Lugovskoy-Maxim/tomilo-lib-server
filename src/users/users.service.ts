@@ -60,6 +60,9 @@ export interface LeaderboardUser {
   titlesReadCount?: number;
   completedTitlesCount?: number;
   createdAt?: Date;
+  showStats?: boolean;
+  /** Дата окончания премиум-подписки (ISO). Если в будущем — показываем значок премиум в таблице лидеров. */
+  subscriptionExpiresAt?: string | null;
   equippedDecorations?: {
     avatar?: string | null;
     frame?: string | null;
@@ -331,6 +334,8 @@ export class UsersService {
       'completedTitlesCount',
       'createdAt',
       'equippedDecorations',
+      'subscriptionExpiresAt',
+      'showStats',
     ].join(' ');
 
     const baseFilter: Record<string, any> = {
@@ -397,6 +402,12 @@ export class UsersService {
       titlesReadCount: user.titlesReadCount ?? 0,
       completedTitlesCount: user.completedTitlesCount ?? 0,
       createdAt: user.createdAt,
+      showStats: user.showStats,
+      subscriptionExpiresAt: user.subscriptionExpiresAt
+        ? (user.subscriptionExpiresAt instanceof Date
+            ? user.subscriptionExpiresAt.toISOString()
+            : user.subscriptionExpiresAt)
+        : null,
       equippedDecorations: user.equippedDecorations
         ? {
             avatar: user.equippedDecorations.avatar?.imageUrl ?? null,
@@ -532,7 +543,7 @@ export class UsersService {
 
     const users = await this.userModel
       .find({ _id: { $in: userIds }, isBot: { $ne: true } })
-      .select('_id username avatar role level experience equippedDecorations')
+      .select('_id username avatar role level experience equippedDecorations subscriptionExpiresAt showStats')
       .populate({ path: 'equippedDecorations.avatar', select: 'imageUrl' })
       .populate({ path: 'equippedDecorations.frame', select: 'imageUrl' })
       .populate({ path: 'equippedDecorations.background', select: 'imageUrl' })
@@ -568,6 +579,12 @@ export class UsersService {
         titlesReadCount: 0,
         completedTitlesCount: 0,
         createdAt: user.createdAt,
+        subscriptionExpiresAt: user.subscriptionExpiresAt
+          ? (user.subscriptionExpiresAt instanceof Date
+              ? user.subscriptionExpiresAt.toISOString()
+              : user.subscriptionExpiresAt)
+          : null,
+        showStats: user.showStats,
         equippedDecorations: user.equippedDecorations
           ? {
               avatar: user.equippedDecorations.avatar?.imageUrl ?? null,
