@@ -906,10 +906,15 @@ export class TitlesService {
     }
   }
 
+  /**
+   * Топ тайтлов за период (день/неделя/месяц). При отсутствии данных возвращает [].
+   * Опционально фильтр по type и/или releaseYear для колонок главной (Топ 2026, Манхва, Маньхуа).
+   */
   async getTopTitlesForPeriod(
     period: 'day' | 'week' | 'month',
     limit = 10,
     canViewAdult = true,
+    filters?: { type?: string; releaseYear?: number },
   ): Promise<TitleDocument[]> {
     // Определяем поле для сортировки в зависимости от периода
     let sortField: string;
@@ -938,21 +943,24 @@ export class TitlesService {
       ];
     }
 
-    // Получаем больше тайтлов для возможности перемешивания (2x limit)
+    if (filters?.type) {
+      query.type = filters.type;
+    }
+    if (filters?.releaseYear != null) {
+      query.releaseYear = filters.releaseYear;
+    }
+
+    // Только нужные поля для топа; без populate chapters — эндпоинт для списка, не для страницы тайтла
+    const select =
+      'name slug coverImage averageRating type releaseYear description ageLimit dayViews weekViews monthViews';
     const fetchLimit = limit * 2;
     const titles = await this.titleModel
       .find(query)
+      .select(select)
       .sort({ [sortField]: -1 })
       .limit(fetchLimit)
-      .populate({
-        path: 'chapters',
-        select: '-pages',
-      })
-      .exec();
-
-    for (const t of titles) {
-      if (t.chaptersRemovedByCopyrightHolder) t.chapters = [];
-    }
+      .lean()
+      .exec() as TitleDocument[];
 
     // Разделяем тайтлы на взрослые (18+) и обычные
     const adultTitles: TitleDocument[] = [];

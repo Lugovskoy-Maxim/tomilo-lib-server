@@ -1263,19 +1263,24 @@ export class TitlesController {
   @Get('titles/top/day')
   @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   async getTopTitlesDay(
-    @Query('limit') limit = 10,
+    @Query('limit') limit: string | number = 10,
     @Query('includeAdult') includeAdult?: string,
+    @Query('type') type?: string,
+    @Query('releaseYear') releaseYear?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
+      const limitNum = Math.min(50, Math.max(1, Number(limit) || 10));
       const canViewAdult = await this.getCanViewAdult(req, includeAdult);
+      const releaseYearNum = releaseYear ? this.parseNumber(releaseYear) : undefined;
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'day',
-        Number(limit),
+        limitNum,
         canViewAdult,
+        type || releaseYearNum != null ? { type, releaseYear: releaseYearNum ?? undefined } : undefined,
       );
 
-      const data = titles.map((title) => ({
+      const data = titles.map((title: any) => ({
         id: title._id?.toString(),
         title: title.name,
         slug: title.slug,
@@ -1285,6 +1290,7 @@ export class TitlesController {
         releaseYear: title.releaseYear,
         description: title.description,
         isAdult: this.processAdultField(title?.ageLimit),
+        views: title.dayViews ?? 0,
       }));
 
       return {
@@ -1307,19 +1313,24 @@ export class TitlesController {
   @Get('titles/top/week')
   @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   async getTopTitlesWeek(
-    @Query('limit') limit = 10,
+    @Query('limit') limit: string | number = 10,
     @Query('includeAdult') includeAdult?: string,
+    @Query('type') type?: string,
+    @Query('releaseYear') releaseYear?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
+      const limitNum = Math.min(50, Math.max(1, Number(limit) || 10));
       const canViewAdult = await this.getCanViewAdult(req, includeAdult);
+      const releaseYearNum = releaseYear ? this.parseNumber(releaseYear) : undefined;
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'week',
-        Number(limit),
+        limitNum,
         canViewAdult,
+        type || releaseYearNum != null ? { type, releaseYear: releaseYearNum ?? undefined } : undefined,
       );
 
-      const data = titles.map((title) => ({
+      const data = titles.map((title: any) => ({
         id: title._id?.toString(),
         title: title.name,
         slug: title.slug,
@@ -1329,6 +1340,7 @@ export class TitlesController {
         releaseYear: title.releaseYear,
         description: title.description,
         isAdult: this.processAdultField(title?.ageLimit),
+        views: title.weekViews ?? 0,
       }));
 
       return {
@@ -1351,19 +1363,24 @@ export class TitlesController {
   @Get('titles/top/month')
   @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   async getTopTitlesMonth(
-    @Query('limit') limit = 10,
+    @Query('limit') limit: string | number = 10,
     @Query('includeAdult') includeAdult?: string,
+    @Query('type') type?: string,
+    @Query('releaseYear') releaseYear?: string,
     @Req() req?: any,
   ): Promise<ApiResponseDto<any>> {
     try {
+      const limitNum = Math.min(50, Math.max(1, Number(limit) || 10));
       const canViewAdult = await this.getCanViewAdult(req, includeAdult);
+      const releaseYearNum = releaseYear ? this.parseNumber(releaseYear) : undefined;
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'month',
-        Number(limit),
+        limitNum,
         canViewAdult,
+        type || releaseYearNum != null ? { type, releaseYear: releaseYearNum ?? undefined } : undefined,
       );
 
-      const data = titles.map((title) => ({
+      const data = titles.map((title: any) => ({
         id: title._id?.toString(),
         title: title.name,
         slug: title.slug,
@@ -1373,6 +1390,7 @@ export class TitlesController {
         releaseYear: title.releaseYear,
         description: title.description,
         isAdult: this.processAdultField(title?.ageLimit),
+        views: title.monthViews ?? 0,
       }));
 
       return {
