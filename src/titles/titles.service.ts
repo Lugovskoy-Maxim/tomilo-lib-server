@@ -759,15 +759,61 @@ export class TitlesService {
       )
       .slice(skip, skip + limit);
 
+    // Для «новых» тайтлов подгружаем все номера глав, чтобы в ленте отображались все добавленные главы
+    const NEW_TITLE_DAYS = 14;
+    const NEW_TITLE_MAX_CHAPTERS = 20;
+    const now = Date.now();
+    const newTitleIds: string[] = [];
+    for (const item of titlesWithChapters) {
+      const title = item.title as any;
+      if (title.chaptersRemovedByCopyrightHolder) continue;
+      const totalChapters = Number(title.totalChapters) || 0;
+      const createdAt = title.createdAt ? new Date(title.createdAt).getTime() : 0;
+      const isNew =
+        totalChapters <= NEW_TITLE_MAX_CHAPTERS ||
+        (createdAt && now - createdAt <= NEW_TITLE_DAYS * 24 * 60 * 60 * 1000);
+      if (isNew && title._id) newTitleIds.push(title._id.toString());
+    }
+
+    let allChaptersByTitleId: Map<string, number[]> = new Map();
+    if (newTitleIds.length > 0) {
+      const allChapters = await this.chapterModel
+        .find({
+          titleId: { $in: newTitleIds.map((id) => new Types.ObjectId(id)) },
+          isPublished: true,
+        })
+        .select('titleId chapterNumber')
+        .lean()
+        .exec();
+      for (const ch of allChapters as any[]) {
+        const tid = ch.titleId?.toString?.() ?? ch.titleId;
+        if (!tid) continue;
+        if (!allChaptersByTitleId.has(tid)) allChaptersByTitleId.set(tid, []);
+        const num = ch.chapterNumber;
+        if (num != null && !allChaptersByTitleId.get(tid)!.includes(num)) {
+          allChaptersByTitleId.get(tid)!.push(num);
+        }
+      }
+      for (const [tid, nums] of allChaptersByTitleId) {
+        allChaptersByTitleId.set(tid, [...nums].sort((a, b) => b - a));
+      }
+    }
+
     const result = titlesWithChapters.map((item) => {
       const hideChapters = item.title.chaptersRemovedByCopyrightHolder;
       const recentChaptersList = hideChapters ? [] : item.chapters;
-      const chapterNumbers =
+      let chapterNumbers =
         recentChaptersList.length > 0
           ? [...new Set(recentChaptersList.map((c: any) => c.chapterNumber))].sort(
               (a: number, b: number) => b - a,
             )
           : [];
+
+      const titleId = (item.title as any)._id?.toString();
+      if (titleId && allChaptersByTitleId.has(titleId)) {
+        chapterNumbers = allChaptersByTitleId.get(titleId)!;
+      }
+
       const lastUpdate =
         recentChaptersList.length > 0
           ? (recentChaptersList[0] as any).releaseDate
@@ -799,7 +845,7 @@ export class TitlesService {
         latestChapter: hideChapters ? undefined : item.chapters[0],
         minChapter: hideChapters ? undefined : item.minChapter,
         maxChapter: hideChapters ? undefined : item.maxChapter,
-        /** Номера недавно вышедших глав (по убыванию), для ленты */
+        /** Номера недавно вышедших глав (по убыванию), для ленты; у новых тайтлов — все главы */
         recentChapterNumbers: chapterNumbers,
         /** Дата выхода последней главы в этой выборке */
         lastUpdate,

@@ -364,11 +364,8 @@ export class TitlesController {
           totalChapters: item.totalChapters ?? 0,
           chapter: chapterSummary,
           chapterNumber: maxChapter,
-          chapters: {
-            count: chapterNumbers.length,
-            numbers: chapterNumbers,
-            summary: chapterSummary,
-          },
+          /** Массив номеров глав для клиента (форматирование «Главы 1–5») */
+          chapters: chapterNumbers,
           lastUpdate: releaseDate ? releaseDate.toISOString() : null,
           timeAgo: releaseDate,
           isAdult: this.processAdultField(item.ageLimit),

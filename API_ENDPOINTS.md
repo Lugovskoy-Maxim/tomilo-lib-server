@@ -60,7 +60,7 @@ Authorization: Bearer <jwt_token>
 - `GET /titles/collections` - Get title collections
 - `GET /titles/titles/filters/options` - Get filter options
 - `GET /titles/user/reading-progress` - Get user reading progress
-- `GET /titles/titles/latest-updates` - Лента обновлений (query: `page`, `limit`; по умолчанию 18, макс. 100). В каждом элементе: `id`, `title`, `slug`, `cover`, `type`, `releaseYear`, `status`, `genres` (до 5), `rating`, `totalChapters`, `chapter` (строка), `chapterNumber`, `chapters` (`count`, `numbers`, `summary`), `lastUpdate` (ISO), `timeAgo`, `isAdult`
+- `GET /titles/titles/latest-updates` - Лента обновлений (query: `page`, `limit`; по умолчанию 18, макс. 100). В каждом элементе: `id`, `title`, `slug`, `cover`, `type`, `releaseYear`, `status`, `genres` (до 5), `rating`, `totalChapters`, `chapter` (строка), `chapterNumber`, `chapters` (массив номеров глав, для новых тайтлов — все главы), `lastUpdate` (ISO), `timeAgo`, `isAdult`
 - `GET /titles/search` - Search titles
 - `POST /titles/titles` - Create new title
 - `PUT /titles/titles/:id` - Update title
