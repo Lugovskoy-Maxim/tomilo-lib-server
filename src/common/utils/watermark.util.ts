@@ -197,22 +197,10 @@ export class WatermarkUtil {
         })
         .ensureAlpha()
         .recomb([
-          1,
-          0,
-          0,
-          0,
-          0,
-          1,
-          0,
-          0,
-          0,
-          0,
-          1,
-          0,
-          0,
-          0,
-          0,
-          opacity,
+          [1, 0, 0, 0],
+          [0, 1, 0, 0],
+          [0, 0, 1, 0],
+          [0, 0, 0, opacity],
         ])
         .png()
         .toBuffer();
