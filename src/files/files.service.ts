@@ -488,23 +488,14 @@ export class FilesService {
 
       if (pageNumber === 1) {
         this.logger.log(
-          `Страница 1 - добавляем верхний и обычный водяной знак`,
+          `Страница 1 - добавляем только верхний водяной знак`,
         );
-
         watermarkedBuffer =
           await this.watermarkUtil.addTopWatermark(imageBuffer);
-
-        watermarkedBuffer = await this.watermarkUtil.addWatermark(
-          watermarkedBuffer,
-          {
-            position: 'center-right',
-            scale: 0.35,
-            minHeight: 2000,
-          },
-        );
       } else {
+        const position = this.watermarkUtil.getWatermarkPositionForPage(pageNumber);
         watermarkedBuffer = await this.watermarkUtil.addWatermark(imageBuffer, {
-          position: 'center-right',
+          position,
           scale: 0.35,
           minHeight: 2000,
           pageNumber: pageNumber,

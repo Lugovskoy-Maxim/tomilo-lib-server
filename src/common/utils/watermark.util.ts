@@ -5,6 +5,15 @@ import { existsSync, readFileSync } from 'fs';
 // Используем default import для sharp
 import sharp from 'sharp';
 
+/** Один раз при загрузке модуля: снижаем утечки нативной памяти libvips (фрагментация на Linux). */
+let sharpTuned = false;
+function tuneSharpMemory(): void {
+  if (sharpTuned) return;
+  sharpTuned = true;
+  sharp.cache(false);
+  sharp.concurrency(1);
+}
+
 @Injectable()
 export class WatermarkUtil {
   private readonly logger = new Logger(WatermarkUtil.name);
@@ -20,6 +29,19 @@ export class WatermarkUtil {
   /** Прозрачность обычного водяного знака (0–1). Меньше = более прозрачный. */
   private readonly watermarkOpacity = 0.65;
 
+  /** Позиции обычного водяного знака по очереди для страниц 2, 4, 6, 8, … (страница 1 — только верхний водяной знак). */
+  private static readonly WATERMARK_POSITIONS = [
+    'top-left',
+    'top-right',
+    'bottom-left',
+    'bottom-right',
+    'center-left',
+    'center-right',
+    'top',
+    'bottom',
+    'center',
+  ] as const;
+
   // Добавляем геттер для проверки пути
   public getWatermarkPath(): string {
     return this.watermarkPath;
@@ -31,6 +53,7 @@ export class WatermarkUtil {
   }
 
   constructor() {
+    tuneSharpMemory();
     // Не загружаем водяные знаки в конструкторе — только при первом использовании (ленивая загрузка).
     // Так они не занимают ОЗУ при старте сервера и освобождаются после dispose().
   }
@@ -91,7 +114,10 @@ export class WatermarkUtil {
         | 'bottom-left'
         | 'bottom-right'
         | 'center'
-        | 'center-right';
+        | 'center-left'
+        | 'center-right'
+        | 'top'
+        | 'bottom';
       scale?: number;
       minHeight?: number; // Минимальная высота изображения для добавления водяного знака
       pageNumber?: number; // Номер страницы для определения четности
@@ -162,28 +188,32 @@ export class WatermarkUtil {
         `Размеры водяного знака: ${watermarkWidth}x${watermarkHeight}`,
       );
 
-      // Изменяем размер водяного знака
-      let resizedWatermark = await sharp(Buffer.from(this.watermarkBuffer))
+      // Ресайз + прозрачность через recomb (без raw-буфера: устраняет артефакты и чёрные полосы по краям)
+      const opacity = this.watermarkOpacity;
+      const watermarkWithOpacity = await sharp(Buffer.from(this.watermarkBuffer))
         .resize(watermarkWidth, watermarkHeight, {
           fit: 'contain',
           withoutEnlargement: true,
         })
         .ensureAlpha()
-        .raw()
-        .toBuffer({ resolveWithObject: true });
-
-      // Уменьшаем непрозрачность (делаем водяной знак более прозрачным)
-      const { data, info } = resizedWatermark;
-      for (let i = 3; i < data.length; i += 4) {
-        data[i] = Math.round(data[i] * this.watermarkOpacity);
-      }
-      const watermarkWithOpacity = await sharp(Buffer.from(data), {
-        raw: {
-          width: info.width,
-          height: info.height,
-          channels: info.channels,
-        },
-      })
+        .recomb([
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0,
+          0,
+          opacity,
+        ])
         .png()
         .toBuffer();
 
@@ -295,11 +325,10 @@ export class WatermarkUtil {
   }
 
   /**
-   * Добавляет водяной знак к нескольким изображениям
-   * С учетом новых требований:
-   * - На 1 странице добавляются ОБА водяных знака (верхний + обычный)
-   * - На четных страницах (2, 4, 6...) добавляется только обычный водяной знак
-   * - На нечетных страницах (3, 5, 7...) водяные знаки не добавляются
+   * Добавляет водяной знак к нескольким изображениям:
+   * - Страница 1: только верхний водяной знак (watermark-top.png)
+   * - Чётные страницы (2, 4, 6...): обычный водяной знак (watermark.png) в разных позициях
+   * - Нечётные страницы (3, 5, 7...): водяные знаки не добавляются
    */
   async addWatermarkMultiple(
     imageBuffers: Buffer[],
@@ -320,48 +349,21 @@ export class WatermarkUtil {
     const { scale = 0.30, minHeight = 4000 } = options;
     const results: Buffer[] = [];
 
-    // Определяем позиции для водяных знаков
-    const positions: Array<
-      | 'top-left'
-      | 'top-right'
-      | 'bottom-left'
-      | 'bottom-right'
-      | 'center'
-      | 'center-right'
-    > = [
-      'top-left',
-      'top-right',
-      'bottom-left',
-      'bottom-right',
-      'center',
-      'center-right',
-    ];
-
     for (let i = 0; i < imageBuffers.length; i++) {
+      const pageNumber = i + 1;
       this.logger.log(
-        `Обрабатываем изображение ${i + 1}/${imageBuffers.length}`,
+        `Обрабатываем изображение ${pageNumber}/${imageBuffers.length}`,
       );
       try {
-        // Страница 1 (индекс 0) - добавляем ОБА водяных знака
+        // Страница 1 — только верхний водяной знак (отдельная ватермарка для верхней позиции)
         if (i === 0) {
           this.logger.log(
-            `Страница 1 - добавляем верхний и обычный водяной знак`,
+            `Страница 1 - добавляем только верхний водяной знак`,
           );
 
-          // Сначала добавляем верхний водяной знак
-          let watermarkedImage = await this.addTopWatermark(imageBuffers[i]);
-
-          // Затем добавляем обычный водяной знак
-          watermarkedImage = await this.addWatermark(watermarkedImage, {
-            position: 'center-right',
-            scale,
-            minHeight,
-          });
-
+          const watermarkedImage = await this.addTopWatermark(imageBuffers[i]);
           results.push(watermarkedImage);
-          this.logger.log(
-            `Страница 1 успешно обработана с обоими водяными знаками`,
-          );
+          this.logger.log(`Страница 1 успешно обработана (только верхний знак)`);
           continue;
         }
 
@@ -370,19 +372,17 @@ export class WatermarkUtil {
 
         if (!isEvenPage) {
           this.logger.log(
-            `Страница ${i + 1} нечетная, пропускаем добавление водяного знака`,
+            `Страница ${pageNumber} нечетная, пропускаем добавление водяного знака`,
           );
           results.push(imageBuffers[i]);
           continue;
         }
 
-        // Для четных страниц добавляем водяной знак
-        // Выбираем позицию в зависимости от номера страницы
-        const positionIndex = Math.floor(i / 2) % positions.length;
-        const position = positions[positionIndex];
+        // Для четных страниц добавляем водяной знак в позиции по циклу
+        const position = this.getWatermarkPositionForPage(pageNumber);
 
         this.logger.log(
-          `Страница ${i + 1} четная, добавляем водяной знак в позиции: ${position}`,
+          `Страница ${pageNumber} четная, добавляем водяной знак в позиции: ${position}`,
         );
 
         const watermarkedImage = await this.addWatermark(imageBuffers[i], {
@@ -408,6 +408,16 @@ export class WatermarkUtil {
   }
 
   /**
+   * Возвращает позицию обычного водяного знака для данной страницы.
+   * Используется только для страниц 2, 4, 6, 8, … (страница 1 — только верхний знак).
+   */
+  getWatermarkPositionForPage(pageNumber: number): (typeof WatermarkUtil.WATERMARK_POSITIONS)[number] {
+    const positions = WatermarkUtil.WATERMARK_POSITIONS;
+    const index = Math.floor((pageNumber - 2) / 2) % positions.length;
+    return positions[index >= 0 ? index : 0];
+  }
+
+  /**
    * Конвертирует позицию в gravity для sharp
    */
   private getGravity(
@@ -417,7 +427,10 @@ export class WatermarkUtil {
       | 'bottom-left'
       | 'bottom-right'
       | 'center'
-      | 'center-right',
+      | 'center-left'
+      | 'center-right'
+      | 'top'
+      | 'bottom',
   ): string {
     switch (position) {
       case 'top-left':
@@ -430,8 +443,14 @@ export class WatermarkUtil {
         return 'southeast';
       case 'center':
         return 'center';
+      case 'center-left':
+        return 'west';
       case 'center-right':
         return 'east';
+      case 'top':
+        return 'north';
+      case 'bottom':
+        return 'south';
       default:
         return 'southeast';
     }
