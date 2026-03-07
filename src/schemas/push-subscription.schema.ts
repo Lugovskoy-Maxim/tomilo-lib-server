@@ -17,7 +17,7 @@ export class PushSubscription {
     auth: string;
   };
 
-  @Prop()
+  @Prop({ type: Number })
   expirationTime?: number | null;
 
   @Prop()
