@@ -100,6 +100,10 @@ Authorization: Bearer <jwt_token>
 - `PUT /shop/equip/:type/:decorationId` - Equip owned decoration (auth required)
 - `DELETE /shop/equip/:type` - Unequip decoration by type (auth required)
 
+### Users (Push)
+- `POST /users/profile/push-subscribe` - Save Web Push subscription (auth). Body: `{ endpoint, keys: { p256dh, auth }, expirationTime? }`.
+- `DELETE /users/profile/push-subscribe` - Remove Web Push subscription (auth). Body: `{ endpoint }`.
+
 ### Notifications
 - `GET /notifications` - Get notifications by user ID
 - `GET /notifications/unread-count` - Get unread notifications count

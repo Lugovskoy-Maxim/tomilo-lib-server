@@ -6,12 +6,14 @@ import {
   Notification,
   NotificationSchema,
 } from '../schemas/notification.schema';
+import { PushModule } from '../push/push.module';
 
 @Module({
   imports: [
     MongooseModule.forFeature([
       { name: Notification.name, schema: NotificationSchema },
     ]),
+    PushModule,
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService],

@@ -277,6 +277,7 @@ export class ChaptersService {
         savedChapter._id.toString(),
         chapterNumber,
         title.name,
+        { titleSlug: title.slug },
       );
     } catch (error) {
       this.logger.error(
@@ -667,6 +668,7 @@ export class ChaptersService {
           savedChapter.id.toString(),
           chapterNumber,
           title.name,
+          { titleSlug: title.slug },
         );
       } catch (error) {
         this.logger.error(

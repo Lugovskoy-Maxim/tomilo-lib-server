@@ -20,6 +20,7 @@ import { escapeRegex } from '../common/utils/regex.util';
 import { BotDetectionService } from '../common/services/bot-detection.service';
 import { ReadingProgressResponseDto } from './dto/reading-progress-response.dto';
 import { AchievementsService } from '../achievements/achievements.service';
+import { PushService } from '../push/push.service';
 import { Cron } from '@nestjs/schedule';
 /** Категории закладок: читаю, в планах, прочитано, избранное, брошено */
 export const BOOKMARK_CATEGORIES = [
@@ -127,6 +128,7 @@ export class UsersService {
     private chaptersService: ChaptersService,
     private botDetectionService: BotDetectionService,
     private achievementsService: AchievementsService,
+    private pushService: PushService,
     @Inject(CACHE_MANAGER)
     private cacheManager: {
       get: (k: string) => Promise<unknown>;
@@ -2792,6 +2794,29 @@ export class UsersService {
     }
 
     return user.notifications;
+  }
+
+  // 📱 Web Push subscription (для уведомлений в браузере)
+  async savePushSubscription(
+    userId: string,
+    subscription: {
+      endpoint: string;
+      keys: { p256dh: string; auth: string };
+      expirationTime?: number | null;
+    },
+    userAgent?: string,
+  ) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    return this.pushService.saveSubscription(userId, subscription, userAgent);
+  }
+
+  async removePushSubscription(userId: string, endpoint: string) {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    return this.pushService.removeSubscription(userId, endpoint);
   }
 
   // 🎨 Display Settings Methods

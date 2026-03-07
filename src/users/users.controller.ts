@@ -1390,6 +1390,83 @@ export class UsersController {
     }
   }
 
+  /**
+   * Сохранить подписку на Web Push (для уведомлений в браузере)
+   */
+  @Post('profile/push-subscribe')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async pushSubscribe(
+    @Request() req,
+    @Body()
+    body: {
+      endpoint: string;
+      keys: { p256dh: string; auth: string };
+      expirationTime?: number | null;
+    },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const userAgent = typeof req.headers?.['user-agent'] === 'string' ? req.headers['user-agent'] : undefined;
+      await this.usersService.savePushSubscription(
+        req.user.userId,
+        body,
+        userAgent,
+      );
+      return {
+        success: true,
+        data: null,
+        message: 'Push subscription saved',
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/push-subscribe',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to save push subscription',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/push-subscribe',
+        method: 'POST',
+      };
+    }
+  }
+
+  /**
+   * Удалить подписку на Web Push по endpoint
+   */
+  @Delete('profile/push-subscribe')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async pushUnsubscribe(
+    @Request() req,
+    @Body() body: { endpoint: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const result = await this.usersService.removePushSubscription(
+        req.user.userId,
+        body?.endpoint ?? '',
+      );
+      return {
+        success: true,
+        data: result,
+        message: 'Push subscription removed',
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/push-subscribe',
+        method: 'DELETE',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to remove push subscription',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/push-subscribe',
+        method: 'DELETE',
+      };
+    }
+  }
+
   // 🎨 Настройки отображения
 
   /**
