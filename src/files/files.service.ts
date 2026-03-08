@@ -254,6 +254,50 @@ export class FilesService {
     );
   }
 
+  private static readonly SYNC_TEMP_SUFFIX = '_sync_temp';
+
+  /**
+   * После успешной загрузки всех страниц во временную папку: удаляет старые страницы главы и заменяет их содержимым временной папки. Возвращает пути новых страниц для chapter.pages.
+   */
+  async replaceChapterPagesFromTemp(
+    chapterId: string,
+    titleId: string,
+  ): Promise<string[]> {
+    const mainDir = `titles/${titleId}/chapters/${chapterId}`;
+    const tempDir = `titles/${titleId}/chapters/${chapterId}${FilesService.SYNC_TEMP_SUFFIX}`;
+    const mainFull = join('uploads', mainDir);
+    const tempFull = join('uploads', tempDir);
+
+    await this.deleteChapterPages(chapterId, titleId);
+
+    try {
+      await fs.rename(tempFull, mainFull);
+    } catch (e) {
+      this.logger.error(
+        `replaceChapterPagesFromTemp: rename failed ${tempFull} -> ${mainFull}: ${e}`,
+      );
+      throw new BadRequestException(
+        `Failed to replace chapter pages: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    if (this.useS3()) {
+      const tempPrefix = tempDir + '/';
+      const mainPrefix = mainDir + '/';
+      const keys = await this.s3Service.listFiles(tempPrefix);
+      for (const key of keys) {
+        const fileName = key.replace(tempPrefix, '');
+        const destKey = mainPrefix + fileName;
+        await this.s3Service.copyFile(key, destKey);
+      }
+      await this.s3Service.deleteFolder(tempPrefix);
+    }
+
+    const files = await fs.readdir(mainFull);
+    const sorted = files.filter((f) => /\.(jpg|jpeg|png|webp)$/i.test(f)).sort();
+    return sorted.map((f) => `/${mainDir}/${f}`);
+  }
+
   async saveUserAvatar(
     file: Express.Multer.File,
     userId: string,
@@ -410,6 +454,8 @@ export class FilesService {
         'Sec-Fetch-Mode'?: string;
         'Sec-Fetch-Site'?: string;
       };
+      /** При синхронизации: сохранять во временную папку (chapterId_sync_temp), старые удалять после успешной загрузки всех */
+      syncTempSuffix?: string;
     },
   ): Promise<string> {
     this.logger.log(`=== НАЧАЛО downloadImageFromUrl ===`);
@@ -432,7 +478,7 @@ export class FilesService {
         },
       });
 
-      const chapterDir = `titles/${titleId}/chapters/${chapterId}`;
+      const chapterDir = `titles/${titleId}/chapters/${chapterId}${options?.syncTempSuffix ?? ''}`;
 
       const urlPath = new URL(requestUrl).pathname;
       const ext = urlPath.split('.').pop()?.split('?')[0] || 'jpg';

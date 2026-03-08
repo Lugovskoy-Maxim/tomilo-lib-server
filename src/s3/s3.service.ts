@@ -6,6 +6,7 @@ import {
   DeleteObjectCommand,
   HeadObjectCommand,
   ListObjectsV2Command,
+  CopyObjectCommand,
 } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 
@@ -197,6 +198,17 @@ export class S3Service implements OnModuleInit {
     return (response.Contents || [])
       .map((obj) => obj.Key)
       .filter((key): key is string => !!key);
+  }
+
+  async copyFile(sourceKey: string, destKey: string): Promise<void> {
+    if (!this.isConfigured()) return;
+    await this.s3Client.send(
+      new CopyObjectCommand({
+        Bucket: this.bucket,
+        CopySource: `${this.bucket}/${sourceKey}`,
+        Key: destKey,
+      }),
+    );
   }
 
   getClient(): S3Client {

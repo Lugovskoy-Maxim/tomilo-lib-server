@@ -182,6 +182,7 @@ export class MangaParserService {
     chapter: ChapterInfo,
     chapterId: string,
     titleId: string,
+    options?: { syncTempSuffix?: string },
   ): Promise<string[]> {
     if (!chapter.url) {
       throw new BadRequestException('Chapter URL is required for downloading');
@@ -308,7 +309,6 @@ export class MangaParserService {
             i + 1,
             titleId,
             {
-              // Добавляем заголовки для обхода возможных ограничений
               headers: {
                 Referer: 'https://mangabuff.ru/',
                 Accept: 'image/webp,image/apng,image/*,*/*;q=0.8',
@@ -316,6 +316,7 @@ export class MangaParserService {
                 'Sec-Fetch-Mode': 'no-cors',
                 'Sec-Fetch-Site': 'cross-site',
               },
+              syncTempSuffix: options?.syncTempSuffix,
             },
           );
 
@@ -348,6 +349,7 @@ export class MangaParserService {
                     'Sec-Fetch-Mode': 'no-cors',
                     'Sec-Fetch-Site': 'cross-site',
                   },
+                  syncTempSuffix: options?.syncTempSuffix,
                 },
               );
               pagePaths.push(altPagePath);
@@ -392,6 +394,7 @@ export class MangaParserService {
     chapter: ChapterInfo,
     chapterId: string,
     titleId: string,
+    options?: { syncTempSuffix?: string },
   ): Promise<string[]> {
     if (!chapter.url) {
       throw new BadRequestException('Chapter URL is required for downloading');
@@ -459,7 +462,7 @@ export class MangaParserService {
             chapterId,
             i + 1,
             titleId,
-            {},
+            { syncTempSuffix: options?.syncTempSuffix },
           );
           pagePaths.push(pagePath);
         } catch (imageError) {
@@ -492,6 +495,7 @@ export class MangaParserService {
     chapterId: string,
     domain: string,
     titleId: string,
+    options?: { syncTempSuffix?: string },
   ): Promise<string[]> {
     if (!chapter.slug) {
       throw new BadRequestException('Chapter slug is required for downloading');
@@ -563,6 +567,7 @@ export class MangaParserService {
           chapterId,
           page.number,
           titleId,
+          { syncTempSuffix: options?.syncTempSuffix },
         );
         pagePaths.push(pagePath);
 
@@ -588,6 +593,7 @@ export class MangaParserService {
     chapterId: string,
     mangaSlug: string,
     titleId: string,
+    options?: { syncTempSuffix?: string },
   ): Promise<string[]> {
     if (!chapter.number) {
       throw new BadRequestException(
@@ -626,6 +632,7 @@ export class MangaParserService {
                 Referer: 'https://telemanga.me/',
                 Accept: 'image/webp,image/apng,image/*,*/*;q=0.8',
               },
+              syncTempSuffix: options?.syncTempSuffix,
             },
           );
           pagePaths.push(pagePath);
@@ -660,6 +667,7 @@ export class MangaParserService {
     chapter: ChapterInfo,
     chapterId: string,
     titleId: string,
+    options?: { syncTempSuffix?: string },
   ): Promise<string[]> {
     if (!chapter.url) {
       throw new BadRequestException(
@@ -799,6 +807,7 @@ export class MangaParserService {
                 Referer: referer,
                 Accept: 'image/webp,image/apng,image/*,*/*;q=0.8',
               },
+              syncTempSuffix: options?.syncTempSuffix,
             },
           );
           pagePaths.push(pagePath);
@@ -1089,7 +1098,173 @@ export class MangaParserService {
   }
 
   /**
+   * Возвращает список URL изображений главы без скачивания (для проверки 200 перед синхронизацией).
+   */
+  private async getChapterImageUrls(
+    chapterInfo: ChapterInfo,
+    domain: string,
+    mangaSlug: string | null,
+  ): Promise<string[]> {
+    if (domain.includes('telemanga.me') && mangaSlug && chapterInfo.number != null) {
+      const chapterPagesUrl = `${this.baseUrl}/api/manga/${encodeURIComponent(mangaSlug)}/chapter/${chapterInfo.number}`;
+      const response = await this.session.get(chapterPagesUrl);
+      if (response.status !== 200) return [];
+      const pagesData = response.data.result?.pages || [];
+      if (!Array.isArray(pagesData) || pagesData.length === 0) return [];
+      const cdnBase = 'https://cdn.telemanga.me';
+      return Array.from(
+        { length: pagesData.length },
+        (_, i) =>
+          `${cdnBase}/mangas/${encodeURIComponent(mangaSlug)}/glava-${chapterInfo.number}/${i + 1}.jpg`,
+      );
+    }
+    if (domain.includes('mangabuff.ru') && chapterInfo.url) {
+      const session = axios.create({
+        timeout: 30000,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
+        },
+      });
+      const res = await session.get(chapterInfo.url, { maxRedirects: 5 });
+      const $ = cheerio.load(res.data);
+      const urls: string[] = [];
+      $('.reader__pages .reader__item img').each((_, el) => {
+        let src = $(el).attr('data-src') || $(el).attr('src');
+        if (src) {
+          src = this.normalizeImageUrl(src);
+          if (src) {
+            if (src.startsWith('//')) src = 'https:' + src;
+            else if (src.startsWith('/')) src = 'https://mangabuff.ru' + src;
+            if (!urls.includes(src)) urls.push(src);
+          }
+        }
+      });
+      if (urls.length === 0) {
+        $('img[data-src], img[src]').each((_, el) => {
+          const $el = $(el);
+          if ($el.parents('.rek, .ad').length > 0) return;
+          let src = $el.attr('data-src') || $el.attr('src');
+          if (src && (src.includes('/chapters/') || src.includes('/img/'))) {
+            src = this.normalizeImageUrl(src);
+            if (src) {
+              if (src.startsWith('//')) src = 'https:' + src;
+              else if (src.startsWith('/')) src = 'https://mangabuff.ru' + src;
+              if (!urls.includes(src)) urls.push(src);
+            }
+          }
+        });
+      }
+      return urls.filter(
+        (u) => !u.includes('yandex.ru') && !u.includes('ads') && !u.includes('rek'),
+      );
+    }
+    if (domain.includes('manga-shi.org') && chapterInfo.url) {
+      const session = axios.create({
+        timeout: 20000,
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          Referer: 'https://manga-shi.org/',
+        },
+      });
+      const res = await session.get(chapterInfo.url);
+      const $ = cheerio.load(res.data);
+      const baseUrl = new URL(chapterInfo.url).origin;
+      const urls: string[] = [];
+      $('.reader-page').each((_, pageEl) => {
+        const src = $(pageEl).find('.reader-image img, img').first().attr('data-src') || $(pageEl).find('img').first().attr('src');
+        if (src) {
+          const normalized = this.normalizeImageUrl(src);
+          if (normalized) urls.push(normalized.startsWith('http') ? normalized : `${baseUrl}${normalized.startsWith('/') ? '' : '/'}${normalized}`);
+        }
+      });
+      if (urls.length === 0) {
+        $('.page-break img').each((_, el) => {
+          const src = $(el).attr('data-src') || $(el).attr('src');
+          if (src) {
+            const normalized = this.normalizeImageUrl(src);
+            if (normalized) urls.push(new URL(normalized, chapterInfo.url).href);
+          }
+        });
+      }
+      return urls;
+    }
+    if (domain.includes('ab.728.team') && chapterInfo.url) {
+      const baseUrl = 'https://ab.728.team';
+      const res = await this.session.get(chapterInfo.url);
+      if (res.status !== 200) return [];
+      const $ = cheerio.load(res.data);
+      const urls: string[] = [];
+      const pushSrc = (src: string | undefined) => {
+        const normalized = src ? this.normalizeImageUrl(src) : '';
+        if (!normalized) return;
+        const absolute = normalized.startsWith('http') ? normalized : new URL(normalized, chapterInfo.url).href;
+        if (!urls.includes(absolute)) urls.push(absolute);
+      };
+      $('img[data-src]').each((_, el) => pushSrc($(el).attr('data-src')));
+      $('.reader img, .reader-page img').each((_, el) => {
+        const img = $(el);
+        pushSrc(img.attr('data-src') || img.attr('src'));
+      });
+      $('img[src*="storage"], img[data-src*="storage"]').each((_, el) => {
+        const img = $(el);
+        pushSrc(img.attr('data-src') || img.attr('src'));
+      });
+      return urls;
+    }
+    return [];
+  }
+
+  /**
+   * Проверяет, что все URL отдают статус 200 (HEAD или GET).
+   */
+  private async validateImageUrls(
+    urls: string[],
+    headers?: Record<string, string>,
+  ): Promise<{ allOk: boolean; failed?: { url: string; status: number } }> {
+    const defaultHeaders = {
+      'User-Agent':
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
+      ...headers,
+    };
+    const normalize = (u: string) => u.replace(/\s*;\s*$/, '').trim().replace(/ /g, '%20');
+    for (const url of urls) {
+      try {
+        const normalized = normalize(String(url));
+        const res = await axios.head(normalized, {
+          timeout: 10000,
+          headers: defaultHeaders,
+          validateStatus: () => true,
+        });
+        if (res.status !== 200) {
+          return { allOk: false, failed: { url: normalized, status: res.status } };
+        }
+      } catch {
+        try {
+          const normalized = normalize(String(url));
+          const res = await axios.get(normalized, {
+            timeout: 10000,
+            responseType: 'arraybuffer',
+            maxContentLength: 1,
+            headers: defaultHeaders,
+            validateStatus: () => true,
+          });
+          if (res.status !== 200) {
+            return { allOk: false, failed: { url: normalized, status: res.status } };
+          }
+        } catch (e) {
+          const status = (e as any)?.response?.status ?? 0;
+          return { allOk: false, failed: { url: String(url), status: status || 500 } };
+        }
+      }
+    }
+    return { allOk: true };
+  }
+
+  /**
    * Скачивает страницы главы с источника (общая логика для импорта и ре-синхронизации).
+   * При syncTempSuffix сохраняет во временную папку (для замены старых страниц после успешной загрузки).
    */
   private async downloadPagesForChapterInfo(
     chapterInfo: ChapterInfo,
@@ -1097,20 +1272,23 @@ export class MangaParserService {
     titleId: string,
     domain: string,
     mangaSlug: string | null,
+    options?: { syncTempSuffix?: string },
   ): Promise<string[]> {
+    const downloadOpts = { syncTempSuffix: options?.syncTempSuffix };
     if (domain.includes('senkuro.me') || domain.includes('sencuro.me')) {
       return this.downloadChapterImages(
         chapterInfo,
         chapterId,
         domain,
         titleId,
+        downloadOpts,
       );
     }
     if (domain.includes('manga-shi.org')) {
-      return this.downloadMangaShiChapterImages(chapterInfo, chapterId, titleId);
+      return this.downloadMangaShiChapterImages(chapterInfo, chapterId, titleId, downloadOpts);
     }
     if (domain.includes('mangabuff.ru')) {
-      return this.downloadMangabuffChapterImages(chapterInfo, chapterId, titleId);
+      return this.downloadMangabuffChapterImages(chapterInfo, chapterId, titleId, downloadOpts);
     }
     if (domain.includes('mangahub.one')) {
       throw new BadRequestException(
@@ -1123,6 +1301,7 @@ export class MangaParserService {
         chapterId,
         mangaSlug,
         titleId,
+        downloadOpts,
       );
     }
     if (domain.includes('ab.728.team')) {
@@ -1130,6 +1309,7 @@ export class MangaParserService {
         chapterInfo,
         chapterId,
         titleId,
+        downloadOpts,
       );
     }
     throw new BadRequestException(`Unsupported domain: ${domain}`);
@@ -1190,25 +1370,44 @@ export class MangaParserService {
       }
       try {
         const chapterId = dbChapter._id.toString();
-        // Сначала удаляем старые картинки (локально и в S3), затем качаем новые и сохраняем в облако и на сервер
-        await this.filesService.deleteChapterPages(
-          chapterId,
-          dbChapter.titleId?.toString(),
+
+        const imageUrls = await this.getChapterImageUrls(
+          sourceChapter,
+          domain,
+          mangaSlug,
         );
-        const pagePaths = await this.downloadPagesForChapterInfo(
+        if (imageUrls.length > 0) {
+          const validation = await this.validateImageUrls(imageUrls);
+          if (!validation.allOk && validation.failed) {
+            errors.push({
+              chapterNumber: num,
+              error: `source_page_not_200: ${validation.failed.url} => ${validation.failed.status}`,
+            });
+            continue;
+          }
+        }
+
+        const syncTempSuffix = '_sync_temp';
+        const tempPagePaths = await this.downloadPagesForChapterInfo(
           sourceChapter,
           chapterId,
           titleId,
           domain,
           mangaSlug,
+          { syncTempSuffix },
         );
-        if (pagePaths.length === 0) {
+        if (tempPagePaths.length === 0) {
           errors.push({
             chapterNumber: num,
             error: 'no_pages_downloaded',
           });
           continue;
         }
+
+        const pagePaths = await this.filesService.replaceChapterPagesFromTemp(
+          chapterId,
+          titleId,
+        );
         await this.chaptersService.update(chapterId, {
           pages: pagePaths,
           sourceChapterUrl: sourceChapter.url ?? null,
