@@ -187,7 +187,7 @@ export class CommentsService {
           .filter(Boolean);
       }
     } else {
-      const sortCrit =
+      const sortCrit: { createdAt: 1 | -1 } =
         sortOrder === 'oldest' ? { createdAt: 1 } : { createdAt: -1 };
       comments = await this.commentModel
         .find(query)
