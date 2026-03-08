@@ -1,4 +1,4 @@
-import { Injectable, Inject, NotFoundException } from '@nestjs/common';
+import { Injectable, Inject, NotFoundException, Optional, forwardRef } from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -10,6 +10,7 @@ import {
 import { CommentEntityType } from '../schemas/comment.schema';
 import { PushService } from '../push/push.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
+import { NotificationsGateway } from './notifications.gateway';
 
 const UNREAD_COUNT_CACHE_PREFIX = 'notifications:unread:';
 const UNREAD_COUNT_CACHE_TTL_MS = 30 * 1000; // 30 sec
@@ -24,7 +25,18 @@ export class NotificationsService {
     private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown, ttl?: number) => Promise<void> },
     private pushService: PushService,
     private subscriptionsService: SubscriptionsService,
+    @Optional()
+    @Inject(forwardRef(() => NotificationsGateway))
+    private notificationsGateway?: NotificationsGateway,
   ) {}
+
+  /** Push unread_count to user over WebSocket (no-op if gateway not available). */
+  private async notifyUnreadCount(userId: string): Promise<void> {
+    if (!this.notificationsGateway) return;
+    setImmediate(() => {
+      this.notificationsGateway!.emitUnreadCountToUser(userId).catch(() => {});
+    });
+  }
 
   private unreadCountCacheKey(userId: string): string {
     return `${UNREAD_COUNT_CACHE_PREFIX}${userId}`;
@@ -40,7 +52,23 @@ export class NotificationsService {
     metadata?: Record<string, any>;
   }): Promise<NotificationDocument> {
     const notification = new this.notificationModel(notificationData);
-    return notification.save();
+    const saved = await notification.save();
+    await this.notifyUnreadCount(notificationData.userId);
+    if (this.notificationsGateway) {
+      const id = (saved as any)._id?.toString?.() ?? String((saved as any).id);
+      const titleId = (saved as any).titleId?.toString?.();
+      const chapterId = (saved as any).chapterId?.toString?.();
+      this.notificationsGateway.emitNotificationToUser(notificationData.userId, {
+        _id: id,
+        type: (saved as any).type ?? notificationData.type,
+        title: (saved as any).title ?? notificationData.title,
+        message: (saved as any).message ?? notificationData.message,
+        ...(titleId && { titleId }),
+        ...(chapterId && { chapterId }),
+        ...((saved as any).metadata && { metadata: (saved as any).metadata }),
+      });
+    }
+    return saved;
   }
 
   async findByUserId(
@@ -123,6 +151,7 @@ export class NotificationsService {
     }
 
     await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, { ttl: 5 } as any);
+    await this.notifyUnreadCount(userId);
     return notification;
   }
 
@@ -137,6 +166,7 @@ export class NotificationsService {
     );
 
     await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, { ttl: 5 } as any);
+    await this.notifyUnreadCount(userId);
     return { modifiedCount: result.modifiedCount };
   }
 
@@ -159,6 +189,7 @@ export class NotificationsService {
 
     if (!result.isRead) {
       await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, { ttl: 5 } as any);
+      await this.notifyUnreadCount(userId);
     }
   }
 
@@ -222,6 +253,9 @@ export class NotificationsService {
 
     if (notifications.length > 0) {
       await this.notificationModel.insertMany(notifications);
+      for (const uid of allUserIds) {
+        await this.notifyUnreadCount(uid);
+      }
     }
 
     // Web Push: только пользователям с включёнными уведомлениями о новых главах
@@ -267,6 +301,9 @@ export class NotificationsService {
 
     if (notifications.length > 0) {
       await this.notificationModel.insertMany(notifications);
+      for (const uid of userIds) {
+        await this.notifyUnreadCount(uid);
+      }
     }
   }
 

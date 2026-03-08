@@ -19,6 +19,10 @@ export class Chapter {
   @Prop([String])
   pages: string[];
 
+  /** URL главы на источнике (для повторной синхронизации страниц) */
+  @Prop()
+  sourceChapterUrl: string | null;
+
   @Prop({ default: 0 })
   views: number;
 

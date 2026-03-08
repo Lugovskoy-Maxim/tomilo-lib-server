@@ -82,6 +82,12 @@ export class MangaParserService {
     return name.replace(/[\\/*?:"<>|]/g, '_').trim();
   }
 
+  /** Убирает точку с запятой в конце и пробелы — из-за этого иногда терялась последняя страница при парсинге */
+  private normalizeImageUrl(url: string): string {
+    if (!url || typeof url !== 'string') return '';
+    return url.replace(/;\s*$/, '').trim();
+  }
+
   private generateSlug(name: string): string {
     if (!name) return 'unknown-title';
 
@@ -228,9 +234,9 @@ export class MangaParserService {
               imgUrl = 'https://mangabuff.ru' + imgUrl;
             }
 
-            // Очищаем URL от лишних параметров, но оставляем timestamp
-            imgUrl = imgUrl.trim();
-            imageUrls.push(imgUrl);
+            // Очищаем URL от лишних параметров (в т.ч. ; в конце) — иначе может теряться страница
+            imgUrl = this.normalizeImageUrl(imgUrl);
+            if (imgUrl) imageUrls.push(imgUrl);
 
             this.logger.debug(`Found image ${index + 1}: ${imgUrl}`);
           }
@@ -257,8 +263,8 @@ export class MangaParserService {
                 imgUrl = 'https://mangabuff.ru' + imgUrl;
               }
 
-              imgUrl = imgUrl.trim();
-              if (!imageUrls.includes(imgUrl)) {
+              imgUrl = this.normalizeImageUrl(imgUrl);
+              if (imgUrl && !imageUrls.includes(imgUrl)) {
                 imageUrls.push(imgUrl);
               }
             }
@@ -417,9 +423,12 @@ export class MangaParserService {
         const img = $chapter(pageEl).find('.reader-image img, img').first();
         const src = img.attr('data-src') || img.attr('src');
         if (src) {
-          const absoluteUrl =
-            src.startsWith('http') ? src : `${baseUrl}${src.startsWith('/') ? '' : '/'}${src}`;
-          imageUrls.push(absoluteUrl);
+          const normalized = this.normalizeImageUrl(src);
+          if (normalized) {
+            const absoluteUrl =
+              normalized.startsWith('http') ? normalized : `${baseUrl}${normalized.startsWith('/') ? '' : '/'}${normalized}`;
+            imageUrls.push(absoluteUrl);
+          }
         }
       });
       // Legacy: .page-break img
@@ -428,8 +437,11 @@ export class MangaParserService {
           const src =
             $chapter(element).attr('data-src') || $chapter(element).attr('src');
           if (src) {
-            const absoluteUrl = new URL(src, chapter.url).href;
-            imageUrls.push(absoluteUrl);
+            const normalized = this.normalizeImageUrl(src);
+            if (normalized) {
+              const absoluteUrl = new URL(normalized, chapter.url).href;
+              imageUrls.push(absoluteUrl);
+            }
           }
         });
       }
@@ -542,7 +554,8 @@ export class MangaParserService {
 
       const pagePaths: string[] = [];
       for (const page of pages) {
-        const imgUrl = page.image?.original?.url;
+        const rawUrl = page.image?.original?.url;
+        const imgUrl = rawUrl ? this.normalizeImageUrl(rawUrl) : '';
         if (!imgUrl) continue;
 
         const pagePath = await this.filesService.downloadImageFromUrl(
@@ -599,7 +612,8 @@ export class MangaParserService {
 
       const pagePaths: string[] = [];
       for (let i = 0; i < pagesData.length; i++) {
-        const imgUrl = pagesData[i];
+        const rawUrl = pagesData[i];
+        const imgUrl = rawUrl ? this.normalizeImageUrl(String(rawUrl)) : '';
 
         if (!imgUrl) continue;
 
@@ -695,9 +709,13 @@ export class MangaParserService {
             const pages =
               apiData.server?.chapter?.pages ?? apiData.server?.pages;
             if (Array.isArray(pages) && pages.length > 0) {
-              imageUrls = pages.map((p) =>
-                p.startsWith('http') ? p : `${baseUrl}/storage/${p.replace(/^\//, '')}`,
-              );
+              imageUrls = pages
+                .map((p) => {
+                  const u = typeof p === 'string' ? p : '';
+                  const full = u.startsWith('http') ? u : `${baseUrl}/storage/${u.replace(/^\//, '')}`;
+                  return this.normalizeImageUrl(full);
+                })
+                .filter(Boolean);
             }
           }
         } catch {
@@ -713,9 +731,10 @@ export class MangaParserService {
 
         const $ = cheerio.load(response.data);
         const pushSrc = (src: string | undefined): void => {
-          if (!src || !src.trim()) return;
+          const normalized = src ? this.normalizeImageUrl(src) : '';
+          if (!normalized) return;
           const absolute =
-            src.startsWith('http') ? src : new URL(src, chapter.url).href;
+            normalized.startsWith('http') ? normalized : new URL(normalized, chapter.url).href;
           if (!imageUrls.includes(absolute)) imageUrls.push(absolute);
         };
         $('img[data-src]').each((_, el) => pushSrc($(el).attr('data-src')));
@@ -753,7 +772,8 @@ export class MangaParserService {
               data?.chapter?.pages;
             if (Array.isArray(pages)) {
               for (const p of pages) {
-                const url = typeof p === 'string' ? p : p?.url ?? p?.src ?? p?.image;
+                const raw = typeof p === 'string' ? p : p?.url ?? p?.src ?? p?.image;
+                const url = raw ? this.normalizeImageUrl(String(raw)) : '';
                 if (url) imageUrls.push(url.startsWith('http') ? url : new URL(url, chapter.url).href);
               }
             }
@@ -892,60 +912,30 @@ export class MangaParserService {
             chapterNumber,
             name: chapter.name,
             isPublished: true,
+            sourceChapterUrl: chapter.url ?? null,
           };
 
           const createdChapter =
             await this.chaptersService.create(createChapterDto);
 
           if (chapter.slug || chapter.url) {
-            let pagePaths: string[] = [];
-
-            if (domain.includes('senkuro.me') || domain.includes('sencuro.me')) {
-              pagePaths = await this.downloadChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-                domain,
-                createdTitle._id.toString(),
-              );
-            } else if (domain.includes('manga-shi.org')) {
-              pagePaths = await this.downloadMangaShiChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-                createdTitle._id.toString(),
-              );
-            } else if (domain.includes('mangabuff.ru')) {
-              pagePaths = await this.downloadMangabuffChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-                createdTitle._id.toString(),
-              );
-            } else if (domain.includes('mangahub.one')) {
-              // MangaHub использует JavaScript для загрузки изображений
-              // Требуется дополнительная реализация с использованием браузера
-              throw new BadRequestException(
-                'MangaHub image downloading requires additional implementation with browser automation',
-              );
-            } else if (domain.includes('telemanga.me') && mangaSlug) {
-              pagePaths = await this.downloadTelemangaChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-                mangaSlug,
-                createdTitle._id.toString(),
-              );
-            } else if (domain.includes('ab.728.team')) {
-              pagePaths = await this.downloadAb728TeamChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-                createdTitle._id.toString(),
-              );
-            } else {
-              throw new BadRequestException(`Unsupported domain: ${domain}`);
-            }
-
+            const pagePaths = await this.downloadPagesForChapterInfo(
+              chapter,
+              createdChapter._id.toString(),
+              createdTitle._id.toString(),
+              domain,
+              mangaSlug,
+            );
             if (pagePaths.length > 0) {
               await this.chaptersService.update(createdChapter._id.toString(), {
                 pages: pagePaths,
+                sourceChapterUrl: chapter.url ?? null,
               });
+              if (chapter.pageCount != null && pagePaths.length !== chapter.pageCount) {
+                this.logger.warn(
+                  `Chapter ${chapterNumber}: expected ${chapter.pageCount} pages from source, got ${pagePaths.length}`,
+                );
+              }
               this.logger.log(
                 `Downloaded ${pagePaths.length} pages for chapter ${chapterNumber}`,
               );
@@ -1025,60 +1015,30 @@ export class MangaParserService {
             chapterNumber,
             name: chapter.name,
             isPublished: true,
+            sourceChapterUrl: chapter.url ?? null,
           };
 
           const createdChapter =
             await this.chaptersService.create(createChapterDto);
 
           if (chapter.slug || chapter.url) {
-            let pagePaths: string[] = [];
-
-            if (domain.includes('senkuro.me') || domain.includes('sencuro.me')) {
-              pagePaths = await this.downloadChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-                domain,
-                titleId,
-              );
-            } else if (domain.includes('manga-shi.org')) {
-              pagePaths = await this.downloadMangaShiChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-                titleId,
-              );
-            } else if (domain.includes('mangabuff.ru')) {
-              pagePaths = await this.downloadMangabuffChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-                titleId,
-              );
-            } else if (domain.includes('mangahub.one')) {
-              // MangaHub использует JavaScript для загрузки изображений
-              // Требуется дополнительная реализация с использованием браузера
-              throw new BadRequestException(
-                'MangaHub image downloading requires additional implementation with browser automation',
-              );
-            } else if (domain.includes('telemanga.me') && mangaSlug) {
-              pagePaths = await this.downloadTelemangaChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-                mangaSlug,
-                titleId,
-              );
-            } else if (domain.includes('ab.728.team')) {
-              pagePaths = await this.downloadAb728TeamChapterImages(
-                chapter,
-                createdChapter._id.toString(),
-                titleId,
-              );
-            } else {
-              throw new BadRequestException(`Unsupported domain: ${domain}`);
-            }
-
+            const pagePaths = await this.downloadPagesForChapterInfo(
+              chapter,
+              createdChapter._id.toString(),
+              titleId,
+              domain,
+              mangaSlug,
+            );
             if (pagePaths.length > 0) {
               await this.chaptersService.update(createdChapter._id.toString(), {
                 pages: pagePaths,
+                sourceChapterUrl: chapter.url ?? null,
               });
+              if (chapter.pageCount != null && pagePaths.length !== chapter.pageCount) {
+                this.logger.warn(
+                  `Chapter ${chapterNumber}: expected ${chapter.pageCount} pages from source, got ${pagePaths.length}`,
+                );
+              }
               this.logger.log(
                 `Downloaded ${pagePaths.length} pages for chapter ${chapterNumber}`,
               );
@@ -1128,6 +1088,155 @@ export class MangaParserService {
       return decodeURIComponent(abMatch[1]);
     }
     return null;
+  }
+
+  /**
+   * Скачивает страницы главы с источника (общая логика для импорта и ре-синхронизации).
+   */
+  private async downloadPagesForChapterInfo(
+    chapterInfo: ChapterInfo,
+    chapterId: string,
+    titleId: string,
+    domain: string,
+    mangaSlug: string | null,
+  ): Promise<string[]> {
+    if (domain.includes('senkuro.me') || domain.includes('sencuro.me')) {
+      return this.downloadChapterImages(
+        chapterInfo,
+        chapterId,
+        domain,
+        titleId,
+      );
+    }
+    if (domain.includes('manga-shi.org')) {
+      return this.downloadMangaShiChapterImages(chapterInfo, chapterId, titleId);
+    }
+    if (domain.includes('mangabuff.ru')) {
+      return this.downloadMangabuffChapterImages(chapterInfo, chapterId, titleId);
+    }
+    if (domain.includes('mangahub.one')) {
+      throw new BadRequestException(
+        'MangaHub image downloading requires additional implementation with browser automation',
+      );
+    }
+    if (domain.includes('telemanga.me') && mangaSlug) {
+      return this.downloadTelemangaChapterImages(
+        chapterInfo,
+        chapterId,
+        mangaSlug,
+        titleId,
+      );
+    }
+    if (domain.includes('ab.728.team')) {
+      return this.downloadAb728TeamChapterImages(
+        chapterInfo,
+        chapterId,
+        titleId,
+      );
+    }
+    throw new BadRequestException(`Unsupported domain: ${domain}`);
+  }
+
+  /**
+   * Повторная синхронизация страниц уже созданных глав с источника.
+   * Парсит источник по sourceUrl, находит главы по номерам, заново скачивает страницы и обновляет главы.
+   */
+  async syncChaptersFromSource(
+    titleId: string,
+    sourceUrl: string,
+    chapterNumbers?: number[],
+  ): Promise<{
+    synced: { chapterId: string; chapterNumber: number; pagesCount: number }[];
+    skipped: { chapterNumber: number; reason: string }[];
+    errors: { chapterNumber: number; error: string }[];
+  }> {
+    await this.titlesService.findById(titleId);
+    const parser = this.getParserForUrl(sourceUrl);
+    if (!parser) {
+      const { sites } = await this.getSupportedSites();
+      throw new BadRequestException(
+        `Unsupported site for sync. Supported: ${sites.join(', ')}`,
+      );
+    }
+    const parsedData = await parser.parse(sourceUrl);
+    const sourceChapters = parsedData.chapters;
+    const domain = this.extractDomain(sourceUrl);
+    const mangaSlug = this.extractMangaSlug(sourceUrl);
+
+    const dbChapters = await this.chaptersService.findManyByTitleId(
+      titleId,
+      chapterNumbers,
+    );
+    const synced: { chapterId: string; chapterNumber: number; pagesCount: number }[] = [];
+    const skipped: { chapterNumber: number; reason: string }[] = [];
+    const errors: { chapterNumber: number; error: string }[] = [];
+
+    for (const dbChapter of dbChapters) {
+      const num = dbChapter.chapterNumber;
+      const sourceChapter = sourceChapters.find(
+        (ch) => ch.number != null && ch.number === num,
+      );
+      if (!sourceChapter) {
+        skipped.push({
+          chapterNumber: num,
+          reason: 'chapter_not_found_on_source',
+        });
+        continue;
+      }
+      if (!sourceChapter.url && !sourceChapter.slug) {
+        skipped.push({
+          chapterNumber: num,
+          reason: 'source_has_no_url_or_slug',
+        });
+        continue;
+      }
+      try {
+        const chapterId = dbChapter._id.toString();
+        await this.filesService.deleteChapterPages(
+          chapterId,
+          dbChapter.titleId?.toString(),
+        );
+        const pagePaths = await this.downloadPagesForChapterInfo(
+          sourceChapter,
+          chapterId,
+          titleId,
+          domain,
+          mangaSlug,
+        );
+        if (pagePaths.length === 0) {
+          errors.push({
+            chapterNumber: num,
+            error: 'no_pages_downloaded',
+          });
+          continue;
+        }
+        await this.chaptersService.update(chapterId, {
+          pages: pagePaths,
+          sourceChapterUrl: sourceChapter.url ?? null,
+        });
+        synced.push({
+          chapterId,
+          chapterNumber: num,
+          pagesCount: pagePaths.length,
+        });
+        if (sourceChapter.pageCount != null && pagePaths.length !== sourceChapter.pageCount) {
+          this.logger.warn(
+            `Synced chapter ${num}: expected ${sourceChapter.pageCount} pages from source, got ${pagePaths.length}`,
+          );
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Sync chapter ${num} failed: ${message}`);
+        errors.push({ chapterNumber: num, error: message });
+      }
+    }
+
+    try {
+      this.filesService.disposeWatermarkResources();
+    } catch {
+      // ignore
+    }
+    return { synced, skipped, errors };
   }
 
   async parseChaptersInfo(

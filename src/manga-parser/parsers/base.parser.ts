@@ -22,6 +22,8 @@ export interface ChapterInfo {
   url?: string;
   slug?: string;
   number?: number;
+  /** Количество страниц на источнике (если известно), для проверки после загрузки */
+  pageCount?: number;
 }
 
 export interface MangaParser {

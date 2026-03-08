@@ -51,4 +51,9 @@ export class CreateChapterDto {
 
   @IsOptional()
   freeAt?: Date | null;
+
+  /** URL главы на источнике (для повторной синхронизации страниц) */
+  @IsString()
+  @IsOptional()
+  sourceChapterUrl?: string | null;
 }

@@ -9,6 +9,8 @@ export interface ProgressEventDto {
   newLevel?: number;
   oldLevel?: number;
   bonusCoins?: number;
+  /** Бонус XP за серию дней чтения */
+  streakBonus?: number;
 }
 
 export interface RankInfoDto {
@@ -59,3 +61,22 @@ export interface ReadingProgressResponseDto {
   newRank?: RankInfoDto;
   newAchievements?: UnlockedAchievementDto[];
 }
+
+/** Событие в истории прогресса (для GET profile/progress-history) */
+export type ProgressHistoryEventDto =
+  | { id: string; type: 'exp_gain'; amount: number; reason: string; timestamp: string }
+  | {
+      id: string;
+      type: 'level_up';
+      oldLevel: number;
+      newLevel: number;
+      oldRank?: RankInfoDto;
+      newRank?: RankInfoDto;
+      timestamp: string;
+    }
+  | {
+      id: string;
+      type: 'achievement';
+      achievement: UnlockedAchievementDto;
+      timestamp: string;
+    };

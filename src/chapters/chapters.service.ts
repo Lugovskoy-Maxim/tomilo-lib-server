@@ -237,6 +237,29 @@ export class ChaptersService {
       .exec();
   }
 
+  /**
+   * Получить главы тайтла по ID (опционально только с указанными номерами).
+   * Для повторной синхронизации страниц с источником.
+   */
+  async findManyByTitleId(
+    titleId: string,
+    chapterNumbers?: number[],
+  ): Promise<ChapterDocument[]> {
+    if (!Types.ObjectId.isValid(titleId)) {
+      throw new BadRequestException('Invalid title ID');
+    }
+    const query: any = {
+      $or: [
+        { titleId: new Types.ObjectId(titleId) },
+        { titleId: titleId as unknown as Types.ObjectId },
+      ],
+    };
+    if (chapterNumbers != null && chapterNumbers.length > 0) {
+      query.chapterNumber = { $in: chapterNumbers };
+    }
+    return this.chapterModel.find(query).sort({ chapterNumber: 1 }).exec();
+  }
+
   async create(createChapterDto: CreateChapterDto): Promise<ChapterDocument> {
     const { titleId, chapterNumber } = createChapterDto;
 

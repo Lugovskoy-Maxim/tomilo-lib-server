@@ -263,6 +263,60 @@ export class User {
     readAt: Date;
   }[];
 
+  /** История событий прогресса (XP, уровень, достижения) для вкладки «Прогресс», последние N записей */
+  @Prop({
+    type: [
+      {
+        type: { type: String, enum: ['exp_gain', 'level_up', 'achievement'], required: true },
+        timestamp: { type: Date, required: true },
+        amount: Number,
+        reason: String,
+        oldLevel: Number,
+        newLevel: Number,
+        oldRank: { rank: Number, stars: Number, name: String, minLevel: Number },
+        newRank: { rank: Number, stars: Number, name: String, minLevel: Number },
+        achievement: {
+          id: String,
+          name: String,
+          description: String,
+          icon: String,
+          type: String,
+          rarity: String,
+          level: Number,
+          levelName: String,
+          unlockedAt: String,
+          progress: Number,
+          maxProgress: Number,
+        },
+      },
+    ],
+    default: [],
+    select: false,
+  })
+  progressEvents?: {
+    type: 'exp_gain' | 'level_up' | 'achievement';
+    timestamp: Date;
+    amount?: number;
+    reason?: string;
+    oldLevel?: number;
+    newLevel?: number;
+    oldRank?: { rank: number; stars: number; name: string; minLevel: number };
+    newRank?: { rank: number; stars: number; name: string; minLevel: number };
+    achievement?: {
+      id: string;
+      name: string;
+      description: string;
+      icon: string;
+      type: string;
+      rarity: string;
+      level: number;
+      levelName: string;
+      unlockedAt: string;
+      progress: number;
+      maxProgress: number;
+    };
+  }[];
+
   // OAuth providers (legacy: один провайдер, дублируется из oauthProviders[0] для совместимости)
   @Prop({
     type: {

@@ -16,6 +16,7 @@ import { ParseTitleDto } from './dto/parse-title.dto';
 import { ParseChapterDto } from './dto/parse-chapter.dto';
 import { ParseChaptersInfoDto } from './dto/parse-chapters-info.dto';
 import { ParseMetadataDto } from './dto/parse-metadata.dto';
+import { SyncChaptersDto } from './dto/sync-chapters.dto';
 
 @Controller('manga-parser')
 export class MangaParserController {
@@ -79,6 +80,35 @@ export class MangaParserController {
       );
       throw new HttpException(
         `Failed to import chapters: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        HttpStatus.BAD_REQUEST,
+      );
+    }
+  }
+
+  @Post('sync-chapters')
+  @Roles('admin')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  async syncChaptersFromSource(@Body() dto: SyncChaptersDto) {
+    try {
+      this.logger.log(
+        `Starting chapters sync for title ${dto.titleId} from: ${dto.sourceUrl}`,
+      );
+      const result =
+        await this.mangaParserService.syncChaptersFromSource(
+          dto.titleId,
+          dto.sourceUrl,
+          dto.chapterNumbers,
+        );
+      this.logger.log(
+        `Sync completed: ${result.synced.length} synced, ${result.skipped.length} skipped, ${result.errors.length} errors`,
+      );
+      return result;
+    } catch (error) {
+      this.logger.error(
+        `Failed to sync chapters: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      throw new HttpException(
+        `Failed to sync chapters: ${error instanceof Error ? error.message : 'Unknown error'}`,
         HttpStatus.BAD_REQUEST,
       );
     }

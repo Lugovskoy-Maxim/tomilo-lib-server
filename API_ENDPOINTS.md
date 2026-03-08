@@ -114,6 +114,7 @@ Authorization: Bearer <jwt_token>
 ### Manga Parser
 - `POST /manga-parser/parse-title` - Parse and import title
 - `POST /manga-parser/parse-chapters` - Parse and import chapters
+- `POST /manga-parser/sync-chapters` - Повторная синхронизация страниц уже созданных глав с источника (admin). Body: `{ titleId, sourceUrl, chapterNumbers?: number[] }`. Возвращает `{ synced, skipped, errors }`.
 - `POST /manga-parser/parse-chapters-info` - Parse chapters info
 - `GET /manga-parser/supported-sites` - Get supported sites
 

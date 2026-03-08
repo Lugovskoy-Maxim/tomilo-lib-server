@@ -2,6 +2,8 @@ import { Model, Types, PipelineStage } from 'mongoose';
 import {
   Injectable,
   Inject,
+  Optional,
+  forwardRef,
   NotFoundException,
   ConflictException,
   BadRequestException,
@@ -18,9 +20,15 @@ import { ChaptersService } from '../chapters/chapters.service';
 import { LoggerService } from '../common/logger/logger.service';
 import { escapeRegex } from '../common/utils/regex.util';
 import { BotDetectionService } from '../common/services/bot-detection.service';
-import { ReadingProgressResponseDto } from './dto/reading-progress-response.dto';
+import {
+  ReadingProgressResponseDto,
+  ProgressHistoryEventDto,
+  AchievementTypeDto,
+  AchievementRarityDto,
+} from './dto/reading-progress-response.dto';
 import { AchievementsService } from '../achievements/achievements.service';
 import { PushService } from '../push/push.service';
+import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { Cron } from '@nestjs/schedule';
 /** Категории закладок: читаю, в планах, прочитано, избранное, брошено */
 export const BOOKMARK_CATEGORIES = [
@@ -135,6 +143,9 @@ export class UsersService {
       get: (k: string) => Promise<unknown>;
       set: (k: string, v: unknown, ttl?: number | { ttl: number }) => Promise<void>;
     },
+    @Optional()
+    @Inject(forwardRef(() => NotificationsGateway))
+    private notificationsGateway?: NotificationsGateway,
   ) {
     this.logger.setContext(UsersService.name);
   }
@@ -1495,8 +1506,11 @@ export class UsersService {
       chapterTitle = chapter.name || undefined;
     }
 
-    // Находим пользователя
-    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    // Находим пользователя (включая progressEvents для записи истории)
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('+progressEvents')
+      .exec();
     if (!user) {
       this.logger.warn(`User not found with ID: ${userId}`);
       throw new NotFoundException('User not found');
@@ -1740,10 +1754,105 @@ export class UsersService {
       void this.incrementDailyQuestProgress(userId, 'read_chapters', 1);
     }
 
+    // Записываем события прогресса для вкладки «Прогресс» (последние 100)
+    const MAX_PROGRESS_EVENTS = 100;
+    const existingEvents = (user as any).progressEvents ?? [];
+    const newEvents: typeof existingEvents = [];
+    if (progressEvent) {
+      newEvents.push({
+        type: 'exp_gain' as const,
+        timestamp: new Date(),
+        amount: progressEvent.expGained,
+        reason: progressEvent.reason,
+      });
+      if (progressEvent.levelUp && progressEvent.oldLevel != null && progressEvent.newLevel != null) {
+        newEvents.push({
+          type: 'level_up' as const,
+          timestamp: new Date(),
+          oldLevel: progressEvent.oldLevel,
+          newLevel: progressEvent.newLevel,
+          oldRank: oldRankInfo ?? undefined,
+          newRank: newRankInfo ?? undefined,
+        });
+      }
+    }
+    for (const ach of newUnlocked) {
+      newEvents.push({
+        type: 'achievement' as const,
+        timestamp: new Date(ach.unlockedAt),
+        achievement: {
+          id: ach.id,
+          name: ach.name,
+          description: ach.description,
+          icon: ach.icon,
+          type: ach.type,
+          rarity: ach.rarity,
+          level: ach.level,
+          levelName: ach.levelName,
+          unlockedAt: ach.unlockedAt,
+          progress: ach.progress,
+          maxProgress: ach.maxProgress,
+        },
+      });
+    }
+    if (newEvents.length > 0) {
+      (user as any).progressEvents = newEvents.concat(existingEvents).slice(0, MAX_PROGRESS_EVENTS);
+    }
+
     // Убираем битые закладки, чтобы не падать на валидации при save
     this.sanitizeBookmarksBeforeSave(user as UserDocument);
     await user.save();
     this.logger.log(`Reading history updated successfully for user ${userId}`);
+
+    // Отправка прогресса по WebSocket для тостов (опыт, уровень, достижения)
+    if (this.notificationsGateway) {
+      setImmediate(() => {
+        try {
+          if (progressEvent) {
+            this.notificationsGateway!.emitProgressToUser(userId, {
+              type: 'exp_gain',
+              amount: progressEvent.expGained,
+              reason: progressEvent.reason,
+            });
+            if (
+              progressEvent.levelUp &&
+              progressEvent.oldLevel != null &&
+              progressEvent.newLevel != null &&
+              oldRankInfo &&
+              newRankInfo
+            ) {
+              this.notificationsGateway!.emitProgressToUser(userId, {
+                type: 'level_up',
+                oldLevel: progressEvent.oldLevel,
+                newLevel: progressEvent.newLevel,
+                oldRank: oldRankInfo,
+                newRank: newRankInfo,
+              });
+            }
+          }
+          for (const ach of newUnlocked) {
+            this.notificationsGateway!.emitProgressToUser(userId, {
+              type: 'achievement',
+              achievement: {
+                id: ach.id,
+                name: ach.name,
+                description: ach.description,
+                icon: ach.icon,
+                type: ach.type,
+                rarity: ach.rarity,
+                level: ach.level,
+                levelName: ach.levelName,
+                unlockedAt: ach.unlockedAt,
+                progress: ach.progress,
+                maxProgress: ach.maxProgress,
+              },
+            });
+          }
+        } catch (e) {
+          this.logger.warn(`WS progress emit failed for user ${userId}`, e);
+        }
+      });
+    }
 
     return {
       user: {
@@ -1757,6 +1866,102 @@ export class UsersService {
       newRank: newRankInfo,
       newAchievements: newUnlocked.length > 0 ? newUnlocked : undefined,
     };
+  }
+
+  /**
+   * История событий прогресса (XP, уровень, достижения) для вкладки «Прогресс».
+   * Возвращает последние события в формате, совместимом с клиентом.
+   */
+  async getProgressHistory(
+    userId: string,
+    options?: { limit?: number },
+  ): Promise<{ events: ProgressHistoryEventDto[] }> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    const limit = Math.min(100, Math.max(1, options?.limit ?? 50));
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('+progressEvents')
+      .lean()
+      .exec();
+    if (!user || !(user as any).progressEvents?.length) {
+      return { events: [] };
+    }
+    const raw = (user as any).progressEvents as Array<{
+      type: string;
+      timestamp: Date;
+      amount?: number;
+      reason?: string;
+      oldLevel?: number;
+      newLevel?: number;
+      oldRank?: { rank: number; stars: number; name: string; minLevel: number };
+      newRank?: { rank: number; stars: number; name: string; minLevel: number };
+      achievement?: Record<string, unknown>;
+    }>;
+    const events: ProgressHistoryEventDto[] = raw
+      .slice(0, limit)
+      .map((e, i) => this.mapProgressEventToDto(e, `${userId}-${Date.now()}-${i}`));
+    return { events };
+  }
+
+  private mapProgressEventToDto(
+    e: {
+      type: string;
+      timestamp: Date;
+      amount?: number;
+      reason?: string;
+      oldLevel?: number;
+      newLevel?: number;
+      oldRank?: { rank: number; stars: number; name: string; minLevel: number };
+      newRank?: { rank: number; stars: number; name: string; minLevel: number };
+      achievement?: Record<string, unknown>;
+    },
+    id: string,
+  ): ProgressHistoryEventDto {
+    const timestamp = typeof e.timestamp === 'string' ? e.timestamp : new Date(e.timestamp).toISOString();
+    if (e.type === 'exp_gain') {
+      return {
+        id,
+        type: 'exp_gain',
+        amount: e.amount ?? 0,
+        reason: e.reason ?? '',
+        timestamp,
+      };
+    }
+    if (e.type === 'level_up') {
+      return {
+        id,
+        type: 'level_up',
+        oldLevel: e.oldLevel ?? 0,
+        newLevel: e.newLevel ?? 0,
+        oldRank: e.oldRank ? { rank: e.oldRank.rank, stars: e.oldRank.stars, name: e.oldRank.name, minLevel: e.oldRank.minLevel } : undefined,
+        newRank: e.newRank ? { rank: e.newRank.rank, stars: e.newRank.stars, name: e.newRank.name, minLevel: e.newRank.minLevel } : undefined,
+        timestamp,
+      };
+    }
+    if (e.type === 'achievement' && e.achievement) {
+      const a = e.achievement;
+      return {
+        id,
+        type: 'achievement',
+        achievement: {
+          id: String(a.id ?? ''),
+          name: String(a.name ?? ''),
+          description: String(a.description ?? ''),
+          icon: String(a.icon ?? ''),
+          type: (String(a.type ?? '') || 'reading') as AchievementTypeDto,
+          rarity: (String(a.rarity ?? '') || 'common') as AchievementRarityDto,
+          level: Number(a.level ?? 0),
+          levelName: String(a.levelName ?? ''),
+          unlockedAt: String(a.unlockedAt ?? ''),
+          progress: Number(a.progress ?? 0),
+          maxProgress: Number(a.maxProgress ?? 0),
+        },
+        timestamp,
+      };
+    }
+    return { id, type: 'exp_gain', amount: 0, reason: '', timestamp };
   }
 
   async getReadingHistory(

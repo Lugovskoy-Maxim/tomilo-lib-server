@@ -27,6 +27,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { FileUploadInterceptor } from '../common/interceptors/file-upload.interceptor';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
+import { ReadingProgressResponseDto } from './dto/reading-progress-response.dto';
 
 @Controller('users')
 @UsePipes(new ValidationPipe())
@@ -671,6 +672,33 @@ export class UsersController {
     }
   }
 
+  // 📊 История прогресса (XP, уровни, достижения) для вкладки «Прогресс»
+  @Get('profile/progress-history')
+  @UseGuards(JwtAuthGuard)
+  async getProgressHistory(
+    @Request() req,
+    @Query('limit') limit?: string,
+  ): Promise<ApiResponseDto<{ events: unknown[] }>> {
+    try {
+      const options = limit != null ? { limit: Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50)) } : undefined;
+      const data = await this.usersService.getProgressHistory(req.user.userId, options);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/progress-history',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch progress history',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/progress-history',
+      };
+    }
+  }
+
   // 📖 История чтения (альтернативный эндпоинт, те же query: page, limit, light)
   @Get('history')
   @UseGuards(JwtAuthGuard)
@@ -771,7 +799,7 @@ export class UsersController {
     @Request() req,
     @Param('titleId') titleId: string,
     @Param('chapterId') chapterId: string,
-  ): Promise<ApiResponseDto<any>> {
+  ): Promise<ApiResponseDto<ReadingProgressResponseDto>> {
     try {
       const data = await this.usersService.addToReadingHistory(
         req.user.userId,
