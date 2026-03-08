@@ -1,4 +1,4 @@
-import { Model, Types } from 'mongoose';
+import { Model, Types, PipelineStage } from 'mongoose';
 import {
   Injectable,
   Inject,
@@ -464,13 +464,13 @@ export class UsersService {
 
     if (category === 'chaptersRead') {
       // Агрегация глав, прочитанных за период (readingHistory[].chapters[].readAt)
-      const pipeline = [
+      const pipeline: PipelineStage[] = [
         { $match: { isBot: { $ne: true }, showStats: { $ne: false } } },
         { $unwind: '$readingHistory' },
         { $unwind: '$readingHistory.chapters' },
         { $match: { 'readingHistory.chapters.readAt': { $gte: dateFrom } } },
         { $group: { _id: '$_id', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
+        { $sort: { count: -1 as const } },
       ];
       const allCounts = await this.userModel.aggregate(pipeline).exec();
       totalCount = allCounts.length;
