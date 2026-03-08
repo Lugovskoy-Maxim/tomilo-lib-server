@@ -19,6 +19,14 @@ export class FilesService {
   }
 
   /**
+   * Нормализует URL для HTTP-запроса: кодирует пробелы в пути (API telemanga и др. возвращают пути с пробелами).
+   */
+  private normalizeUrlForRequest(url: string): string {
+    if (!url || typeof url !== 'string') return url;
+    return url.includes(' ') ? url.replace(/ /g, '%20').trim() : url.trim();
+  }
+
+  /**
    * Сохраняет файл локально и асинхронно дублирует в S3 (если настроен).
    * Всегда возвращает локальный путь — S3 используется как зеркало.
    * Загрузка в S3 не блокирует ответ сервера.
@@ -410,8 +418,11 @@ export class FilesService {
     this.logger.log(`Page Number: ${pageNumber}`);
     this.logger.log(`Используем S3: ${this.useS3()}`);
 
+    // Кодируем пробелы и невалидные символы в пути (API telemanga и др. могут возвращать пути с пробелами)
+    const requestUrl = this.normalizeUrlForRequest(imageUrl);
+
     try {
-      const response = await axios.get(imageUrl, {
+      const response = await axios.get(requestUrl, {
         responseType: 'arraybuffer',
         timeout: 30000,
         headers: {
@@ -423,7 +434,7 @@ export class FilesService {
 
       const chapterDir = `titles/${titleId}/chapters/${chapterId}`;
 
-      const urlPath = new URL(imageUrl).pathname;
+      const urlPath = new URL(requestUrl).pathname;
       const ext = urlPath.split('.').pop()?.split('?')[0] || 'jpg';
       const fileName = `${pageNumber.toString().padStart(3, '0')}.${ext}`;
 

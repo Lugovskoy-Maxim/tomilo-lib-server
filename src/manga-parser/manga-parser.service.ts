@@ -579,7 +579,9 @@ export class MangaParserService {
   }
 
   /**
-   * Download chapter images for telemanga.me
+   * Download chapter images for telemanga.me.
+   * URL-ы собираем так же, как на сайте: cdn.telemanga.me/mangas/{slug}/glava-{номер}/{страница}.jpg
+   * (API может отдавать storage.yandexcloud.net с другими путями и 404.)
    */
   private async downloadTelemangaChapterImages(
     chapter: ChapterInfo,
@@ -594,7 +596,7 @@ export class MangaParserService {
     }
 
     try {
-      const chapterPagesUrl = `${this.baseUrl}/api/manga/${mangaSlug}/chapter/${chapter.number}`;
+      const chapterPagesUrl = `${this.baseUrl}/api/manga/${encodeURIComponent(mangaSlug)}/chapter/${chapter.number}`;
 
       const response = await this.session.get(chapterPagesUrl);
 
@@ -602,26 +604,22 @@ export class MangaParserService {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      // Get page URLs from response
-      // API returns: { result: { pages: [...] } }
       const pagesData = response.data.result?.pages || [];
-
       if (!Array.isArray(pagesData) || pagesData.length === 0) {
         throw new Error('No pages found in chapter response');
       }
 
+      const cdnBase = 'https://cdn.telemanga.me';
       const pagePaths: string[] = [];
       for (let i = 0; i < pagesData.length; i++) {
-        const rawUrl = pagesData[i];
-        const imgUrl = rawUrl ? this.normalizeImageUrl(String(rawUrl)) : '';
-
-        if (!imgUrl) continue;
+        const pageNum = i + 1;
+        const imgUrl = `${cdnBase}/mangas/${encodeURIComponent(mangaSlug)}/glava-${chapter.number}/${pageNum}.jpg`;
 
         try {
           const pagePath = await this.filesService.downloadImageFromUrl(
             imgUrl,
             chapterId,
-            i + 1,
+            pageNum,
             titleId,
             {
               headers: {
@@ -633,7 +631,7 @@ export class MangaParserService {
           pagePaths.push(pagePath);
         } catch (imageError) {
           this.logger.error(
-            `Failed to download telemanga image ${i + 1}: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`,
+            `Failed to download telemanga image ${pageNum}: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`,
           );
         }
 
