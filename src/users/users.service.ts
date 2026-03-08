@@ -38,10 +38,11 @@ const MAX_CHAPTERS_PER_TITLE_IN_HISTORY = 6000;
 const HOMEPAGE_ACTIVE_USERS_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours
 const CAN_VIEW_ADULT_CACHE_PREFIX = 'user:canViewAdult:';
 const CAN_VIEW_ADULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
-const LEADERBOARD_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+/** Кеш таблицы лидеров: 6 часов (синхронно с текстом на клиенте «Данные обновляются каждые 6 часов») */
+const LEADERBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
 export type LeaderboardCategory = 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak' | 'chaptersRead';
-export type LeaderboardPeriod = 'all' | 'month';
+export type LeaderboardPeriod = 'all' | 'month' | 'week';
 
 export interface LeaderboardUser {
   _id: string;
@@ -256,7 +257,7 @@ export class UsersService {
 
   /**
    * Получить лидерборд пользователей по заданной категории.
-   * Кеширует результат на 1 час.
+   * Кеширует результат на 6 часов (LEADERBOARD_CACHE_TTL_MS).
    */
   async getLeaderboard(options: {
     category?: LeaderboardCategory;
@@ -276,8 +277,8 @@ export class UsersService {
       return cached as LeaderboardResponse;
     }
 
-    // Для периода "month" и категорий ratings/comments используем агрегацию
-    if (period === 'month' && (category === 'ratings' || category === 'comments')) {
+    // Для периодов "week"/"month" и категорий ratings/comments используем агрегацию по дате
+    if ((period === 'month' || period === 'week') && (category === 'ratings' || category === 'comments')) {
       return this.getLeaderboardByPeriod(category, period, limit, page, skip, cacheKey);
     }
 
@@ -439,7 +440,7 @@ export class UsersService {
   }
 
   /**
-   * Получить лидерборд за период (месяц) для ratings или comments через агрегацию.
+   * Получить лидерборд за период (неделя или месяц) для ratings или comments через агрегацию.
    */
   private async getLeaderboardByPeriod(
     category: 'ratings' | 'comments',
@@ -449,19 +450,22 @@ export class UsersService {
     skip: number,
     cacheKey: string,
   ): Promise<LeaderboardResponse> {
-    const monthAgo = new Date();
-    monthAgo.setMonth(monthAgo.getMonth() - 1);
+    const dateFrom = new Date();
+    if (period === 'week') {
+      dateFrom.setDate(dateFrom.getDate() - 7);
+    } else {
+      dateFrom.setMonth(dateFrom.getMonth() - 1);
+    }
 
     let aggregationResult: { userId: string; count: number }[];
     let totalCount: number | null = null;
 
     if (category === 'comments') {
-      // Агрегация комментариев за последний месяц
       const commentModel = this.userModel.db.collection('comments');
       const pipeline = [
         {
           $match: {
-            createdAt: { $gte: monthAgo },
+            createdAt: { $gte: dateFrom },
             isVisible: true,
           },
         },
@@ -481,14 +485,14 @@ export class UsersService {
         count: r.count,
       }));
     } else {
-      // Агрегация оценок за последний месяц: тайтлы + главы
+      // Агрегация оценок за период: тайтлы + главы
       const titleModel = this.userModel.db.collection('titles');
       const chapterModel = this.userModel.db.collection('chapters');
       const [titleResults, chapterResults] = await Promise.all([
         titleModel
           .aggregate([
             { $unwind: '$ratings' },
-            { $match: { 'ratings.createdAt': { $gte: monthAgo } } },
+            { $match: { 'ratings.createdAt': { $gte: dateFrom } } },
             { $group: { _id: '$ratings.userId', count: { $sum: 1 } } },
           ])
           .toArray(),
@@ -497,7 +501,7 @@ export class UsersService {
             { $unwind: '$ratingByUser' },
             {
               $match: {
-                'ratingByUser.createdAt': { $gte: monthAgo },
+                'ratingByUser.createdAt': { $gte: dateFrom },
               },
             },
             {
@@ -1066,6 +1070,7 @@ export class UsersService {
       category,
       addedAt: new Date(),
     };
+    const isNewBookmark = existingIndex < 0;
     if (existingIndex >= 0) {
       (user.bookmarks as any[])[existingIndex] = entry;
     } else {
@@ -1073,6 +1078,8 @@ export class UsersService {
     }
     this.sanitizeBookmarksBeforeSave(user as UserDocument);
     await user.save();
+
+    if (isNewBookmark) void this.incrementDailyQuestProgress(userId, 'add_bookmark', 1);
 
     this.logger.log(
       `Bookmark added successfully for user ${userId} to title ${titleId}`,
@@ -1669,6 +1676,16 @@ export class UsersService {
           userLevel: user.level,
           daysSinceJoined,
           socialConnections,
+          commentsCount: user.commentsCount ?? 0,
+          ratingsCount: user.ratingsCount ?? 0,
+          longestStreak: user.longestStreak ?? 0,
+          completedTitlesCount: user.completedTitlesCount ?? 0,
+          readingTimeMinutes: user.readingTimeMinutes ?? 0,
+          balance: user.balance ?? 0,
+          ownedDecorationsCount: (user as any).ownedDecorations?.length ?? 0,
+          likesReceivedCount: user.likesReceivedCount ?? 0,
+          titlesReadCount: user.titlesReadCount ?? 0,
+          reportsCount: user.reportsCount ?? 0,
         },
       );
 
@@ -1699,6 +1716,10 @@ export class UsersService {
       this.logger.log(
         `User ${userId} unlocked ${newUnlocked.length} achievement(s): ${newUnlocked.map((a) => `${a.name} (+${a.expReward} XP)`).join(', ')}`,
       );
+    }
+
+    if (botDetectionResult.isBot === false && isNewChapter) {
+      void this.incrementDailyQuestProgress(userId, 'read_chapters', 1);
     }
 
     // Убираем битые закладки, чтобы не падать на валидации при save
@@ -2217,6 +2238,11 @@ export class UsersService {
       `User ${userId} awarded ${UsersService.DAILY_LOGIN_EXP} XP for daily login. Current level: ${user.level}, XP: ${user.experience}`,
     );
 
+    void this.checkAchievementsForUser(userId);
+    void this.getOrCreateDailyQuests(userId).then(() =>
+      this.incrementDailyQuestProgress(userId, 'daily_login', 1),
+    );
+
     return {
       expGained: UsersService.DAILY_LOGIN_EXP,
       experience: user.experience,
@@ -2245,6 +2271,8 @@ export class UsersService {
       .exec();
 
     this.logger.log(`Incremented ratingsCount for user ${userId}`);
+    void this.checkAchievementsForUser(userId);
+    void this.incrementDailyQuestProgress(userId, 'rate_title', 1);
   }
 
   /**
@@ -2263,6 +2291,8 @@ export class UsersService {
       .exec();
 
     this.logger.log(`Incremented commentsCount for user ${userId}`);
+    void this.checkAchievementsForUser(userId);
+    void this.incrementDailyQuestProgress(userId, 'leave_comment', 1);
   }
 
   /**
@@ -2281,6 +2311,273 @@ export class UsersService {
       .exec();
 
     this.logger.log(`Decremented commentsCount for user ${userId}`);
+  }
+
+  /**
+   * Инкрементирует счётчик отправленных жалоб пользователя (reportsCount)
+   */
+  async incrementReportsCount(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    await this.userModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { $inc: { reportsCount: 1 } },
+      )
+      .exec();
+
+    this.logger.log(`Incremented reportsCount for user ${userId}`);
+    void this.checkAchievementsForUser(userId);
+  }
+
+  /**
+   * Пересчитывает достижения пользователя по текущей статистике и сохраняет при новых разблокировках.
+   * Вызывается после комментария, оценки, ежедневного входа и т.д.
+   */
+  async checkAchievementsForUser(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) return;
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user || user.isBot) return;
+
+    const totalChaptersRead = user.chaptersReadCount ?? 0;
+    const totalBookmarks = user.bookmarks?.length ?? 0;
+    const createdAt = (user as any).createdAt as Date | undefined;
+    const daysSinceJoined = createdAt
+      ? Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+    const socialConnections =
+      (user.emailVerified ? 1 : 0) + (user.oauthProviders?.length ?? 0);
+
+    const { updatedAchievements, newUnlocked, totalExpReward: achievementExp } =
+      this.achievementsService.checkAchievements(
+        user.achievements ?? [],
+        {
+          chaptersRead: totalChaptersRead,
+          bookmarksCount: totalBookmarks,
+          userLevel: user.level,
+          daysSinceJoined,
+          socialConnections,
+          commentsCount: user.commentsCount ?? 0,
+          ratingsCount: user.ratingsCount ?? 0,
+          longestStreak: user.longestStreak ?? 0,
+          completedTitlesCount: user.completedTitlesCount ?? 0,
+          readingTimeMinutes: user.readingTimeMinutes ?? 0,
+          balance: user.balance ?? 0,
+          ownedDecorationsCount: (user as any).ownedDecorations?.length ?? 0,
+          likesReceivedCount: user.likesReceivedCount ?? 0,
+          titlesReadCount: user.titlesReadCount ?? 0,
+          reportsCount: user.reportsCount ?? 0,
+        },
+      );
+
+    if (newUnlocked.length === 0) {
+      if (updatedAchievements.length !== (user.achievements ?? []).length) {
+        user.achievements = updatedAchievements as any;
+        await user.save();
+      }
+      return;
+    }
+
+    user.achievements = updatedAchievements as any;
+    if (achievementExp > 0) {
+      user.experience += achievementExp;
+      while (user.experience >= this.calculateNextLevelExp(user.level)) {
+        user.level += 1;
+        user.balance += user.level * 10;
+      }
+    }
+    await user.save();
+    this.logger.log(
+      `User ${userId} unlocked ${newUnlocked.length} achievement(s): ${newUnlocked.map((a) => a.name).join(', ')}`,
+    );
+  }
+
+  // 📋 Ежедневные задания
+  private static readonly DAILY_QUEST_POOL: {
+    type: string;
+    name: string;
+    description: string;
+    target: number;
+    rewardExp: number;
+    rewardCoins: number;
+  }[] = [
+    { type: 'read_chapters', name: 'Читатель дня', description: 'Прочитайте 3 главы', target: 3, rewardExp: 5, rewardCoins: 2 },
+    { type: 'read_chapters', name: 'Погружение', description: 'Прочитайте 5 глав', target: 5, rewardExp: 8, rewardCoins: 3 },
+    { type: 'read_chapters', name: 'Марафон', description: 'Прочитайте 10 глав', target: 10, rewardExp: 15, rewardCoins: 5 },
+    { type: 'add_bookmark', name: 'В закладки', description: 'Добавьте мангу в закладки', target: 1, rewardExp: 5, rewardCoins: 2 },
+    { type: 'leave_comment', name: 'Ваше мнение', description: 'Оставьте комментарий', target: 1, rewardExp: 5, rewardCoins: 2 },
+    { type: 'rate_title', name: 'Оценка', description: 'Поставьте оценку тайтлу или главе', target: 1, rewardExp: 5, rewardCoins: 2 },
+    { type: 'daily_login', name: 'Ежедневный вход', description: 'Зайдите на сайт', target: 1, rewardExp: 5, rewardCoins: 2 },
+  ];
+
+  private static getStartOfDayUTC(d: Date = new Date()): Date {
+    const t = new Date(d);
+    t.setUTCHours(0, 0, 0, 0);
+    return t;
+  }
+
+  /** Возвращает ежедневные задания на сегодня; создаёт новые, если дня ещё нет. */
+  async getOrCreateDailyQuests(userId: string): Promise<{
+    date: string;
+    quests: {
+      id: string;
+      type: string;
+      name: string;
+      description: string;
+      target: number;
+      progress: number;
+      rewardExp: number;
+      rewardCoins: number;
+      completed: boolean;
+      claimedAt: string | null;
+    }[];
+  } | null> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const today = UsersService.getStartOfDayUTC();
+    const existing = user.dailyQuests;
+    const existingDate = existing?.date
+      ? UsersService.getStartOfDayUTC(new Date(existing.date))
+      : null;
+
+    if (existingDate && existingDate.getTime() === today.getTime() && existing?.quests?.length) {
+      return {
+        date: today.toISOString(),
+        quests: existing.quests.map((q) => ({
+          id: q.id,
+          type: q.type,
+          name: q.name,
+          description: q.description,
+          target: q.target,
+          progress: q.progress,
+          rewardExp: q.rewardExp,
+          rewardCoins: q.rewardCoins,
+          completed: q.completed,
+          claimedAt: q.claimedAt ? new Date(q.claimedAt).toISOString() : null,
+        })),
+      };
+    }
+
+    // Создаём 3 случайных квеста на сегодня
+    const pool = [...UsersService.DAILY_QUEST_POOL];
+    const shuffled = pool.sort(() => Math.random() - 0.5);
+    const selected = shuffled.slice(0, 3).map((def, i) => ({
+      id: `daily_${today.getTime()}_${i}`,
+      type: def.type,
+      name: def.name,
+      description: def.description,
+      target: def.target,
+      progress: 0,
+      rewardExp: def.rewardExp,
+      rewardCoins: def.rewardCoins,
+      completed: false,
+      claimedAt: null as Date | null,
+    }));
+
+    user.dailyQuests = { date: today, quests: selected } as any;
+    await user.save();
+
+    return {
+      date: today.toISOString(),
+      quests: selected.map((q) => ({
+        ...q,
+        claimedAt: null,
+      })),
+    };
+  }
+
+  /** Увеличивает прогресс по типу квеста для сегодняшних заданий. */
+  async incrementDailyQuestProgress(
+    userId: string,
+    questType: string,
+    delta: number = 1,
+  ): Promise<void> {
+    if (!Types.ObjectId.isValid(userId) || delta <= 0) return;
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user?.dailyQuests?.quests?.length) return;
+
+    const today = UsersService.getStartOfDayUTC();
+    const questDate = user.dailyQuests.date
+      ? UsersService.getStartOfDayUTC(new Date(user.dailyQuests.date))
+      : null;
+    if (!questDate || questDate.getTime() !== today.getTime()) return;
+
+    let changed = false;
+    for (const q of user.dailyQuests.quests) {
+      if (q.type === questType && !q.completed) {
+        const before = q.progress;
+        q.progress = Math.min((q.progress ?? 0) + delta, q.target);
+        if (q.progress >= q.target) q.completed = true;
+        if (q.progress !== before) changed = true;
+      }
+    }
+    if (changed) await user.save();
+  }
+
+  /** Забрать награду за выполненное задание. */
+  async claimDailyQuest(userId: string, questId: string): Promise<{
+    success: boolean;
+    expGained?: number;
+    coinsGained?: number;
+    message?: string;
+  }> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const today = UsersService.getStartOfDayUTC();
+    const dq = user.dailyQuests;
+    if (!dq?.quests?.length) {
+      return { success: false, message: 'Нет заданий на сегодня' };
+    }
+    const questDate = dq.date ? UsersService.getStartOfDayUTC(new Date(dq.date)) : null;
+    if (!questDate || questDate.getTime() !== today.getTime()) {
+      return { success: false, message: 'Задания устарели' };
+    }
+
+    const quest = dq.quests.find((q) => q.id === questId);
+    if (!quest) {
+      return { success: false, message: 'Задание не найдено' };
+    }
+    if (!quest.completed) {
+      return { success: false, message: 'Задание ещё не выполнено' };
+    }
+    if (quest.claimedAt) {
+      return { success: false, message: 'Награда уже получена' };
+    }
+
+    quest.claimedAt = new Date();
+    if (quest.rewardExp > 0) {
+      user.experience += quest.rewardExp;
+      while (user.experience >= this.calculateNextLevelExp(user.level)) {
+        user.level += 1;
+        user.balance += user.level * 10;
+      }
+    }
+    if (quest.rewardCoins > 0) user.balance += quest.rewardCoins;
+    await user.save();
+
+    return {
+      success: true,
+      expGained: quest.rewardExp,
+      coinsGained: quest.rewardCoins,
+    };
   }
 
   // 💰 Balance management

@@ -80,6 +80,10 @@ export class User {
   @Prop({ default: 0 })
   completedTitlesCount: number;
 
+  /** Количество отправленных жалоб (отчётов) */
+  @Prop({ default: 0 })
+  reportsCount: number;
+
   // Кастомизация профиля
 
   /** Краткое описание / статус */
@@ -400,6 +404,43 @@ export class User {
     unlockedAt: Date;
     progress: number;
   }[];
+
+  /** Ежедневные задания: дата (начало дня) и список квестов на этот день */
+  @Prop({
+    type: {
+      date: { type: Date, required: true },
+      quests: [
+        {
+          id: { type: String, required: true },
+          type: { type: String, required: true },
+          name: { type: String, required: true },
+          description: { type: String, default: '' },
+          target: { type: Number, required: true },
+          progress: { type: Number, default: 0 },
+          rewardExp: { type: Number, default: 5 },
+          rewardCoins: { type: Number, default: 0 },
+          completed: { type: Boolean, default: false },
+          claimedAt: { type: Date, default: null },
+        },
+      ],
+    },
+    default: null,
+  })
+  dailyQuests?: {
+    date: Date;
+    quests: {
+      id: string;
+      type: string;
+      name: string;
+      description: string;
+      target: number;
+      progress: number;
+      rewardExp: number;
+      rewardCoins: number;
+      completed: boolean;
+      claimedAt: Date | null;
+    }[];
+  } | null;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

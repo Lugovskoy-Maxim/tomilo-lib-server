@@ -165,6 +165,77 @@ export class UsersController {
     }
   }
 
+  // 📋 Ежедневные задания
+  @Get('daily-quests')
+  @UseGuards(JwtAuthGuard)
+  async getDailyQuests(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getOrCreateDailyQuests(
+        req.user.userId,
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/daily-quests',
+        method: 'GET',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'An error occurred',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/daily-quests',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('daily-quests/claim')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async claimDailyQuest(
+    @Request() req,
+    @Body() body: { questId: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const result = await this.usersService.claimDailyQuest(
+        req.user.userId,
+        body?.questId ?? '',
+      );
+      if (!result.success) {
+        return {
+          success: true,
+          data: result,
+          timestamp: new Date().toISOString(),
+          path: 'users/daily-quests/claim',
+          method: 'POST',
+        };
+      }
+      return {
+        success: true,
+        data: {
+          success: true,
+          expGained: result.expGained,
+          coinsGained: result.coinsGained,
+        },
+        timestamp: new Date().toISOString(),
+        path: 'users/daily-quests/claim',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'An error occurred',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/daily-quests/claim',
+        method: 'POST',
+      };
+    }
+  }
+
   // ✏️ Обновить профиль пользователя
   @Put('profile')
   @UseGuards(JwtAuthGuard)
@@ -856,10 +927,8 @@ export class UsersController {
         throw new BadRequestException('Avatar file is required');
       }
       const userId = req.user.userId;
-      const avatarUrl = `/uploads/avatars/${file.filename}`;
-      const data = await this.usersService.update(userId, {
-        avatar: avatarUrl,
-      });
+      // Сохраняем файл через FilesService (S3/локально) и получаем корректный URL; file.filename при memoryStorage() не задаётся
+      const data = await this.usersService.updateAvatar(userId, file);
 
       return {
         success: true,
@@ -989,9 +1058,9 @@ export class UsersController {
         ? (category as 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak' | 'chaptersRead')
         : 'level';
 
-      const validPeriods = ['all', 'month'];
+      const validPeriods = ['all', 'month', 'week'];
       const safePeriod = validPeriods.includes(period || '')
-        ? (period as 'all' | 'month')
+        ? (period as 'all' | 'month' | 'week')
         : 'all';
 
       const data = await this.usersService.getLeaderboard({

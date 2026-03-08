@@ -8,6 +8,7 @@ import {
   Notification,
   NotificationSchema,
 } from '../schemas/notification.schema';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import {
       { name: User.name, schema: UserSchema },
       { name: Notification.name, schema: NotificationSchema },
     ]),
+    UsersModule,
   ],
   controllers: [ReportsController],
   providers: [ReportsService],

@@ -9,6 +9,7 @@ import {
   NotificationDocument,
   NotificationType,
 } from '../schemas/notification.schema';
+import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class ReportsService {
@@ -17,6 +18,7 @@ export class ReportsService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Notification.name)
     private notificationModel: Model<NotificationDocument>,
+    private usersService: UsersService,
   ) {}
 
   async create(
@@ -37,7 +39,9 @@ export class ReportsService {
         : null,
     });
 
-    return report.save();
+    const saved = await report.save();
+    void this.usersService.incrementReportsCount(userId);
+    return saved;
   }
 
   async findAll(

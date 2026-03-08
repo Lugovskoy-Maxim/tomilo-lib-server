@@ -287,6 +287,8 @@ export class ShopService {
 
     await this.usersService.update(userId, updateUserDto);
 
+    void this.usersService.checkAchievementsForUser(userId);
+
     this.logger.log(
       `User ${userId} successfully purchased ${decorationType} decoration ${decorationId}`,
     );
