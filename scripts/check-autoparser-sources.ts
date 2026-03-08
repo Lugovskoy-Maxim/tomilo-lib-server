@@ -26,6 +26,7 @@ const PARSER_ORDER = [
   'mangabuff.ru',
   'telemanga.me',
   'ab.728.team',
+  'mango-read.org',
 ];
 
 function getParserKey(url: string): string | null {
@@ -132,6 +133,9 @@ async function parseViaParsers(url: string): Promise<ParsedMeta | null> {
         break;
       case 'ab.728.team':
         ParserClass = load('ab-728-team.parser.js').Ab728TeamParser;
+        break;
+      case 'mango-read.org':
+        ParserClass = load('mango-read.parser.js').MangoReadParser;
         break;
       default:
         return null;

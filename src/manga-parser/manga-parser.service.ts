@@ -18,6 +18,7 @@ import { MangahubParser } from './parsers/mangahub.parser';
 import { MangahubCcParser } from './parsers/mangahub-cc.parser';
 import { TelemangaParser } from './parsers/telemanga.parser';
 import { Ab728TeamParser } from './parsers/ab-728-team.parser';
+import { MangoReadParser } from './parsers/mango-read.parser';
 
 /**
  * Result of parsing chapters info from a single source
@@ -75,6 +76,7 @@ export class MangaParserService {
     this.parsers.set('mangahub.cc', new MangahubCcParser());
     this.parsers.set('telemanga.me', new TelemangaParser());
     this.parsers.set('ab.728.team', new Ab728TeamParser());
+    this.parsers.set('mango-read.org', new MangoReadParser());
   }
 
   private sanitizeFilename(name: string): string {
@@ -833,6 +835,70 @@ export class MangaParserService {
     }
   }
 
+  /**
+   * Download chapter images for mango-read.org (API v2 chapters/{slug}/{volume}/{chapter})
+   */
+  private async downloadMangoReadChapterImages(
+    chapter: ChapterInfo,
+    chapterId: string,
+    titleId: string,
+    mangaSlug: string,
+    options?: { syncTempSuffix?: string },
+  ): Promise<string[]> {
+    if (!chapter.slug) {
+      throw new BadRequestException(
+        'Chapter slug (volume/chapter) is required for mango-read.org',
+      );
+    }
+    try {
+      const { imageUrls } = await MangoReadParser.fetchChapterPages(
+        this.session,
+        mangaSlug,
+        chapter.slug,
+      );
+      if (imageUrls.length === 0) {
+        throw new Error('No pages in chapter response');
+      }
+      const pagePaths: string[] = [];
+      for (let i = 0; i < imageUrls.length; i++) {
+        const imgUrl = this.normalizeImageUrl(imageUrls[i]);
+        if (!imgUrl) continue;
+        try {
+          const pagePath = await this.filesService.downloadImageFromUrl(
+            imgUrl,
+            chapterId,
+            i + 1,
+            titleId,
+            {
+              headers: {
+                Referer: 'https://mango-read.org/',
+                Accept: 'image/webp,image/apng,image/*,*/*;q=0.8',
+              },
+              syncTempSuffix: options?.syncTempSuffix,
+            },
+          );
+          pagePaths.push(pagePath);
+        } catch (imageError) {
+          this.logger.error(
+            `Failed to download mango-read image ${i + 1}: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`,
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+      if (pagePaths.length === 0) {
+        throw new Error('No images could be downloaded');
+      }
+      return pagePaths;
+    } catch (error) {
+      this.logger.error(
+        `Failed to download mango-read chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      throw new BadRequestException(
+        `Failed to download chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
   async parseAndImportTitle(
     parseTitleDto: ParseTitleDto,
   ): Promise<{ title: any; importedChapters: any[]; totalChapters: number }> {
@@ -1094,6 +1160,11 @@ export class MangaParserService {
     if (abMatch) {
       return decodeURIComponent(abMatch[1]);
     }
+    // Format: https://mango-read.org/manga/{transliterated_name}
+    const mangoMatch = url.match(/mango-read\.org\/manga\/([^/?#]+)/);
+    if (mangoMatch) {
+      return decodeURIComponent(mangoMatch[1]);
+    }
     return null;
   }
 
@@ -1213,6 +1284,18 @@ export class MangaParserService {
       });
       return urls;
     }
+    if (domain.includes('mango-read.org') && mangaSlug && chapterInfo.slug) {
+      try {
+        const { imageUrls } = await MangoReadParser.fetchChapterPages(
+          this.session,
+          mangaSlug,
+          chapterInfo.slug,
+        );
+        return imageUrls.map((u) => this.normalizeImageUrl(u)).filter(Boolean);
+      } catch {
+        return [];
+      }
+    }
     return [];
   }
 
@@ -1309,6 +1392,15 @@ export class MangaParserService {
         chapterInfo,
         chapterId,
         titleId,
+        downloadOpts,
+      );
+    }
+    if (domain.includes('mango-read.org') && mangaSlug && chapterInfo.slug) {
+      return this.downloadMangoReadChapterImages(
+        chapterInfo,
+        chapterId,
+        titleId,
+        mangaSlug,
         downloadOpts,
       );
     }
@@ -1533,6 +1625,7 @@ export class MangaParserService {
         'mangahub.one',
         'mangahub.cc',
         'telemanga.me',
+        'mango-read.org',
       ],
     };
     await this.cacheManager.set(cacheKey, result);
