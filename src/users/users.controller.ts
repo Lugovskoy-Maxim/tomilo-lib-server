@@ -124,6 +124,16 @@ export class UsersController {
       );
       const path = 'users/daily-bonus';
       if (!result) {
+        // Бонус уже получен сегодня (например, при логине через auth) — всё равно обновляем квест «Ежедневный вход»
+        void this.usersService
+          .getOrCreateDailyQuests(req.user.userId)
+          .then(() =>
+            this.usersService.incrementDailyQuestProgress(
+              req.user.userId,
+              'daily_login',
+              1,
+            ),
+          );
         const profile = await this.usersService.findProfileById(
           req.user.userId,
         );

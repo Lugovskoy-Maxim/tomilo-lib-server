@@ -277,8 +277,9 @@ export class UsersService {
       return cached as LeaderboardResponse;
     }
 
-    // Для периодов "week"/"month" и категорий ratings/comments используем агрегацию по дате
-    if ((period === 'month' || period === 'week') && (category === 'ratings' || category === 'comments')) {
+    // Для периодов "week"/"month" и категорий с агрегацией по дате: ratings, comments, chaptersRead
+    // level, readingTime, streak — кумулятивные, период не меняет результат (всегда как "all")
+    if ((period === 'month' || period === 'week') && (category === 'ratings' || category === 'comments' || category === 'chaptersRead')) {
       return this.getLeaderboardByPeriod(category, period, limit, page, skip, cacheKey);
     }
 
@@ -440,10 +441,11 @@ export class UsersService {
   }
 
   /**
-   * Получить лидерборд за период (неделя или месяц) для ratings или comments через агрегацию.
+   * Получить лидерборд за период (неделя или месяц) для ratings, comments или chaptersRead через агрегацию.
+   * level, readingTime, streak не используют период — данные кумулятивные.
    */
   private async getLeaderboardByPeriod(
-    category: 'ratings' | 'comments',
+    category: 'ratings' | 'comments' | 'chaptersRead',
     period: LeaderboardPeriod,
     limit: number,
     page: number,
@@ -460,7 +462,23 @@ export class UsersService {
     let aggregationResult: { userId: string; count: number }[];
     let totalCount: number | null = null;
 
-    if (category === 'comments') {
+    if (category === 'chaptersRead') {
+      // Агрегация глав, прочитанных за период (readingHistory[].chapters[].readAt)
+      const pipeline = [
+        { $match: { isBot: { $ne: true }, showStats: { $ne: false } } },
+        { $unwind: '$readingHistory' },
+        { $unwind: '$readingHistory.chapters' },
+        { $match: { 'readingHistory.chapters.readAt': { $gte: dateFrom } } },
+        { $group: { _id: '$_id', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+      ];
+      const allCounts = await this.userModel.aggregate(pipeline).exec();
+      totalCount = allCounts.length;
+      aggregationResult = allCounts.slice(skip, skip + limit).map((r: any) => ({
+        userId: r._id.toString(),
+        count: r.count,
+      }));
+    } else if (category === 'comments') {
       const commentModel = this.userModel.db.collection('comments');
       const pipeline = [
         {
@@ -575,7 +593,7 @@ export class UsersService {
         level: user.level ?? 1,
         experience: user.experience ?? 0,
         readingTimeMinutes: 0,
-        chaptersReadCount: 0,
+        chaptersRead: category === 'chaptersRead' ? periodCount : 0,
         ratingsCount: category === 'ratings' ? periodCount : (user.ratingsCount ?? 0),
         commentsCount: category === 'comments' ? periodCount : (user.commentsCount ?? 0),
         likesReceivedCount: 0,
