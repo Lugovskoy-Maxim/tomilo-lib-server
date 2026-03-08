@@ -20,7 +20,7 @@ export class Chapter {
   pages: string[];
 
   /** URL главы на источнике (для повторной синхронизации страниц) */
-  @Prop()
+  @Prop({ type: String, default: null })
   sourceChapterUrl: string | null;
 
   @Prop({ default: 0 })

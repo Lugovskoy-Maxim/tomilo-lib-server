@@ -107,6 +107,24 @@ export class AutoParsingService implements OnModuleInit {
     return sources.map((_, i) => i);
   }
 
+  private chapterExistsInList(
+    chapterNumber: number,
+    existingChapterNumbers: (number | string)[],
+  ): boolean {
+    return existingChapterNumbers.some((existing) => {
+      const existingNum =
+        typeof existing === 'string' ? parseFloat(existing) : existing;
+      const chapterNum = Number(chapterNumber);
+      if (isNaN(existingNum) || isNaN(chapterNum)) {
+        return String(existing) === String(chapterNumber);
+      }
+      if (Number.isInteger(existingNum) && Number.isInteger(chapterNum)) {
+        return existingNum === chapterNum;
+      }
+      return Math.abs(existingNum - chapterNum) < 0.001;
+    });
+  }
+
   async create(
     createAutoParsingJobDto: CreateAutoParsingJobDto,
   ): Promise<AutoParsingJob> {
@@ -254,21 +272,21 @@ export class AutoParsingService implements OnModuleInit {
       // Determine source order - try last used source first
       const sourceOrder = this.getSourceOrder(
         sources,
-        job.lastUsedSourceIndex || 0,
+        job.lastUsedSourceIndex ?? 0,
       );
 
-      // Try sources in order until we find new chapters
-      let parsedData: {
-        title: string;
+      // Проверяем ВСЕ источники и собираем главы с каждого
+      type SourceResult = {
+        sourceIndex: number;
+        url: string;
         chapters: Array<{
           number?: number;
           name: string;
           url?: string;
           slug?: string;
         }>;
-      } | null = null;
-      let usedSourceIndex = -1;
-      let usedSourceUrl = '';
+      };
+      const successfulSources: SourceResult[] = [];
       const errors: string[] = [];
 
       for (const sourceIndex of sourceOrder) {
@@ -285,17 +303,12 @@ export class AutoParsingService implements OnModuleInit {
             this.logger.log(
               `Found ${result.chapters.length} chapters from source: ${url}`,
             );
-
-            parsedData = {
-              title: result.title || title.name,
+            successfulSources.push({
+              sourceIndex,
+              url,
               chapters: result.chapters,
-            };
-            usedSourceIndex = sourceIndex;
-            usedSourceUrl = url;
-            break;
-          }
-
-          if (!result.success) {
+            });
+          } else if (!result.success) {
             errors.push(`${url}: ${result.error || 'Unknown error'}`);
           } else {
             errors.push(`${url}: No chapters found`);
@@ -307,8 +320,7 @@ export class AutoParsingService implements OnModuleInit {
         }
       }
 
-      // If no sources succeeded, throw error
-      if (!parsedData) {
+      if (successfulSources.length === 0) {
         this.logger.error(
           `All ${sources.length} sources failed for title ${title.name}. Errors: ${errors.join('; ')}`,
         );
@@ -317,88 +329,93 @@ export class AutoParsingService implements OnModuleInit {
         );
       }
 
-      // Find new chapters from the successful source
-      const newChapters = parsedData.chapters.filter((ch) => {
-        if (ch.number === undefined || ch.number === null || isNaN(ch.number)) {
-          this.logger.log(
-            `Skipping chapter with invalid number: ${JSON.stringify(ch)}`,
-          );
-          return false;
+      // Множество номеров глав, которых ещё нет в БД (объединение по всем источникам)
+      const newChapterNumbersSet = new Set<number>();
+      for (const { chapters } of successfulSources) {
+        for (const ch of chapters) {
+          if (
+            ch.number === undefined ||
+            ch.number === null ||
+            isNaN(Number(ch.number))
+          ) {
+            continue;
+          }
+          const num = Number(ch.number);
+          if (!this.chapterExistsInList(num, existingChapterNumbers)) {
+            newChapterNumbersSet.add(num);
+          }
         }
+      }
 
-        const chapterNumber = Number(ch.number);
+      const newChapterNumbersList = Array.from(newChapterNumbersSet).sort(
+        (a, b) => a - b,
+      );
+      this.logger.log(
+        `New chapters to import (from all sources): ${newChapterNumbersList.length}`,
+      );
 
-        const exists = existingChapterNumbers.some((existing) => {
-          const existingNum =
-            typeof existing === 'string' ? parseFloat(existing) : existing;
-          const chapterNum =
-            typeof chapterNumber === 'string'
-              ? parseFloat(chapterNumber)
-              : chapterNumber;
-
-          if (isNaN(existingNum) || isNaN(chapterNum)) {
-            const result = String(existing) === String(chapterNumber);
-            this.logger.log(
-              `Comparing as strings: ${existing} with ${chapterNumber}: ${result}`,
-            );
-            return result;
-          }
-
-          if (Number.isInteger(existingNum) && Number.isInteger(chapterNum)) {
-            const result = existingNum === chapterNum;
-            this.logger.log(
-              `Comparing integers ${existingNum} with ${chapterNum}: ${result}`,
-            );
-            return result;
-          }
-
-          const result = Math.abs(existingNum - chapterNum) < 0.001;
-          this.logger.log(
-            `Comparing floats ${existingNum} with ${chapterNum}: ${result}`,
-          );
-          return result;
-        });
-
-        this.logger.log(`Chapter ${chapterNumber} exists: ${exists}`);
-        return !exists;
-      });
-
-      this.logger.log(`New chapters to import: ${newChapters.length}`);
-
-      if (newChapters.length === 0) {
+      if (newChapterNumbersList.length === 0) {
         this.logger.log(
           `No new chapters found for title ${title.name} (all chapters may already exist)`,
         );
-
-        // Update tracking even when no new chapters found
+        const firstUsed = successfulSources[0];
         await this.autoParsingJobModel.findByIdAndUpdate(jobId, {
           lastChecked: new Date(),
-          lastUsedSourceIndex: usedSourceIndex,
-          lastUsedSourceUrl: usedSourceUrl,
+          lastUsedSourceIndex: firstUsed.sourceIndex,
+          lastUsedSourceUrl: firstUsed.url,
         });
-
         return [];
       }
 
-      // Import new chapters from the successful source
-      const importedChapters =
-        await this.mangaParserService.parseAndImportChapters({
-          url: usedSourceUrl,
-          titleId: titleId,
-          chapterNumbers: newChapters.map((ch) => ch.number!.toString()),
-        });
+      // Импортируем новые главы: для каждого источника — те новые номера, которые есть на нём и ещё не импортированы
+      const remainingToImport = new Set(newChapterNumbersList);
+      const allImported: any[] = [];
+      let lastUsedSourceIndex = successfulSources[0].sourceIndex;
+      let lastUsedSourceUrl = successfulSources[0].url;
 
-      // Update last checked and tracking info
+      for (const { sourceIndex, url, chapters } of successfulSources) {
+        const numbersFromThisSource = chapters
+          .filter((ch) => {
+            const n = ch.number != null ? Number(ch.number) : NaN;
+            return !isNaN(n) && remainingToImport.has(n);
+          })
+          .map((ch) => Number(ch.number!));
+
+        if (numbersFromThisSource.length === 0) continue;
+
+        this.logger.log(
+          `Importing ${numbersFromThisSource.length} chapter(s) from source: ${url}`,
+        );
+
+        const imported =
+          await this.mangaParserService.parseAndImportChapters({
+            url,
+            titleId,
+            chapterNumbers: numbersFromThisSource.map(String),
+          });
+
+        for (const c of imported) {
+          const num =
+            typeof (c as any).chapterNumber === 'number'
+              ? (c as any).chapterNumber
+              : parseFloat((c as any).chapterNumber);
+          if (!isNaN(num)) remainingToImport.delete(num);
+          allImported.push(c);
+        }
+        lastUsedSourceIndex = sourceIndex;
+        lastUsedSourceUrl = url;
+      }
+
       await this.autoParsingJobModel.findByIdAndUpdate(jobId, {
         lastChecked: new Date(),
-        lastUsedSourceIndex: usedSourceIndex,
-        lastUsedSourceUrl: usedSourceUrl,
+        lastUsedSourceIndex: lastUsedSourceIndex,
+        lastUsedSourceUrl: lastUsedSourceUrl,
       });
 
       this.logger.log(
-        `Imported ${importedChapters.length} new chapters for title ${title.name} from source ${usedSourceUrl}`,
+        `Imported ${allImported.length} new chapters for title ${title.name} from ${successfulSources.length} source(s)`,
       );
-      return importedChapters;
+      return allImported;
     } catch (error) {
       this.logger.error(
         `Failed to check for new chapters: ${error instanceof Error ? error.message : 'Unknown error'}`,
