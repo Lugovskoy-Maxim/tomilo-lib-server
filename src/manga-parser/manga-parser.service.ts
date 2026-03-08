@@ -1192,6 +1192,7 @@ export class MangaParserService {
       }
       try {
         const chapterId = dbChapter._id.toString();
+        // Сначала удаляем старые картинки (локально и в S3), затем качаем новые и сохраняем в облако и на сервер
         await this.filesService.deleteChapterPages(
           chapterId,
           dbChapter.titleId?.toString(),

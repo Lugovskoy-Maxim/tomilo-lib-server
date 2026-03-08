@@ -37,29 +37,10 @@ export class FilesService {
     this.logger.log(`Файл сохранен локально: ${fullLocalPath}`);
 
     if (this.useS3()) {
-      this.uploadToS3Async(s3Key, buffer, contentType);
+      await this.s3Service.uploadFile(s3Key, buffer, contentType);
     }
 
     return `/${localPath}`;
-  }
-
-  /**
-   * Асинхронная загрузка в S3 (fire-and-forget).
-   * Не блокирует основной поток, ошибки логируются.
-   */
-  private uploadToS3Async(
-    s3Key: string,
-    buffer: Buffer,
-    contentType: string,
-  ): void {
-    this.s3Service
-      .uploadFile(s3Key, buffer, contentType)
-      .then(() => {
-        this.logger.log(`[S3 async] Файл загружен: ${s3Key}`);
-      })
-      .catch((error) => {
-        this.logger.error(`[S3 async] Ошибка загрузки ${s3Key}: ${error}`);
-      });
   }
 
   /**
@@ -99,7 +80,8 @@ export class FilesService {
   }
 
   /**
-   * Удаляет папку локально и асинхронно из S3 (если настроен).
+   * Удаляет папку локально и в S3 (если настроен).
+   * Ожидает завершения удаления в S3, чтобы при синхронизации глав новые файлы не удалились гонкой с удалением старых.
    */
   private async deleteFolderWithBackup(
     localDir: string,
@@ -116,22 +98,14 @@ export class FilesService {
     }
 
     if (this.useS3()) {
-      this.deleteFolderFromS3Async(s3Prefix);
+      try {
+        await this.s3Service.deleteFolder(s3Prefix);
+        this.logger.log(`Папка удалена из S3: ${s3Prefix}`);
+      } catch (error) {
+        this.logger.error(`Ошибка удаления папки в S3 ${s3Prefix}: ${error}`);
+        // Не бросаем дальше: локально уже удалено, синхронизация может продолжиться
+      }
     }
-  }
-
-  /**
-   * Асинхронное удаление папки из S3 (fire-and-forget).
-   */
-  private deleteFolderFromS3Async(s3Prefix: string): void {
-    this.s3Service
-      .deleteFolder(s3Prefix)
-      .then(() => {
-        this.logger.log(`[S3 async] Папка удалена: ${s3Prefix}`);
-      })
-      .catch((error) => {
-        this.logger.error(`[S3 async] Ошибка удаления папки ${s3Prefix}: ${error}`);
-      });
   }
 
   async saveChapterPages(
