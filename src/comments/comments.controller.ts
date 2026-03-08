@@ -73,6 +73,7 @@ export class CommentsController {
     @Query('page') page = 1,
     @Query('limit') limit = 20,
     @Query('includeReplies') includeReplies: string | boolean = false,
+    @Query('sortOrder') sortOrder?: 'newest' | 'oldest' | 'popular',
   ): Promise<ApiResponseDto<any>> {
     try {
       // Validate entityType
@@ -87,12 +88,19 @@ export class CommentsController {
 
       const includeRepliesBool =
         includeReplies === 'true' || includeReplies === true;
+      const validSort =
+        sortOrder === 'newest' ||
+        sortOrder === 'oldest' ||
+        sortOrder === 'popular'
+          ? sortOrder
+          : 'newest';
       const data = await this.commentsService.findAll(
         entityType,
         entityId,
         Number(page),
         Number(limit),
         includeRepliesBool,
+        validSort,
       );
 
       return {

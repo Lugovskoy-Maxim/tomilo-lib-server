@@ -120,6 +120,7 @@ export class CommentsService {
     page = 1,
     limit = 20,
     includeReplies = false,
+    sortOrder: 'newest' | 'oldest' | 'popular' = 'newest',
   ) {
     const skip = (page - 1) * limit;
     // Всегда получаем только родительские комментарии (без ответов)
@@ -130,7 +131,6 @@ export class CommentsService {
     };
 
     // Если entityId равен "all", то не фильтруем по конкретному entityId
-    // Иначе фильтруем по конкретному entityId
     if (entityId !== 'all') {
       query.entityId = new Types.ObjectId(entityId);
     }
@@ -144,16 +144,59 @@ export class CommentsService {
       ],
     };
 
-    const [comments, total] = await Promise.all([
-      this.commentModel
+    let comments: any[];
+    const total = await this.commentModel.countDocuments(query);
+
+    if (sortOrder === 'popular') {
+      // Сортировка по популярности (сумма реакций): агрегация для порядка, затем find+populate
+      const pipeline: any[] = [
+        { $match: query },
+        {
+          $addFields: {
+            reactionsTotal: {
+              $sum: {
+                $map: {
+                  input: { $ifNull: ['$reactions', []] },
+                  as: 'r',
+                  in: { $size: { $ifNull: ['$$r.userIds', []] } },
+                },
+              },
+            },
+          },
+        },
+        { $sort: { reactionsTotal: -1, createdAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+        { $project: { _id: 1 } },
+      ];
+      const orderedIds = await this.commentModel
+        .aggregate(pipeline)
+        .exec()
+        .then((rows) => rows.map((r) => r._id));
+      if (orderedIds.length === 0) {
+        comments = [];
+      } else {
+        const byId = new Map<string, any>();
+        const found = await this.commentModel
+          .find({ _id: { $in: orderedIds } })
+          .populate(authorPopulate)
+          .lean();
+        found.forEach((c: any) => byId.set(c._id.toString(), c));
+        comments = orderedIds
+          .map((id) => byId.get(id.toString()))
+          .filter(Boolean);
+      }
+    } else {
+      const sortCrit =
+        sortOrder === 'oldest' ? { createdAt: 1 } : { createdAt: -1 };
+      comments = await this.commentModel
         .find(query)
         .populate(authorPopulate)
-        .sort({ createdAt: -1 })
+        .sort(sortCrit)
         .skip(skip)
         .limit(limit)
-        .lean(),
-      this.commentModel.countDocuments(query),
-    ]);
+        .lean();
+    }
 
     // Get replies for each comment if includeReplies is true (recursively)
     if (includeReplies && comments.length > 0) {

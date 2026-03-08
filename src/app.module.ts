@@ -43,6 +43,7 @@ import { AdminModule } from './admin/admin.module';
 import { GenresModule } from './genres/genres.module';
 import { PromocodesModule } from './promocodes/promocodes.module';
 import { TranslatorTeamsModule } from './translator-teams/translator-teams.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 
@@ -98,6 +99,7 @@ const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
     GenresModule,
     PromocodesModule,
     TranslatorTeamsModule,
+    SubscriptionsModule,
   ],
   controllers: [AppController],
   providers: [

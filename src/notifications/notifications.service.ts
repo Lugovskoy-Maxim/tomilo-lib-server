@@ -9,6 +9,7 @@ import {
 } from '../schemas/notification.schema';
 import { CommentEntityType } from '../schemas/comment.schema';
 import { PushService } from '../push/push.service';
+import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 const UNREAD_COUNT_CACHE_PREFIX = 'notifications:unread:';
 const UNREAD_COUNT_CACHE_TTL_MS = 30 * 1000; // 30 sec
@@ -22,6 +23,7 @@ export class NotificationsService {
     @Inject(CACHE_MANAGER)
     private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown, ttl?: number) => Promise<void> },
     private pushService: PushService,
+    private subscriptionsService: SubscriptionsService,
   ) {}
 
   private unreadCountCacheKey(userId: string): string {
@@ -187,7 +189,7 @@ export class NotificationsService {
     titleName: string,
     options?: { titleSlug?: string },
   ): Promise<void> {
-    // Находим всех пользователей, у которых этот тайтл в закладках
+    // Пользователи с тайтлом в закладках
     const titleObjectId = Types.ObjectId.isValid(titleId) ? new Types.ObjectId(titleId) : null;
     const usersWithBookmark = await this.notificationModel.db
       .collection('users')
@@ -199,8 +201,14 @@ export class NotificationsService {
       })
       .toArray();
 
-    const notifications = usersWithBookmark.map((user: any) => ({
-      userId: user._id,
+    // Подписчики на тайтл (уведомления о новых главах)
+    const subscriberIds = await this.subscriptionsService.getSubscriberIdsForNewChapter(titleId);
+    const bookmarkUserIds = (usersWithBookmark as any[]).map((u: any) => u._id.toString());
+    const allUserIdsSet = new Set<string>([...bookmarkUserIds, ...subscriberIds]);
+    const allUserIds = Array.from(allUserIdsSet);
+
+    const notifications = allUserIds.map((uid) => ({
+      userId: new Types.ObjectId(uid),
       type: NotificationType.NEW_CHAPTER,
       title: `Новая глава в "${titleName}"`,
       message: `Глава ${chapterNumber} теперь доступна для чтения`,
@@ -217,9 +225,14 @@ export class NotificationsService {
     }
 
     // Web Push: только пользователям с включёнными уведомлениями о новых главах
-    const userIdsForPush = usersWithBookmark
-      .filter((u: any) => u.notifications?.newChapters !== false)
-      .map((u: any) => u._id.toString());
+    const usersWithBookmarkMap = new Map(
+      (usersWithBookmark as any[]).map((u: any) => [u._id.toString(), u]),
+    );
+    const userIdsForPush = allUserIds.filter((uid) => {
+      const user = usersWithBookmarkMap.get(uid);
+      if (user) return user.notifications?.newChapters !== false;
+      return true; // подписчики без закладки — по умолчанию шлём push
+    });
     if (userIdsForPush.length > 0 && this.pushService.isConfigured()) {
       const subscriptionMap = await this.pushService.getSubscriptionsByUserIds(userIdsForPush);
       if (subscriptionMap.size > 0) {
@@ -227,16 +240,13 @@ export class NotificationsService {
           ? `/titles/${options.titleSlug}/chapter/${chapterId}`
           : `/titles/${titleId}/chapter/${chapterId}`;
         const url = `${SITE_URL.replace(/\/$/, '')}${path}`;
-        const { sent, failed } = await this.pushService.sendToSubscriptions(
-          subscriptionMap,
-          {
-            title: `Новая глава: ${titleName}`,
-            body: `Глава ${chapterNumber} доступна для чтения`,
-            url,
-            tag: `chapter-${chapterId}`,
-            data: { titleId, chapterId },
-          },
-        );
+        await this.pushService.sendToSubscriptions(subscriptionMap, {
+          title: `Новая глава: ${titleName}`,
+          body: `Глава ${chapterNumber} доступна для чтения`,
+          url,
+          tag: `chapter-${chapterId}`,
+          data: { titleId, chapterId },
+        });
       }
     }
   }

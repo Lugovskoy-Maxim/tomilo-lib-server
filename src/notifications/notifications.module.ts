@@ -7,6 +7,7 @@ import {
   NotificationSchema,
 } from '../schemas/notification.schema';
 import { PushModule } from '../push/push.module';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { PushModule } from '../push/push.module';
       { name: Notification.name, schema: NotificationSchema },
     ]),
     PushModule,
+    SubscriptionsModule,
   ],
   controllers: [NotificationsController],
   providers: [NotificationsService],
