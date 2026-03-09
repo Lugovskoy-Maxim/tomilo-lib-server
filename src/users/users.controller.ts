@@ -114,6 +114,31 @@ export class UsersController {
     }
   }
 
+  // 🏆 Достижения текущего пользователя (для вкладки профиля)
+  @Get('profile/achievements')
+  @UseGuards(JwtAuthGuard)
+  async getProfileAchievements(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getProfileAchievementsForUser(
+        req.user.userId,
+      );
+      return {
+        success: true,
+        data: { achievements: data },
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/achievements',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch profile achievements',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/achievements',
+      };
+    }
+  }
+
   // 🎁 Ежедневный бонус (опыт за вход раз в день)
   @Post('daily-bonus')
   @UseGuards(JwtAuthGuard)

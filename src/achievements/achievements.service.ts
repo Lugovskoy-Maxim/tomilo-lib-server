@@ -476,4 +476,87 @@ export class AchievementsService {
 
     return result;
   }
+
+  /**
+   * Возвращает все достижения с текущим прогрессом пользователя для отображения в профиле.
+   * Для каждого определения: currentLevel, currentValue, levels (пороги и названия).
+   */
+  getProfileAchievements(
+    userAchievements: UserAchievementData[],
+    stats: {
+      chaptersRead: number;
+      bookmarksCount: number;
+      userLevel: number;
+      daysSinceJoined: number;
+      socialConnections: number;
+      commentsCount?: number;
+      ratingsCount?: number;
+      longestStreak?: number;
+      completedTitlesCount?: number;
+      readingTimeMinutes?: number;
+      balance?: number;
+      ownedDecorationsCount?: number;
+      likesReceivedCount?: number;
+      titlesReadCount?: number;
+      reportsCount?: number;
+    },
+  ): ProfileAchievementDto[] {
+    const statsMap: Record<string, number> = {
+      reader: stats.chaptersRead,
+      collector: stats.bookmarksCount,
+      cultivator: stats.userLevel,
+      veteran: stats.daysSinceJoined,
+      social: stats.socialConnections,
+      commentator: stats.commentsCount ?? 0,
+      critic: stats.ratingsCount ?? 0,
+      marathon: stats.longestStreak ?? 0,
+      completer: stats.completedTitlesCount ?? 0,
+      time_reader: stats.readingTimeMinutes ?? 0,
+      saver: stats.balance ?? 0,
+      shopper: stats.ownedDecorationsCount ?? 0,
+      popular: stats.likesReceivedCount ?? 0,
+      explorer: stats.titlesReadCount ?? 0,
+      reporter: stats.reportsCount ?? 0,
+    };
+
+    return this.achievements.map((achDef) => {
+      const currentValue = statsMap[achDef.id] ?? 0;
+      const existingAch = userAchievements.find(
+        (a) => a.achievementId === achDef.id,
+      );
+      let currentLevel = 0;
+      for (const lvl of achDef.levels) {
+        if (currentValue >= lvl.threshold) {
+          currentLevel = lvl.level;
+        }
+      }
+      return {
+        id: achDef.id,
+        name: achDef.name,
+        description: achDef.description,
+        icon: achDef.icon,
+        type: achDef.type,
+        currentLevel,
+        maxLevel: achDef.levels.length,
+        currentValue,
+        levels: achDef.levels.map((l) => ({
+          threshold: l.threshold,
+          name: l.name,
+          rarity: l.rarity,
+        })),
+      };
+    });
+  }
+}
+
+export interface ProfileAchievementDto {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  type: AchievementType;
+  currentLevel: number;
+  maxLevel: number;
+  currentValue: number;
+  levels: { threshold: number; name: string; rarity: AchievementRarity }[];
 }

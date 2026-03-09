@@ -26,7 +26,10 @@ import {
   AchievementTypeDto,
   AchievementRarityDto,
 } from './dto/reading-progress-response.dto';
-import { AchievementsService } from '../achievements/achievements.service';
+import {
+  AchievementsService,
+  ProfileAchievementDto,
+} from '../achievements/achievements.service';
 import { PushService } from '../push/push.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
 import { Cron } from '@nestjs/schedule';
@@ -2733,6 +2736,83 @@ export class UsersService {
     this.logger.log(
       `User ${userId} unlocked ${newUnlocked.length} achievement(s): ${newUnlocked.map((a) => a.name).join(', ')}`,
     );
+
+    // Отправка достижений по WebSocket для тостов на любой странице
+    if (this.notificationsGateway && newUnlocked.length > 0) {
+      setImmediate(() => {
+        try {
+          for (const ach of newUnlocked) {
+            this.notificationsGateway!.emitProgressToUser(userId, {
+              type: 'achievement',
+              achievement: {
+                id: ach.id,
+                name: ach.name,
+                description: ach.description,
+                icon: ach.icon,
+                type: ach.type,
+                rarity: ach.rarity,
+                level: ach.level,
+                levelName: ach.levelName,
+                unlockedAt: ach.unlockedAt,
+                progress: ach.progress,
+                maxProgress: ach.maxProgress,
+              },
+            });
+          }
+        } catch (e) {
+          this.logger.warn(`WS progress emit failed for user ${userId}`, e);
+        }
+      });
+    }
+  }
+
+  /**
+   * Возвращает список достижений с прогрессом пользователя для отображения в профиле.
+   */
+  async getProfileAchievementsForUser(userId: string): Promise<ProfileAchievementDto[]> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select(
+        'achievements level bookmarks emailVerified oauthProviders commentsCount ratingsCount longestStreak completedTitlesCount readingTimeMinutes balance ownedDecorations likesReceivedCount titlesReadCount reportsCount chaptersReadCount createdAt',
+      )
+      .lean()
+      .exec();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const u = user as any;
+    const totalChaptersRead = u.chaptersReadCount ?? 0;
+    const totalBookmarks = u.bookmarks?.length ?? 0;
+    const createdAt = u.createdAt as Date | undefined;
+    const daysSinceJoined = createdAt
+      ? Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24))
+      : 0;
+    const socialConnections =
+      (u.emailVerified ? 1 : 0) + (u.oauthProviders?.length ?? 0);
+
+    return this.achievementsService.getProfileAchievements(
+      u.achievements ?? [],
+      {
+        chaptersRead: totalChaptersRead,
+        bookmarksCount: totalBookmarks,
+        userLevel: u.level ?? 1,
+        daysSinceJoined,
+        socialConnections,
+        commentsCount: u.commentsCount ?? 0,
+        ratingsCount: u.ratingsCount ?? 0,
+        longestStreak: u.longestStreak ?? 0,
+        completedTitlesCount: u.completedTitlesCount ?? 0,
+        readingTimeMinutes: u.readingTimeMinutes ?? 0,
+        balance: u.balance ?? 0,
+        ownedDecorationsCount: u.ownedDecorations?.length ?? 0,
+        likesReceivedCount: u.likesReceivedCount ?? 0,
+        titlesReadCount: u.titlesReadCount ?? 0,
+        reportsCount: u.reportsCount ?? 0,
+      },
+    );
   }
 
   // 📋 Ежедневные задания
@@ -2843,6 +2923,9 @@ export class UsersService {
     delta: number = 1,
   ): Promise<void> {
     if (!Types.ObjectId.isValid(userId) || delta <= 0) return;
+
+    // Сначала создаём задания на сегодня, если их ещё нет (иначе прогресс чтения глав и др. не засчитается)
+    await this.getOrCreateDailyQuests(userId);
 
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user?.dailyQuests?.quests?.length) return;
@@ -3273,12 +3356,14 @@ export class UsersService {
     viewerId?: string,
     isFriend: boolean = false,
   ): Promise<Record<string, unknown>> {
-    if (!Types.ObjectId.isValid(userId)) {
+    if (!userId || typeof userId !== 'string') {
       throw new BadRequestException('Invalid user ID');
     }
 
-    const targetUser = await this.userModel
-      .findById(new Types.ObjectId(userId))
+    const query = Types.ObjectId.isValid(userId)
+      ? this.userModel.findById(new Types.ObjectId(userId))
+      : this.userModel.findOne({ username: userId });
+    const targetUser = await query
       .select('-password')
       .populate({
         path: 'bookmarks.titleId',
@@ -3356,8 +3441,19 @@ export class UsersService {
       },
       showReadingHistory: targetUser.showReadingHistory !== false,
       showBookmarks: targetUser.showBookmarks !== false,
+      showStats: (targetUser as any).showStats !== false,
+      showAchievements: (targetUser as any).showAchievements !== false,
       scheduledDeletionAt: (targetUser as any).scheduledDeletionAt ?? null,
       deletedAt: (targetUser as any).deletedAt ?? null,
+      titlesReadCount: (targetUser as any).titlesReadCount ?? 0,
+      commentsCount: (targetUser as any).commentsCount ?? 0,
+      ratingsCount: (targetUser as any).ratingsCount ?? 0,
+      likesReceivedCount: (targetUser as any).likesReceivedCount ?? 0,
+      readingTimeMinutes: (targetUser as any).readingTimeMinutes ?? 0,
+      longestStreak: (targetUser as any).longestStreak ?? 0,
+      completedTitlesCount: (targetUser as any).completedTitlesCount ?? 0,
+      reportsCount: (targetUser as any).reportsCount ?? 0,
+      createdAt: (targetUser as any).createdAt ?? null,
     };
 
     if (showExtendedProfile) {
@@ -3375,6 +3471,19 @@ export class UsersService {
 
     if (canViewHistory) {
       profile.readingHistory = targetUser.readingHistory;
+    }
+
+    const canViewAchievements =
+      isOwnProfile ||
+      ((targetUser as any).showAchievements !== false && showExtendedProfile);
+    if (canViewAchievements) {
+      try {
+        profile.achievements = await this.getProfileAchievementsForUser(
+          targetUserId,
+        );
+      } catch {
+        profile.achievements = [];
+      }
     }
 
     return profile;
