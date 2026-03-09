@@ -3330,13 +3330,17 @@ export class UsersService {
     const isOwnProfile = viewerId === targetUserId;
     const showExtendedProfile =
       (targetUser.privacy?.profileVisibility === 'public' || isOwnProfile || isFriend);
-
-    const canViewHistory = this.canViewReadingHistory(
-      targetUser.privacy ?? null,
-      viewerId,
-      isFriend,
-      targetUserId,
-    );
+    const canViewBookmarks =
+      isOwnProfile || (targetUser.showBookmarks !== false && showExtendedProfile);
+    const canViewHistory =
+      isOwnProfile ||
+      ((targetUser.showReadingHistory !== false) &&
+        this.canViewReadingHistory(
+          targetUser.privacy ?? null,
+          viewerId,
+          isFriend,
+          targetUserId,
+        ));
 
     const profile: Record<string, unknown> = {
       _id: targetUser._id,
@@ -3350,6 +3354,8 @@ export class UsersService {
         readingHistoryVisibility:
           targetUser.privacy?.readingHistoryVisibility ?? 'private',
       },
+      showReadingHistory: targetUser.showReadingHistory !== false,
+      showBookmarks: targetUser.showBookmarks !== false,
       scheduledDeletionAt: (targetUser as any).scheduledDeletionAt ?? null,
       deletedAt: (targetUser as any).deletedAt ?? null,
     };
@@ -3357,11 +3363,14 @@ export class UsersService {
     if (showExtendedProfile) {
       profile.firstName = targetUser.firstName;
       profile.lastName = targetUser.lastName;
-      profile.bookmarks = this.repairBookmarksPlain(targetUser.bookmarks);
       profile.equippedDecorations = targetUser.equippedDecorations;
       if (isOwnProfile) {
         profile.email = targetUser.email;
       }
+    }
+
+    if (canViewBookmarks) {
+      profile.bookmarks = this.repairBookmarksPlain(targetUser.bookmarks);
     }
 
     if (canViewHistory) {

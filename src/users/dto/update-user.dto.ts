@@ -102,6 +102,16 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   @Type(() => DisplaySettingsDto)
   displaySettings?: DisplaySettingsDto;
 
+  /** Показывать ли историю чтения в профиле */
+  @IsOptional()
+  @IsBoolean()
+  showReadingHistory?: boolean;
+
+  /** Показывать ли закладки в профиле */
+  @IsOptional()
+  @IsBoolean()
+  showBookmarks?: boolean;
+
   /** Дата окончания премиум-подписки (ISO). Передать null, чтобы снять подписку. Только для админа. */
   @IsOptional()
   @ValidateIf((_, v) => v != null)

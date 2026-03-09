@@ -121,6 +121,14 @@ export class User {
   @Prop({ default: true })
   showFavoriteCharacters: boolean;
 
+  /** Показывать ли историю чтения в профиле (для других пользователей; владелец всегда видит свою) */
+  @Prop({ default: true })
+  showReadingHistory: boolean;
+
+  /** Показывать ли закладки в профиле (для других пользователей; владелец всегда видит свои) */
+  @Prop({ default: true })
+  showBookmarks: boolean;
+
   // Bot detection fields
   @Prop({ default: false })
   isBot: boolean;
