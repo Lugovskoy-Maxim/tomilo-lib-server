@@ -1094,6 +1094,8 @@ export class UsersService {
     const existingIndex = (user.bookmarks as any[]).findIndex(
       (b: any) => this.getBookmarkTitleIdStr(b) === titleId,
     );
+    const oldCategory =
+      existingIndex >= 0 ? (user.bookmarks as any[])[existingIndex]?.category : null;
     const entry = {
       titleId: titleObjectId,
       category,
@@ -1109,6 +1111,20 @@ export class UsersService {
     await user.save();
 
     if (isNewBookmark) void this.incrementDailyQuestProgress(userId, 'add_bookmark', 1);
+    // Достижение «Завершающий»: учёт тайтлов в категории «Прочитано»
+    if (category === 'completed' && oldCategory !== 'completed') {
+      try {
+        await this.incrementCompletedTitlesCount(userId);
+      } catch (e) {
+        this.logger.warn(`Failed to increment completedTitlesCount: ${(e as Error).message}`);
+      }
+    } else if (oldCategory === 'completed' && category !== 'completed') {
+      try {
+        await this.decrementCompletedTitlesCount(userId);
+      } catch (e) {
+        this.logger.warn(`Failed to decrement completedTitlesCount: ${(e as Error).message}`);
+      }
+    }
 
     this.logger.log(
       `Bookmark added successfully for user ${userId} to title ${titleId}`,
@@ -1127,6 +1143,9 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
     this.normalizeBookmarksIfNeeded(user as UserDocument);
 
+    const removed = (user.bookmarks as any[]).find(
+      (b: any) => this.getBookmarkTitleIdStr(b) === titleId,
+    );
     const before = (user.bookmarks as any[]).length;
     user.bookmarks = (user.bookmarks as any[]).filter(
       (b: any) => this.getBookmarkTitleIdStr(b) !== titleId,
@@ -1136,6 +1155,13 @@ export class UsersService {
     }
     this.sanitizeBookmarksBeforeSave(user as UserDocument);
     await user.save();
+    if (removed?.category === 'completed') {
+      try {
+        await this.decrementCompletedTitlesCount(userId);
+      } catch (e) {
+        this.logger.warn(`Failed to decrement completedTitlesCount: ${(e as Error).message}`);
+      }
+    }
     return (await this.userModel
       .findById(new Types.ObjectId(userId))
       .select('-password')) as User;
@@ -1163,9 +1189,23 @@ export class UsersService {
       (b: any) => this.getBookmarkTitleIdStr(b) === titleId,
     );
     if (!entry) throw new NotFoundException('Bookmark not found');
+    const oldCategory = entry.category;
     entry.category = category;
     this.sanitizeBookmarksBeforeSave(user as UserDocument);
     await user.save();
+    if (oldCategory === 'completed' && category !== 'completed') {
+      try {
+        await this.decrementCompletedTitlesCount(userId);
+      } catch (e) {
+        this.logger.warn(`Failed to decrement completedTitlesCount: ${(e as Error).message}`);
+      }
+    } else if (oldCategory !== 'completed' && category === 'completed') {
+      try {
+        await this.incrementCompletedTitlesCount(userId);
+      } catch (e) {
+        this.logger.warn(`Failed to increment completedTitlesCount: ${(e as Error).message}`);
+      }
+    }
     return (await this.userModel
       .findById(new Types.ObjectId(userId))
       .select('-password')) as User;
@@ -2534,6 +2574,83 @@ export class UsersService {
       .exec();
 
     this.logger.log(`Decremented commentsCount for user ${userId}`);
+  }
+
+  /**
+   * Инкрементирует счётчик полученных лайков на комментариях (likesReceivedCount).
+   * Используется для достижения «Популярный».
+   */
+  async incrementLikesReceivedCount(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    await this.userModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { $inc: { likesReceivedCount: 1 } },
+      )
+      .exec();
+
+    this.logger.log(`Incremented likesReceivedCount for user ${userId}`);
+    void this.checkAchievementsForUser(userId);
+  }
+
+  /**
+   * Декрементирует счётчик полученных лайков на комментариях (likesReceivedCount).
+   */
+  async decrementLikesReceivedCount(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    await this.userModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { $inc: { likesReceivedCount: -1 } },
+      )
+      .exec();
+
+    this.logger.log(`Decremented likesReceivedCount for user ${userId}`);
+  }
+
+  /**
+   * Инкрементирует счётчик тайтлов в категории «Прочитано» (completedTitlesCount).
+   * Используется для достижения «Завершающий».
+   */
+  async incrementCompletedTitlesCount(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    await this.userModel
+      .findByIdAndUpdate(
+        new Types.ObjectId(userId),
+        { $inc: { completedTitlesCount: 1 } },
+      )
+      .exec();
+    this.logger.log(`Incremented completedTitlesCount for user ${userId}`);
+    void this.checkAchievementsForUser(userId);
+  }
+
+  /**
+   * Декрементирует счётчик тайтлов в категории «Прочитано» (не ниже 0).
+   */
+  async decrementCompletedTitlesCount(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    await this.userModel
+      .findByIdAndUpdate(new Types.ObjectId(userId), [
+        {
+          $set: {
+            completedTitlesCount: {
+              $max: [0, { $add: [{ $ifNull: ['$completedTitlesCount', 0] }, -1] }],
+            },
+          },
+        },
+      ])
+      .exec();
+    this.logger.log(`Decremented completedTitlesCount for user ${userId}`);
   }
 
   /**

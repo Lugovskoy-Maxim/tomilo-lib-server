@@ -400,8 +400,24 @@ export class CommentsService {
       throw new NotFoundException('Comment not found');
     }
 
-    // Уведомление автору комментария о новой реакции (не себе), с группировкой
     const commentOwnerId = (comment as any).userId?.toString();
+    // Счётчик лайков автора комментария для достижения «Популярный» (только 👍, не себе)
+    if (emoji === '👍' && commentOwnerId && commentOwnerId !== userId) {
+      try {
+        if (addedReaction) {
+          await this.usersService.incrementLikesReceivedCount(commentOwnerId);
+        } else {
+          await this.usersService.decrementLikesReceivedCount(commentOwnerId);
+        }
+      } catch (error) {
+        console.warn(
+          `Failed to update likesReceivedCount for comment author ${commentOwnerId}:`,
+          (error as Error).message,
+        );
+      }
+    }
+
+    // Уведомление автору комментария о новой реакции (не себе), с группировкой
     if (addedReaction && commentOwnerId && commentOwnerId !== userId) {
       const totalCount = newReactions.reduce((sum, r) => sum + r.userIds.length, 0);
       const reactor = await this.commentModel.db
