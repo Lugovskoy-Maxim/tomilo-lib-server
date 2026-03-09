@@ -140,7 +140,7 @@ Tomilo Lib Server - это backend для онлайн-библиотеки ма
 ```bash
 npm run backup:db
 ```
-Дамп сохраняется в каталог `backups/dump-YYYY-MM-DD` (или в `BACKUP_DIR` из `.env`). Требуется [MongoDB Database Tools](https://www.mongodb.com/docs/database-tools/installation/) (mongodump в PATH).
+Дамп сохраняется в каталог `backups/dump-YYYY-MM-DD/<database>/` (или в `BACKUP_DIR` из `.env`). Используются только Node.js и Mongoose, внешние утилиты не нужны.
 
 **Миграция с предварительным бэкапом**
 ```bash
