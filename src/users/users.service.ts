@@ -1570,6 +1570,11 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    // Защита от старых документов без поля readingHistory
+    if (!Array.isArray(user.readingHistory)) {
+      (user as any).readingHistory = [];
+    }
+
     // Ищем существующую запись для этого тайтла
     const existingEntryIndex = user.readingHistory.findIndex(
       (entry) => this.getHistoryTitleIdStr(entry) === titleIdStr,
@@ -1855,6 +1860,8 @@ export class UsersService {
 
     // Убираем битые закладки, чтобы не падать на валидации при save
     this.sanitizeBookmarksBeforeSave(user as UserDocument);
+    // Явно помечаем путь изменённым: Mongoose не всегда отслеживает мутации вложенных массивов (chapters.push, readAt = ...)
+    user.markModified('readingHistory');
     await user.save();
     this.logger.log(`Reading history updated successfully for user ${userId}`);
 
@@ -2241,6 +2248,10 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    if (!Array.isArray(user.readingHistory)) {
+      (user as any).readingHistory = [];
+    }
+
     const existingEntryIndex = user.readingHistory.findIndex(
       (entry) => this.getHistoryTitleIdStr(entry) === titleId,
     );
@@ -2267,6 +2278,7 @@ export class UsersService {
       user.readingHistory.splice(existingEntryIndex, 1);
     }
 
+    user.markModified('readingHistory');
     await user.save();
     return (await this.userModel
       .findById(new Types.ObjectId(userId))
