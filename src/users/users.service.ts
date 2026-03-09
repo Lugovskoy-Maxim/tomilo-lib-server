@@ -779,6 +779,17 @@ export class UsersService {
     if (didMigrate) await user.save();
     const plain = (user as any).toObject ? (user as any).toObject() : { ...user };
     plain.bookmarks = this.repairBookmarksPlain(plain.bookmarks);
+    // Явный флаг «ежедневный бонус уже получен сегодня» (по дате сервера), чтобы клиент не зависел от часового пояса
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const lastExp = (plain as any).lastLoginExpDate
+      ? new Date((plain as any).lastLoginExpDate)
+      : null;
+    plain.dailyBonusClaimedToday =
+      !!lastExp &&
+      lastExp.getFullYear() === today.getFullYear() &&
+      lastExp.getMonth() === today.getMonth() &&
+      lastExp.getDate() === today.getDate();
     this.logger.log(`User profile found with ID: ${id}`);
     return plain as User;
   }
