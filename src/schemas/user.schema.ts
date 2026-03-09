@@ -1,5 +1,5 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
-import { Document, Types } from 'mongoose';
+import { Document, Schema as MongooseSchema, Types } from 'mongoose';
 
 export type UserDocument = User & Document;
 
@@ -271,36 +271,7 @@ export class User {
     readAt: Date;
   }[];
 
-  /** История событий прогресса (XP, уровень, достижения) для вкладки «Прогресс», последние N записей */
-  @Prop({
-    type: [
-      {
-        type: { type: String, enum: ['exp_gain', 'level_up', 'achievement'], required: true },
-        timestamp: { type: Date, required: true },
-        amount: Number,
-        reason: String,
-        oldLevel: Number,
-        newLevel: Number,
-        oldRank: { rank: Number, stars: Number, name: String, minLevel: Number },
-        newRank: { rank: Number, stars: Number, name: String, minLevel: Number },
-        achievement: {
-          id: String,
-          name: String,
-          description: String,
-          icon: String,
-          type: String,
-          rarity: String,
-          level: Number,
-          levelName: String,
-          unlockedAt: String,
-          progress: Number,
-          maxProgress: Number,
-        },
-      },
-    ],
-    default: [],
-    select: false,
-  })
+  /** История событий прогресса (XP, уровень, достижения). Схема задаётся вручную после createForClass, чтобы achievement был Mixed (иначе Mongoose даёт "Cast to string failed"). */
   progressEvents?: {
     type: 'exp_gain' | 'level_up' | 'achievement';
     timestamp: Date;
@@ -506,6 +477,29 @@ export class User {
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);
+
+// progressEvents задаём вручную: achievement должен быть Mixed, иначе при save() — "Cast to string failed"
+const progressEventElementSchema = new MongooseSchema(
+  {
+    type: { type: String, enum: ['exp_gain', 'level_up', 'achievement'], required: true },
+    timestamp: { type: Date, required: true },
+    amount: Number,
+    reason: String,
+    oldLevel: Number,
+    newLevel: Number,
+    oldRank: { rank: Number, stars: Number, name: String, minLevel: Number },
+    newRank: { rank: Number, stars: Number, name: String, minLevel: Number },
+    achievement: MongooseSchema.Types.Mixed,
+  },
+  { _id: false },
+);
+UserSchema.add({
+  progressEvents: {
+    type: [progressEventElementSchema],
+    default: [],
+    select: false,
+  },
+});
 
 // Перед сохранением убираем закладки без titleId и приводим к формату { titleId: ObjectId, category, addedAt }
 UserSchema.pre('save', function (next) {
