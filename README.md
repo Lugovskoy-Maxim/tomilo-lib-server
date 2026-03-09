@@ -132,6 +132,29 @@ Tomilo Lib Server - это backend для онлайн-библиотеки ма
    npm run start:dev
    ```
 
+## 💾 Бэкапы и миграции
+
+Перед любыми миграциями БД нужно сделать бэкап.
+
+**Разовый бэкап**
+```bash
+npm run backup:db
+```
+Дамп сохраняется в каталог `backups/dump-YYYY-MM-DD` (или в `BACKUP_DIR` из `.env`). Требуется [MongoDB Database Tools](https://www.mongodb.com/docs/database-tools/installation/) (mongodump в PATH).
+
+**Миграция с предварительным бэкапом**
+```bash
+npm run migrate:reading-history:safe   # сначала бэкап, затем миграция истории чтения
+```
+
+**Ежедневный бэкап (cron)**  
+Установите права и добавьте в crontab (`crontab -e`), например на 02:00:
+```bash
+chmod +x scripts/cron-daily-backup.sh
+# в crontab:
+0 2 * * * /path/to/tomilo-lib-server/scripts/cron-daily-backup.sh >> /var/log/tomilo-backup.log 2>&1
+```
+
 ## 📁 Структура проекта
 
 ```
