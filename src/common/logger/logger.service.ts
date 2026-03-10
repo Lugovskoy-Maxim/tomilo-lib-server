@@ -63,27 +63,32 @@ export class LoggerService extends ConsoleLogger {
   }
 
   log(message: string, context?: string) {
-    super.log(message, context);
-    this.winstonLogger.info(message, { context });
+    const ctx = context ?? this.context;
+    super.log(message, ctx);
+    this.winstonLogger.info(message, ctx ? { context: ctx } : {});
   }
 
   error(message: string, trace?: string, context?: string) {
-    super.error(message, trace, context);
-    this.winstonLogger.error(message, { trace, context });
+    const ctx = context ?? this.context;
+    super.error(message, trace, ctx);
+    this.winstonLogger.error(message, { trace, ...(ctx && { context: ctx }) });
   }
 
   warn(message: string, context?: string) {
-    super.warn(message, context);
-    this.winstonLogger.warn(message, { context });
+    const ctx = context ?? this.context;
+    super.warn(message, ctx);
+    this.winstonLogger.warn(message, ctx ? { context: ctx } : {});
   }
 
   debug(message: string, context?: string) {
-    super.debug(message, context);
-    this.winstonLogger.debug(message, { context });
+    const ctx = context ?? this.context;
+    super.debug(message, ctx);
+    this.winstonLogger.debug(message, ctx ? { context: ctx } : {});
   }
 
   verbose(message: string, context?: string) {
-    super.verbose(message, context);
-    this.winstonLogger.verbose(message, { context });
+    const ctx = context ?? this.context;
+    super.verbose(message, ctx);
+    this.winstonLogger.verbose(message, ctx ? { context: ctx } : {});
   }
 }

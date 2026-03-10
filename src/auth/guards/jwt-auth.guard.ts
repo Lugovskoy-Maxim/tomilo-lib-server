@@ -17,10 +17,18 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
   canActivate(context: ExecutionContext) {
     const request = context.switchToHttp().getRequest();
-    const token = request.headers.authorization;
-    this.logger.log(`JWT Auth Guard checking token: ${token}`);
+    const authHeader = request.headers.authorization;
+    // Не логируем сам токен — попадает в логи и может быть украден (как в HttpExceptionFilter)
+    const tokenInfo =
+      process.env.NODE_ENV === 'production'
+        ? authHeader
+          ? 'present'
+          : 'absent'
+        : authHeader
+          ? `present (length ${authHeader?.length ?? 0})`
+          : 'absent';
+    this.logger.log(`JWT Auth Guard token: ${tokenInfo}`);
 
-    // Log request details for debugging
     this.logger.log(`Request URL: ${request.url}`);
     this.logger.log(`Request method: ${request.method}`);
 
@@ -28,11 +36,19 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
   }
 
   handleRequest(err: any, user: any, info: any) {
-    this.logger.log(`JWT Auth Guard handling request with user: ${user}`);
+    this.logger.log(
+      `JWT Auth Guard handling request with user: ${user?.email ?? 'unknown'} (${user?.userId ?? 'n/a'})`,
+    );
 
     if (err) {
-      this.logger.warn(`JWT Auth Guard failed with error: ${err.message}`);
-      this.logger.warn(`Error details: ${JSON.stringify(err)}`);
+      const errMessage =
+        err instanceof Error ? err.message : String(err ?? 'unknown');
+      this.logger.warn(`JWT Auth Guard failed with error: ${errMessage}`);
+      try {
+        this.logger.warn(`Error details: ${JSON.stringify(err)}`);
+      } catch {
+        this.logger.warn('Error details: (unserializable)');
+      }
       throw new UnauthorizedException('Invalid token');
     }
 
