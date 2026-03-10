@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Report, ReportDocument, ReportType } from '../schemas/report.schema';
@@ -10,15 +10,19 @@ import {
   NotificationType,
 } from '../schemas/notification.schema';
 import { UsersService } from '../users/users.service';
+import { AutoParsingService } from '../auto-parsing/auto-parsing.service';
 
 @Injectable()
 export class ReportsService {
+  private readonly logger = new Logger(ReportsService.name);
+
   constructor(
     @InjectModel(Report.name) private reportModel: Model<ReportDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Notification.name)
     private notificationModel: Model<NotificationDocument>,
     private usersService: UsersService,
+    private autoParsingService: AutoParsingService,
   ) {}
 
   async create(
@@ -41,6 +45,42 @@ export class ReportsService {
 
     const saved = await report.save();
     void this.usersService.incrementReportsCount(userId);
+
+    // При жалобе на отсутствие страниц в главе — запускаем синхронизацию из источников автопарсинга
+    const isMissingPages =
+      createReportDto.reportType === ReportType.MISSING_PAGES ||
+      (createReportDto.reportType === ReportType.ERROR &&
+        typeof createReportDto.content === 'string' &&
+        createReportDto.content.toLowerCase().includes('отсутствуют страницы'));
+    if (
+      isMissingPages &&
+      createReportDto.entityType === 'chapter' &&
+      createReportDto.entityId &&
+      createReportDto.titleId
+    ) {
+      void this.autoParsingService
+        .syncChapterPages(
+          createReportDto.titleId,
+          createReportDto.entityId,
+        )
+        .then((r) => {
+          if (r.synced) {
+            this.logger.log(
+              `Synced chapter ${createReportDto.entityId} after missing-pages report`,
+            );
+          } else if (r.error) {
+            this.logger.debug(
+              `Could not sync chapter after report: ${r.error}`,
+            );
+          }
+        })
+        .catch((err) =>
+          this.logger.warn(
+            `syncChapterPages after report failed: ${err instanceof Error ? err.message : String(err)}`,
+          ),
+        );
+    }
+
     return saved;
   }
 

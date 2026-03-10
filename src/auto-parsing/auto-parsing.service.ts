@@ -424,6 +424,67 @@ export class AutoParsingService implements OnModuleInit {
     }
   }
 
+  /**
+   * Синхронизирует страницы одной главы из источников автопарсинга (по жалобе «отсутствуют страницы»).
+   * Ищет job по titleId, берёт источники, вызывает syncChaptersFromSource для данной главы.
+   */
+  async syncChapterPages(
+    titleId: string,
+    chapterId: string,
+  ): Promise<{ synced: boolean; error?: string }> {
+    try {
+      const job = await this.autoParsingJobModel
+        .findOne({ titleId, enabled: true })
+        .lean()
+        .exec();
+      if (!job) {
+        return { synced: false, error: 'no_auto_parsing_job' };
+      }
+      const sources = this.getSourcesFromJob(job as AutoParsingJob);
+      if (sources.length === 0) {
+        return { synced: false, error: 'no_sources' };
+      }
+      const chapter = await this.chaptersService.findById(chapterId);
+      const chapterNumber = Number(chapter.chapterNumber);
+      if (Number.isNaN(chapterNumber)) {
+        return { synced: false, error: 'invalid_chapter_number' };
+      }
+      const sourceOrder = this.getSourceOrder(
+        sources,
+        job.lastUsedSourceIndex ?? 0,
+      );
+      const sourceUrl = sources[sourceOrder[0]];
+      const result = await this.mangaParserService.syncChaptersFromSource(
+        titleId,
+        sourceUrl,
+        [chapterNumber],
+      );
+      if (result.errors.length > 0) {
+        this.logger.warn(
+          `syncChapterPages chapter ${chapterNumber} errors: ${result.errors.map((e) => e.error).join('; ')}`,
+        );
+        return {
+          synced: result.synced.length > 0,
+          error: result.errors[0]?.error,
+        };
+      }
+      if (result.synced.length > 0) {
+        this.logger.log(
+          `syncChapterPages: synced chapter ${chapterNumber} for title ${titleId}`,
+        );
+        return { synced: true };
+      }
+      return {
+        synced: false,
+        error: result.skipped[0]?.reason ?? 'not_synced',
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.warn(`syncChapterPages failed: ${message}`);
+      return { synced: false, error: message };
+    }
+  }
+
   /** Jobs without scheduleHour: run at 0, 6, 12, 18 (unchanged for existing jobs). */
   @Cron(CronExpression.EVERY_6_HOURS)
   async handleDailyJobs() {

@@ -9,6 +9,7 @@ import {
   NotificationSchema,
 } from '../schemas/notification.schema';
 import { UsersModule } from '../users/users.module';
+import { AutoParsingModule } from '../auto-parsing/auto-parsing.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { UsersModule } from '../users/users.module';
       { name: Notification.name, schema: NotificationSchema },
     ]),
     UsersModule,
+    AutoParsingModule,
   ],
   controllers: [ReportsController],
   providers: [ReportsService],

@@ -12,6 +12,11 @@ export enum ReportType {
   ERROR = 'error',
   TYPO = 'typo',
   COMPLAINT = 'complaint',
+  MISSING_PAGES = 'missing_pages',
+  BROKEN_IMAGES = 'broken_images',
+  WRONG_ORDER = 'wrong_order',
+  DUPLICATE = 'duplicate',
+  OTHER = 'other',
 }
 
 export class CreateReportDto {

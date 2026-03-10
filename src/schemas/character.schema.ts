@@ -109,6 +109,10 @@ export class Character {
   /** Порядок отображения в списке персонажей тайтла (меньше = выше) */
   @Prop({ default: 0 })
   sortOrder: number;
+
+  /** Сейю / актёр озвучки */
+  @Prop()
+  voiceActor: string;
 }
 
 export const CharacterSchema = SchemaFactory.createForClass(Character);

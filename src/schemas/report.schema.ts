@@ -7,6 +7,16 @@ export enum ReportType {
   ERROR = 'error',
   TYPO = 'typo',
   COMPLAINT = 'complaint',
+  /** Отсутствуют страницы в главе */
+  MISSING_PAGES = 'missing_pages',
+  /** Битые или не загружающиеся изображения */
+  BROKEN_IMAGES = 'broken_images',
+  /** Неверный порядок страниц */
+  WRONG_ORDER = 'wrong_order',
+  /** Дубликат страниц или главы */
+  DUPLICATE = 'duplicate',
+  /** Другое */
+  OTHER = 'other',
 }
 
 @Schema({ timestamps: true })
