@@ -8,6 +8,7 @@ import { AnnouncementsService } from './announcements.service';
 import { AnnouncementsController } from './announcements.controller';
 import { AnnouncementsAdminController } from './announcements-admin.controller';
 import { FilesModule } from '../files/files.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { FilesModule } from '../files/files.module';
       { name: Announcement.name, schema: AnnouncementSchema },
     ]),
     FilesModule,
+    NotificationsModule,
   ],
   controllers: [AnnouncementsAdminController, AnnouncementsController],
   providers: [AnnouncementsService],

@@ -1515,6 +1515,7 @@ export class UsersController {
     body: {
       newChapters?: boolean;
       comments?: boolean;
+      news?: boolean;
     },
   ): Promise<ApiResponseDto<any>> {
     try {

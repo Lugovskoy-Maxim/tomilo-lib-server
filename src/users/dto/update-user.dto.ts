@@ -34,6 +34,10 @@ export class NotificationSettingsDto {
   @IsOptional()
   @IsBoolean()
   comments?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  news?: boolean;
 }
 
 export class DisplaySettingsDto {

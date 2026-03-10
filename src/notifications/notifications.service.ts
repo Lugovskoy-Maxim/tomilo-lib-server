@@ -7,6 +7,7 @@ import {
   NotificationDocument,
   NotificationType,
 } from '../schemas/notification.schema';
+import { User, UserDocument } from '../schemas/user.schema';
 import { CommentEntityType } from '../schemas/comment.schema';
 import { PushService } from '../push/push.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
@@ -21,6 +22,8 @@ export class NotificationsService {
   constructor(
     @InjectModel(Notification.name)
     private notificationModel: Model<NotificationDocument>,
+    @InjectModel(User.name)
+    private userModel: Model<UserDocument>,
     @Inject(CACHE_MANAGER)
     private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown, ttl?: number) => Promise<void> },
     private pushService: PushService,
@@ -283,6 +286,43 @@ export class NotificationsService {
         });
       }
     }
+  }
+
+  /**
+   * Отправить Web Push всем пользователям с включёнными уведомлениями о новостях.
+   * Вызывается при публикации новости/объявления.
+   */
+  async sendNewsAnnouncementPush(
+    announcementTitle: string,
+    slug: string,
+    announcementId: string,
+  ): Promise<{ sent: number; failed: number }> {
+    const userIds = await this.userModel
+      .find({
+        $or: [
+          { 'notifications.news': true },
+          { 'notifications.news': { $exists: false } },
+        ],
+      })
+      .distinct('_id')
+      .exec();
+    const userIdStrings = userIds.map((id) => id.toString());
+    if (userIdStrings.length === 0 || !this.pushService.isConfigured()) {
+      return { sent: 0, failed: 0 };
+    }
+    const subscriptionMap = await this.pushService.getSubscriptionsByUserIds(userIdStrings);
+    if (subscriptionMap.size === 0) {
+      return { sent: 0, failed: 0 };
+    }
+    const url = `${SITE_URL.replace(/\/$/, '')}/news/${encodeURIComponent(slug)}`;
+    const title = announcementTitle.length > 50 ? `${announcementTitle.slice(0, 47)}…` : announcementTitle;
+    return this.pushService.sendToSubscriptions(subscriptionMap, {
+      title: `Новость: ${title}`,
+      body: 'Опубликована новая новость на платформе',
+      url,
+      tag: `announcement-${announcementId}`,
+      data: { announcementId, slug },
+    });
   }
 
   async createSystemNotification(

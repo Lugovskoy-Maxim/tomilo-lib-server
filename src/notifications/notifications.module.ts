@@ -8,6 +8,7 @@ import {
   Notification,
   NotificationSchema,
 } from '../schemas/notification.schema';
+import { User, UserSchema } from '../schemas/user.schema';
 import { PushModule } from '../push/push.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
@@ -15,6 +16,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
   imports: [
     MongooseModule.forFeature([
       { name: Notification.name, schema: NotificationSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     JwtModule.register({
       secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',

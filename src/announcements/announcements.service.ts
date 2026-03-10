@@ -14,6 +14,7 @@ import { CreateAnnouncementDto } from './dto/create-announcement.dto';
 import { UpdateAnnouncementDto } from './dto/update-announcement.dto';
 import { QueryAnnouncementDto } from './dto/query-announcement.dto';
 import { FilesService } from '../files/files.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 function slugify(text: string): string {
   return text
@@ -33,6 +34,7 @@ export class AnnouncementsService {
     @InjectModel(Announcement.name)
     private announcementModel: Model<AnnouncementDocument>,
     private filesService: FilesService,
+    private notificationsService: NotificationsService,
   ) {}
 
   async create(dto: CreateAnnouncementDto): Promise<AnnouncementDocument> {
@@ -56,7 +58,26 @@ export class AnnouncementsService {
     };
 
     const doc = new this.announcementModel(payload);
-    return doc.save();
+    const saved = await doc.save();
+    if (dto.isPublished) {
+      this.notificationsService
+        .sendNewsAnnouncementPush(
+          saved.title,
+          saved.slug,
+          (saved as any)._id?.toString?.() ?? String((saved as any).id),
+        )
+        .then(({ sent, failed }) => {
+          if (sent > 0 || failed > 0) {
+            this.logger.log(
+              `News push for "${saved.slug}": sent=${sent}, failed=${failed}`,
+            );
+          }
+        })
+        .catch((err) => {
+          this.logger.warn(`News push failed: ${err?.message ?? err}`);
+        });
+    }
+    return saved;
   }
 
   async update(
@@ -82,7 +103,8 @@ export class AnnouncementsService {
       throw new NotFoundException('Announcement not found');
     }
 
-    if (dto.isPublished === true && !current.isPublished) {
+    const justPublished = dto.isPublished === true && !current.isPublished;
+    if (justPublished) {
       (dto as Record<string, unknown>).publishedAt = new Date();
     }
 
@@ -92,6 +114,24 @@ export class AnnouncementsService {
 
     if (!updated) {
       throw new NotFoundException('Announcement not found');
+    }
+    if (justPublished) {
+      this.notificationsService
+        .sendNewsAnnouncementPush(
+          updated.title,
+          updated.slug,
+          (updated as any)._id?.toString?.() ?? String((updated as any).id),
+        )
+        .then(({ sent, failed }) => {
+          if (sent > 0 || failed > 0) {
+            this.logger.log(
+              `News push for "${updated.slug}": sent=${sent}, failed=${failed}`,
+            );
+          }
+        })
+        .catch((err) => {
+          this.logger.warn(`News push failed: ${err?.message ?? err}`);
+        });
     }
     return updated;
   }

@@ -380,15 +380,18 @@ export class User {
     type: {
       newChapters: { type: Boolean, default: true },
       comments: { type: Boolean, default: true },
+      news: { type: Boolean, default: true },
     },
     default: {
       newChapters: true,
       comments: true,
+      news: true,
     },
   })
   notifications: {
     newChapters: boolean;
     comments: boolean;
+    news: boolean;
   };
 
   // Display settings
