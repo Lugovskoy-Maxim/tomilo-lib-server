@@ -73,10 +73,10 @@ export class ShopService {
       ],
     };
     const [avatars, frames, backgrounds, cards] = await Promise.all([
-      this.avatarDecorationModel.find(inStockFilter).populate('authorId', 'username').lean(),
-      this.avatarFrameDecorationModel.find(inStockFilter).populate('authorId', 'username').lean(),
-      this.backgroundDecorationModel.find(inStockFilter).populate('authorId', 'username').lean(),
-      this.cardDecorationModel.find(inStockFilter).populate('authorId', 'username').lean(),
+      this.avatarDecorationModel.find(inStockFilter).populate('authorId', 'username level').lean(),
+      this.avatarFrameDecorationModel.find(inStockFilter).populate('authorId', 'username level').lean(),
+      this.backgroundDecorationModel.find(inStockFilter).populate('authorId', 'username level').lean(),
+      this.cardDecorationModel.find(inStockFilter).populate('authorId', 'username level').lean(),
     ]);
 
     const result = {
@@ -124,25 +124,25 @@ export class ShopService {
       case 'avatar':
         decorations = await this.avatarDecorationModel
           .find(inStockFilter)
-          .populate('authorId', 'username')
+          .populate('authorId', 'username level')
           .lean();
         break;
       case 'frame':
         decorations = await this.avatarFrameDecorationModel
           .find(inStockFilter)
-          .populate('authorId', 'username')
+          .populate('authorId', 'username level')
           .lean();
         break;
       case 'background':
         decorations = await this.backgroundDecorationModel
           .find(inStockFilter)
-          .populate('authorId', 'username')
+          .populate('authorId', 'username level')
           .lean();
         break;
       case 'card':
         decorations = await this.cardDecorationModel
           .find(inStockFilter)
-          .populate('authorId', 'username')
+          .populate('authorId', 'username level')
           .lean();
         break;
       default:
@@ -812,20 +812,33 @@ export class ShopService {
           },
         },
         { $sort: { votesCount: -1, createdAt: -1 } },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'authorId',
+            foreignField: '_id',
+            as: 'authorDoc',
+          },
+        },
       ])
       .exec();
-    return list.map((s: any) => ({
-      id: s._id.toString(),
-      type: s.type,
-      name: s.name,
-      description: s.description ?? '',
-      imageUrl: s.imageUrl,
-      authorId: s.authorId?.toString(),
-      votesCount: s.votesCount ?? 0,
-      status: s.status,
-      createdAt: s.createdAt,
-      userHasVoted: false,
-    }));
+    return list.map((s: any) => {
+      const author = Array.isArray(s.authorDoc) && s.authorDoc[0] ? s.authorDoc[0] : null;
+      return {
+        id: s._id.toString(),
+        type: s.type,
+        name: s.name,
+        description: s.description ?? '',
+        imageUrl: s.imageUrl,
+        authorId: s.authorId?.toString(),
+        authorUsername: author?.username ?? undefined,
+        authorLevel: author?.level != null ? Number(author.level) : undefined,
+        votesCount: s.votesCount ?? 0,
+        status: s.status,
+        createdAt: s.createdAt,
+        userHasVoted: false,
+      };
+    });
   }
 
   async getSuggestedDecorationsWithUserVote(userId: string | null) {
