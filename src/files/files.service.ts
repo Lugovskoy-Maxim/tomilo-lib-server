@@ -533,6 +533,55 @@ export class FilesService {
     );
   }
 
+  /**
+   * Сохраняет предложенное изображение персонажа (на модерацию).
+   * Путь: characters/{titleId}/{characterId}/pending.{ext}.
+   * Не удаляет текущий avatar.
+   */
+  async saveCharacterPendingImage(
+    file: Express.Multer.File,
+    titleId: string,
+    characterId: string,
+  ): Promise<string> {
+    if (!file) {
+      throw new BadRequestException('Нет файла для загрузки');
+    }
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Файл должен быть изображением');
+    }
+    const fileExtension = file.originalname.split('.').pop() || 'jpg';
+    const fileName = `pending.${fileExtension}`;
+    let fileBuffer: Buffer;
+    if (file.path) {
+      fileBuffer = await fs.readFile(file.path);
+    } else if (file.buffer) {
+      fileBuffer = file.buffer;
+    } else {
+      throw new BadRequestException('Отсутствует содержимое файла');
+    }
+    try {
+      const localPath = `characters/${titleId}/${characterId}/${fileName}`;
+      const s3Key = localPath;
+      const resultPath = await this.saveFileWithBackup(
+        fileBuffer,
+        localPath,
+        s3Key,
+        file.mimetype,
+      );
+      if (file.path) {
+        await fs.unlink(file.path);
+      }
+      return resultPath.startsWith('/') ? resultPath : `/${resultPath}`;
+    } catch (error) {
+      this.logger.error(
+        `Ошибка при сохранении предложенного аватара персонажа: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      throw new BadRequestException(
+        `Не удалось сохранить изображение: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
   async getUserAvatarPath(userId: string): Promise<string | null> {
     if (this.useS3()) {
       const files = await this.s3Service.listFiles(`users/${userId}/avatar/`);

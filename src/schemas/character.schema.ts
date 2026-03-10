@@ -12,6 +12,13 @@ export enum CharacterRole {
   OTHER = 'other',
 }
 
+/** Статус модерации: approved — отображается в списке, pending — на проверке, rejected — отклонён */
+export enum CharacterModerationStatus {
+  APPROVED = 'approved',
+  PENDING = 'pending',
+  REJECTED = 'rejected',
+}
+
 /** Тип связи между персонажами */
 export enum CharacterRelationType {
   FRIEND = 'friend',
@@ -113,10 +120,27 @@ export class Character {
   /** Сейю / актёр озвучки */
   @Prop()
   voiceActor: string;
+
+  /** Статус модерации. По умолчанию approved (для обратной совместимости и админского создания). */
+  @Prop({ type: String, enum: CharacterModerationStatus, default: CharacterModerationStatus.APPROVED })
+  status: CharacterModerationStatus;
+
+  /** Кто предложил персонажа или правки (для pending). */
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  proposedBy: Types.ObjectId;
+
+  /** Предложенные правки (на модерации). После одобрения применяются к документу и поле очищается. */
+  @Prop({ type: Object })
+  pendingUpdate: Record<string, unknown>;
+
+  /** Путь к предложенному изображению. После одобрения подставляется в avatar и поле очищается. */
+  @Prop()
+  pendingImage: string;
 }
 
 export const CharacterSchema = SchemaFactory.createForClass(Character);
 
 CharacterSchema.index({ titleId: 1 });
 CharacterSchema.index({ titleId: 1, sortOrder: 1 });
+CharacterSchema.index({ titleId: 1, status: 1 });
 CharacterSchema.index({ name: 'text', altNames: 'text', description: 'text' });
