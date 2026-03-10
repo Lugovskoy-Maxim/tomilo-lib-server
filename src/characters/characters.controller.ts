@@ -7,6 +7,7 @@ import {
   Delete,
   Body,
   Param,
+  Query,
   Req,
   UseGuards,
   UseInterceptors,
@@ -56,6 +57,32 @@ export class CharactersController {
         errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'characters/moderation/pending',
+      };
+    }
+  }
+
+  @Get('list')
+  async getList(
+    @Query('page') pageStr?: string,
+    @Query('limit') limitStr?: string,
+  ): Promise<ApiResponseDto<{ characters: any[]; total: number }>> {
+    try {
+      const page = Math.max(1, parseInt(String(pageStr || '1'), 10) || 1);
+      const limit = Math.min(100, Math.max(1, parseInt(String(limitStr || '24'), 10) || 24));
+      const { characters, total } = await this.charactersService.findPaginated(page, limit);
+      return {
+        success: true,
+        data: { characters, total },
+        timestamp: new Date().toISOString(),
+        path: 'characters/list',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch characters',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'characters/list',
       };
     }
   }

@@ -36,6 +36,35 @@ export class CharactersService {
     return list.map((doc) => this.toResponse(doc)) as CharacterDocument[];
   }
 
+  /** Список всех персонажей с пагинацией (для страницы /characters). Показываем всех, кроме явно отклонённых. */
+  async findPaginated(
+    page: number = 1,
+    limit: number = 24,
+  ): Promise<{ characters: CharacterDocument[]; total: number }> {
+    const skip = Math.max(0, (page - 1) * limit);
+    const cap = Math.min(100, Math.max(1, limit));
+    const filter: Record<string, unknown> = {
+      $or: [
+        { status: { $ne: CharacterModerationStatus.REJECTED } },
+        { status: { $exists: false } },
+      ],
+    };
+    const [list, total] = await Promise.all([
+      this.characterModel
+        .find(filter)
+        .sort({ sortOrder: 1, name: 1 })
+        .skip(skip)
+        .limit(cap)
+        .lean()
+        .exec(),
+      this.characterModel.countDocuments(filter),
+    ]);
+    return {
+      characters: list.map((doc) => this.toResponse(doc)) as CharacterDocument[],
+      total,
+    };
+  }
+
   async findByTitleId(titleId: string): Promise<CharacterDocument[]> {
     await this.titlesService.findById(titleId);
     const list = await this.characterModel
