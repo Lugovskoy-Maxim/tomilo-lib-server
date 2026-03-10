@@ -2879,7 +2879,9 @@ export class UsersService {
     return t;
   }
 
-  /** Возвращает ежедневные задания на сегодня; создаёт новые, если дня ещё нет. */
+  private static readonly DAILY_QUESTS_VERSION_RETRIES = 3;
+
+  /** Возвращает ежедневные задания на сегодня; создаёт новые, если дня ещё нет. Retries on VersionError. */
   async getOrCreateDailyQuests(userId: string): Promise<{
     date: string;
     quests: {
@@ -2899,64 +2901,75 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID');
     }
 
-    const user = await this.userModel.findById(new Types.ObjectId(userId));
-    if (!user) {
-      throw new NotFoundException('User not found');
+    const oid = new Types.ObjectId(userId);
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt < UsersService.DAILY_QUESTS_VERSION_RETRIES; attempt++) {
+      const user = await this.userModel.findById(oid);
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
+
+      const today = UsersService.getStartOfDayUTC();
+      const existing = user.dailyQuests;
+      const existingDate = existing?.date
+        ? UsersService.getStartOfDayUTC(new Date(existing.date))
+        : null;
+
+      if (existingDate && existingDate.getTime() === today.getTime() && existing?.quests?.length) {
+        return {
+          date: today.toISOString(),
+          quests: existing.quests.map((q) => ({
+            id: q.id,
+            type: q.type,
+            name: q.name,
+            description: q.description,
+            target: q.target,
+            progress: q.progress,
+            rewardExp: q.rewardExp,
+            rewardCoins: q.rewardCoins,
+            completed: q.completed,
+            claimedAt: q.claimedAt ? new Date(q.claimedAt).toISOString() : null,
+          })),
+        };
+      }
+
+      // Создаём 3 случайных квеста на сегодня
+      const pool = [...UsersService.DAILY_QUEST_POOL];
+      const shuffled = pool.sort(() => Math.random() - 0.5);
+      const selected = shuffled.slice(0, 3).map((def, i) => ({
+        id: `daily_${today.getTime()}_${i}`,
+        type: def.type,
+        name: def.name,
+        description: def.description,
+        target: def.target,
+        progress: 0,
+        rewardExp: def.rewardExp,
+        rewardCoins: def.rewardCoins,
+        completed: false,
+        claimedAt: null as Date | null,
+      }));
+
+      user.dailyQuests = { date: today, quests: selected } as any;
+      try {
+        await user.save();
+        return {
+          date: today.toISOString(),
+          quests: selected.map((q) => ({
+            ...q,
+            claimedAt: null,
+          })),
+        };
+      } catch (err: unknown) {
+        lastError = err;
+        if ((err as { name?: string }).name !== 'VersionError') throw err;
+      }
     }
 
-    const today = UsersService.getStartOfDayUTC();
-    const existing = user.dailyQuests;
-    const existingDate = existing?.date
-      ? UsersService.getStartOfDayUTC(new Date(existing.date))
-      : null;
-
-    if (existingDate && existingDate.getTime() === today.getTime() && existing?.quests?.length) {
-      return {
-        date: today.toISOString(),
-        quests: existing.quests.map((q) => ({
-          id: q.id,
-          type: q.type,
-          name: q.name,
-          description: q.description,
-          target: q.target,
-          progress: q.progress,
-          rewardExp: q.rewardExp,
-          rewardCoins: q.rewardCoins,
-          completed: q.completed,
-          claimedAt: q.claimedAt ? new Date(q.claimedAt).toISOString() : null,
-        })),
-      };
-    }
-
-    // Создаём 3 случайных квеста на сегодня
-    const pool = [...UsersService.DAILY_QUEST_POOL];
-    const shuffled = pool.sort(() => Math.random() - 0.5);
-    const selected = shuffled.slice(0, 3).map((def, i) => ({
-      id: `daily_${today.getTime()}_${i}`,
-      type: def.type,
-      name: def.name,
-      description: def.description,
-      target: def.target,
-      progress: 0,
-      rewardExp: def.rewardExp,
-      rewardCoins: def.rewardCoins,
-      completed: false,
-      claimedAt: null as Date | null,
-    }));
-
-    user.dailyQuests = { date: today, quests: selected } as any;
-    await user.save();
-
-    return {
-      date: today.toISOString(),
-      quests: selected.map((q) => ({
-        ...q,
-        claimedAt: null,
-      })),
-    };
+    throw lastError;
   }
 
-  /** Увеличивает прогресс по типу квеста для сегодняшних заданий. */
+  /** Увеличивает прогресс по типу квеста для сегодняшних заданий. Retries on VersionError. */
   async incrementDailyQuestProgress(
     userId: string,
     questType: string,
@@ -2964,31 +2977,44 @@ export class UsersService {
   ): Promise<void> {
     if (!Types.ObjectId.isValid(userId) || delta <= 0) return;
 
-    // Сначала создаём задания на сегодня, если их ещё нет (иначе прогресс чтения глав и др. не засчитается)
     await this.getOrCreateDailyQuests(userId);
 
-    const user = await this.userModel.findById(new Types.ObjectId(userId));
-    if (!user?.dailyQuests?.quests?.length) return;
+    const oid = new Types.ObjectId(userId);
+    let lastError: unknown;
 
-    const today = UsersService.getStartOfDayUTC();
-    const questDate = user.dailyQuests.date
-      ? UsersService.getStartOfDayUTC(new Date(user.dailyQuests.date))
-      : null;
-    if (!questDate || questDate.getTime() !== today.getTime()) return;
+    for (let attempt = 0; attempt < UsersService.DAILY_QUESTS_VERSION_RETRIES; attempt++) {
+      const user = await this.userModel.findById(oid);
+      if (!user?.dailyQuests?.quests?.length) return;
 
-    let changed = false;
-    for (const q of user.dailyQuests.quests) {
-      if (q.type === questType && !q.completed) {
-        const before = q.progress;
-        q.progress = Math.min((q.progress ?? 0) + delta, q.target);
-        if (q.progress >= q.target) q.completed = true;
-        if (q.progress !== before) changed = true;
+      const today = UsersService.getStartOfDayUTC();
+      const questDate = user.dailyQuests.date
+        ? UsersService.getStartOfDayUTC(new Date(user.dailyQuests.date))
+        : null;
+      if (!questDate || questDate.getTime() !== today.getTime()) return;
+
+      let changed = false;
+      for (const q of user.dailyQuests.quests) {
+        if (q.type === questType && !q.completed) {
+          const before = q.progress;
+          q.progress = Math.min((q.progress ?? 0) + delta, q.target);
+          if (q.progress >= q.target) q.completed = true;
+          if (q.progress !== before) changed = true;
+        }
+      }
+      if (!changed) return;
+      try {
+        await user.save();
+        return;
+      } catch (err: unknown) {
+        lastError = err;
+        if ((err as { name?: string }).name !== 'VersionError') throw err;
       }
     }
-    if (changed) await user.save();
+
+    throw lastError;
   }
 
-  /** Забрать награду за выполненное задание. */
+  /** Забрать награду за выполненное задание. Retries on VersionError. */
   async claimDailyQuest(userId: string, questId: string): Promise<{
     success: boolean;
     expGained?: number;
@@ -2999,48 +3025,59 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID');
     }
 
-    const user = await this.userModel.findById(new Types.ObjectId(userId));
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
+    const oid = new Types.ObjectId(userId);
+    let lastError: unknown;
 
-    const today = UsersService.getStartOfDayUTC();
-    const dq = user.dailyQuests;
-    if (!dq?.quests?.length) {
-      return { success: false, message: 'Нет заданий на сегодня' };
-    }
-    const questDate = dq.date ? UsersService.getStartOfDayUTC(new Date(dq.date)) : null;
-    if (!questDate || questDate.getTime() !== today.getTime()) {
-      return { success: false, message: 'Задания устарели' };
-    }
+    for (let attempt = 0; attempt < UsersService.DAILY_QUESTS_VERSION_RETRIES; attempt++) {
+      const user = await this.userModel.findById(oid);
+      if (!user) {
+        throw new NotFoundException('User not found');
+      }
 
-    const quest = dq.quests.find((q) => q.id === questId);
-    if (!quest) {
-      return { success: false, message: 'Задание не найдено' };
-    }
-    if (!quest.completed) {
-      return { success: false, message: 'Задание ещё не выполнено' };
-    }
-    if (quest.claimedAt) {
-      return { success: false, message: 'Награда уже получена' };
-    }
+      const today = UsersService.getStartOfDayUTC();
+      const dq = user.dailyQuests;
+      if (!dq?.quests?.length) {
+        return { success: false, message: 'Нет заданий на сегодня' };
+      }
+      const questDate = dq.date ? UsersService.getStartOfDayUTC(new Date(dq.date)) : null;
+      if (!questDate || questDate.getTime() !== today.getTime()) {
+        return { success: false, message: 'Задания устарели' };
+      }
 
-    quest.claimedAt = new Date();
-    if (quest.rewardExp > 0) {
-      user.experience += quest.rewardExp;
-      while (user.experience >= this.calculateNextLevelExp(user.level)) {
-        user.level += 1;
-        user.balance += user.level * 10;
+      const quest = dq.quests.find((q) => q.id === questId);
+      if (!quest) {
+        return { success: false, message: 'Задание не найдено' };
+      }
+      if (!quest.completed) {
+        return { success: false, message: 'Задание ещё не выполнено' };
+      }
+      if (quest.claimedAt) {
+        return { success: false, message: 'Награда уже получена' };
+      }
+
+      quest.claimedAt = new Date();
+      if (quest.rewardExp > 0) {
+        user.experience += quest.rewardExp;
+        while (user.experience >= this.calculateNextLevelExp(user.level)) {
+          user.level += 1;
+          user.balance += user.level * 10;
+        }
+      }
+      if (quest.rewardCoins > 0) user.balance += quest.rewardCoins;
+      try {
+        await user.save();
+        return {
+          success: true,
+          expGained: quest.rewardExp,
+          coinsGained: quest.rewardCoins,
+        };
+      } catch (err: unknown) {
+        lastError = err;
+        if ((err as { name?: string }).name !== 'VersionError') throw err;
       }
     }
-    if (quest.rewardCoins > 0) user.balance += quest.rewardCoins;
-    await user.save();
 
-    return {
-      success: true,
-      expGained: quest.rewardExp,
-      coinsGained: quest.rewardCoins,
-    };
+    throw lastError;
   }
 
   // 💰 Balance management
