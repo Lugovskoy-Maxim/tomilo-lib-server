@@ -1433,10 +1433,17 @@ export class MangaParserService {
     const domain = this.extractDomain(sourceUrl);
     const mangaSlug = this.extractMangaSlug(sourceUrl);
 
-    const dbChapters = await this.chaptersService.findManyByTitleId(
+    const allChapters = await this.chaptersService.getChaptersByTitle(
       titleId,
-      chapterNumbers,
+      'asc',
     );
+    const dbChapters =
+      chapterNumbers?.length &&
+      chapterNumbers.length > 0
+        ? allChapters.filter((ch) =>
+            chapterNumbers.includes(Number(ch.chapterNumber)),
+          )
+        : allChapters;
     const synced: { chapterId: string; chapterNumber: number; pagesCount: number }[] = [];
     const skipped: { chapterNumber: number; reason: string }[] = [];
     const errors: { chapterNumber: number; error: string }[] = [];
