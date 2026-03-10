@@ -19,14 +19,6 @@ export class FilesService {
   }
 
   /**
-   * Нормализует URL для HTTP-запроса: кодирует пробелы в пути (API telemanga и др. возвращают пути с пробелами).
-   */
-  private normalizeUrlForRequest(url: string): string {
-    if (!url || typeof url !== 'string') return url;
-    return url.includes(' ') ? url.replace(/ /g, '%20').trim() : url.trim();
-  }
-
-  /**
    * Сохраняет файл локально и асинхронно дублирует в S3 (если настроен).
    * Всегда возвращает локальный путь — S3 используется как зеркало.
    * Загрузка в S3 не блокирует ответ сервера.
@@ -45,10 +37,29 @@ export class FilesService {
     this.logger.log(`Файл сохранен локально: ${fullLocalPath}`);
 
     if (this.useS3()) {
-      await this.s3Service.uploadFile(s3Key, buffer, contentType);
+      this.uploadToS3Async(s3Key, buffer, contentType);
     }
 
     return `/${localPath}`;
+  }
+
+  /**
+   * Асинхронная загрузка в S3 (fire-and-forget).
+   * Не блокирует основной поток, ошибки логируются.
+   */
+  private uploadToS3Async(
+    s3Key: string,
+    buffer: Buffer,
+    contentType: string,
+  ): void {
+    this.s3Service
+      .uploadFile(s3Key, buffer, contentType)
+      .then(() => {
+        this.logger.log(`[S3 async] Файл загружен: ${s3Key}`);
+      })
+      .catch((error) => {
+        this.logger.error(`[S3 async] Ошибка загрузки ${s3Key}: ${error}`);
+      });
   }
 
   /**
@@ -88,8 +99,7 @@ export class FilesService {
   }
 
   /**
-   * Удаляет папку локально и в S3 (если настроен).
-   * Ожидает завершения удаления в S3, чтобы при синхронизации глав новые файлы не удалились гонкой с удалением старых.
+   * Удаляет папку локально и асинхронно из S3 (если настроен).
    */
   private async deleteFolderWithBackup(
     localDir: string,
@@ -106,14 +116,22 @@ export class FilesService {
     }
 
     if (this.useS3()) {
-      try {
-        await this.s3Service.deleteFolder(s3Prefix);
-        this.logger.log(`Папка удалена из S3: ${s3Prefix}`);
-      } catch (error) {
-        this.logger.error(`Ошибка удаления папки в S3 ${s3Prefix}: ${error}`);
-        // Не бросаем дальше: локально уже удалено, синхронизация может продолжиться
-      }
+      this.deleteFolderFromS3Async(s3Prefix);
     }
+  }
+
+  /**
+   * Асинхронное удаление папки из S3 (fire-and-forget).
+   */
+  private deleteFolderFromS3Async(s3Prefix: string): void {
+    this.s3Service
+      .deleteFolder(s3Prefix)
+      .then(() => {
+        this.logger.log(`[S3 async] Папка удалена: ${s3Prefix}`);
+      })
+      .catch((error) => {
+        this.logger.error(`[S3 async] Ошибка удаления папки ${s3Prefix}: ${error}`);
+      });
   }
 
   async saveChapterPages(
@@ -257,45 +275,98 @@ export class FilesService {
   private static readonly SYNC_TEMP_SUFFIX = '_sync_temp';
 
   /**
-   * После успешной загрузки всех страниц во временную папку: удаляет старые страницы главы и заменяет их содержимым временной папки. Возвращает пути новых страниц для chapter.pages.
+   * Заменяет страницы главы файлами из временной папки _sync_temp (после синхронизации с источником).
+   * Удаляет старые страницы, перемещает файлы из temp в финальную папку главы, возвращает пути страниц.
    */
   async replaceChapterPagesFromTemp(
     chapterId: string,
     titleId: string,
   ): Promise<string[]> {
-    const mainDir = `titles/${titleId}/chapters/${chapterId}`;
-    const tempDir = `titles/${titleId}/chapters/${chapterId}${FilesService.SYNC_TEMP_SUFFIX}`;
-    const mainFull = join('uploads', mainDir);
-    const tempFull = join('uploads', tempDir);
+    const chapterDir = `titles/${titleId}/chapters/${chapterId}`;
+    const tempDir = `${chapterDir}/${FilesService.SYNC_TEMP_SUFFIX}`;
+    const fullChapterDir = join('uploads', chapterDir);
+    const fullTempDir = join('uploads', tempDir);
 
-    await this.deleteChapterPages(chapterId, titleId);
+    let tempFiles: string[];
+    try {
+      tempFiles = await fs.readdir(fullTempDir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') {
+        this.logger.warn(`Temp dir not found: ${fullTempDir}`);
+        return [];
+      }
+      throw err;
+    }
+
+    tempFiles = tempFiles.filter((f) => !f.startsWith('.'));
+    if (tempFiles.length === 0) return [];
+
+    tempFiles.sort();
+
+    // Удаляем старые страницы главы (локально и в S3)
+    try {
+      const existing = await fs.readdir(fullChapterDir);
+      const toDelete = existing.filter(
+        (f) => !f.startsWith('.') && f !== FilesService.SYNC_TEMP_SUFFIX,
+      );
+      for (const file of toDelete) {
+        const localPath = `${chapterDir}/${file}`;
+        const s3Key = localPath;
+        await this.deleteFileWithBackup(localPath, s3Key);
+      }
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        throw err;
+      }
+    }
+
+    const pagePaths: string[] = [];
+    for (const fileName of tempFiles) {
+      const tempLocalPath = join(fullTempDir, fileName);
+      const finalLocalPath = join(fullChapterDir, fileName);
+      const tempKey = `${tempDir}/${fileName}`;
+      const finalKey = `${chapterDir}/${fileName}`;
+
+      try {
+        await fs.rename(tempLocalPath, finalLocalPath);
+      } catch (err) {
+        this.logger.error(
+          `Failed to move temp file ${fileName}: ${err instanceof Error ? err.message : err}`,
+        );
+        throw err;
+      }
+
+      if (this.useS3()) {
+        try {
+          await this.s3Service.copyFile(tempKey, finalKey);
+          await this.s3Service.deleteFile(tempKey);
+        } catch (err) {
+          this.logger.error(
+            `S3 replace temp→final ${fileName}: ${err instanceof Error ? err.message : err}`,
+          );
+        }
+      }
+
+      pagePaths.push(`/${chapterDir}/${fileName}`);
+    }
 
     try {
-      await fs.rename(tempFull, mainFull);
-    } catch (e) {
-      this.logger.error(
-        `replaceChapterPagesFromTemp: rename failed ${tempFull} -> ${mainFull}: ${e}`,
-      );
-      throw new BadRequestException(
-        `Failed to replace chapter pages: ${e instanceof Error ? e.message : String(e)}`,
-      );
+      await fs.rmdir(fullTempDir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
+        this.logger.warn(`Could not remove temp dir: ${err}`);
+      }
     }
 
     if (this.useS3()) {
-      const tempPrefix = tempDir + '/';
-      const mainPrefix = mainDir + '/';
-      const keys = await this.s3Service.listFiles(tempPrefix);
-      for (const key of keys) {
-        const fileName = key.replace(tempPrefix, '');
-        const destKey = mainPrefix + fileName;
-        await this.s3Service.copyFile(key, destKey);
+      try {
+        await this.s3Service.deleteFolder(tempDir);
+      } catch (err) {
+        this.logger.warn(`Could not remove S3 temp prefix: ${err}`);
       }
-      await this.s3Service.deleteFolder(tempPrefix);
     }
 
-    const files = await fs.readdir(mainFull);
-    const sorted = files.filter((f) => /\.(jpg|jpeg|png|webp)$/i.test(f)).sort();
-    return sorted.map((f) => `/${mainDir}/${f}`);
+    return pagePaths;
   }
 
   async saveUserAvatar(
@@ -409,6 +480,59 @@ export class FilesService {
     );
   }
 
+  /** Аватар персонажа: characters/{titleId}/{characterId}/avatar.* */
+  async saveCharacterAvatar(
+    file: Express.Multer.File,
+    titleId: string,
+    characterId: string,
+  ): Promise<string> {
+    if (!file) {
+      throw new BadRequestException('Нет файла для загрузки');
+    }
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Файл должен быть изображением');
+    }
+    const fileExtension = file.originalname.split('.').pop() || 'jpg';
+    const fileName = `avatar.${fileExtension}`;
+    let fileBuffer: Buffer;
+    if (file.path) {
+      fileBuffer = await fs.readFile(file.path);
+    } else if (file.buffer) {
+      fileBuffer = file.buffer;
+    } else {
+      throw new BadRequestException('Отсутствует содержимое файла');
+    }
+    try {
+      await this.deleteCharacterAvatar(titleId, characterId);
+      const localPath = `characters/${titleId}/${characterId}/${fileName}`;
+      const s3Key = localPath;
+      const resultPath = await this.saveFileWithBackup(
+        fileBuffer,
+        localPath,
+        s3Key,
+        file.mimetype,
+      );
+      if (file.path) {
+        await fs.unlink(file.path);
+      }
+      return resultPath.startsWith('/') ? resultPath : `/${resultPath}`;
+    } catch (error) {
+      this.logger.error(
+        `Ошибка при сохранении аватара персонажа: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      throw new BadRequestException(
+        `Не удалось сохранить аватар: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  async deleteCharacterAvatar(titleId: string, characterId: string): Promise<void> {
+    await this.deleteFolderWithBackup(
+      `characters/${titleId}/${characterId}`,
+      `characters/${titleId}/${characterId}`,
+    );
+  }
+
   async getUserAvatarPath(userId: string): Promise<string | null> {
     if (this.useS3()) {
       const files = await this.s3Service.listFiles(`users/${userId}/avatar/`);
@@ -454,7 +578,6 @@ export class FilesService {
         'Sec-Fetch-Mode'?: string;
         'Sec-Fetch-Site'?: string;
       };
-      /** При синхронизации: сохранять во временную папку (chapterId_sync_temp), старые удалять после успешной загрузки всех */
       syncTempSuffix?: string;
     },
   ): Promise<string> {
@@ -464,11 +587,8 @@ export class FilesService {
     this.logger.log(`Page Number: ${pageNumber}`);
     this.logger.log(`Используем S3: ${this.useS3()}`);
 
-    // Кодируем пробелы и невалидные символы в пути (API telemanga и др. могут возвращать пути с пробелами)
-    const requestUrl = this.normalizeUrlForRequest(imageUrl);
-
     try {
-      const response = await axios.get(requestUrl, {
+      const response = await axios.get(imageUrl, {
         responseType: 'arraybuffer',
         timeout: 30000,
         headers: {
@@ -478,9 +598,9 @@ export class FilesService {
         },
       });
 
-      const chapterDir = `titles/${titleId}/chapters/${chapterId}${options?.syncTempSuffix ?? ''}`;
+      const chapterDir = `titles/${titleId}/chapters/${chapterId}`;
 
-      const urlPath = new URL(requestUrl).pathname;
+      const urlPath = new URL(imageUrl).pathname;
       const ext = urlPath.split('.').pop()?.split('?')[0] || 'jpg';
       const fileName = `${pageNumber.toString().padStart(3, '0')}.${ext}`;
 
@@ -519,14 +639,23 @@ export class FilesService {
 
       if (pageNumber === 1) {
         this.logger.log(
-          `Страница 1 - добавляем только верхний водяной знак`,
+          `Страница 1 - добавляем верхний и обычный водяной знак`,
         );
+
         watermarkedBuffer =
           await this.watermarkUtil.addTopWatermark(imageBuffer);
+
+        watermarkedBuffer = await this.watermarkUtil.addWatermark(
+          watermarkedBuffer,
+          {
+            position: 'center-right',
+            scale: 0.35,
+            minHeight: 2000,
+          },
+        );
       } else {
-        const position = this.watermarkUtil.getWatermarkPositionForPage(pageNumber);
         watermarkedBuffer = await this.watermarkUtil.addWatermark(imageBuffer, {
-          position,
+          position: 'center-right',
           scale: 0.35,
           minHeight: 2000,
           pageNumber: pageNumber,
@@ -536,8 +665,11 @@ export class FilesService {
 
       this.logger.log(`Водяной знак применен успешно`);
 
-      const localPath = `${chapterDir}/${fileName}`;
-      const s3Key = `${chapterDir}/${fileName}`;
+      const syncTempSuffix = options?.syncTempSuffix;
+      const localPath = syncTempSuffix
+        ? `${chapterDir}/${syncTempSuffix}/${fileName}`
+        : `${chapterDir}/${fileName}`;
+      const s3Key = localPath;
       const contentType = `image/${ext === 'jpg' ? 'jpeg' : ext}`;
 
       const resultPath = await this.saveFileWithBackup(
