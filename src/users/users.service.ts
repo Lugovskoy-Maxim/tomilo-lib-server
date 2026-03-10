@@ -300,15 +300,16 @@ export class UsersService {
       return cached as LeaderboardResponse;
     }
 
-    // Для периодов "week"/"month" и категорий с агрегацией по дате: ratings, comments, chaptersRead
-    // level, readingTime, streak — кумулятивные, период не меняет результат (всегда как "all")
-    if ((period === 'month' || period === 'week') && (category === 'ratings' || category === 'comments' || category === 'chaptersRead')) {
+    // Для категорий ratings, comments, chaptersRead все три периода считаем через агрегацию,
+    // чтобы "всё время" не зависело от старых/неполных счётчиков в документе пользователя (all >= month >= week).
+    if (category === 'ratings' || category === 'comments' || category === 'chaptersRead') {
       return this.getLeaderboardByPeriod(category, period, limit, page, skip, cacheKey);
     }
 
     let sortField: string;
     let secondarySortField: string | null = null;
     
+    // Здесь только кумулятивные категории: level, readingTime, streak (ratings/comments/chaptersRead обработаны выше)
     switch (category) {
       case 'level':
         sortField = 'level';
@@ -316,16 +317,6 @@ export class UsersService {
         break;
       case 'readingTime':
         sortField = 'readingTimeMinutes';
-        break;
-      case 'chaptersRead':
-        sortField = 'chaptersReadCount';
-        secondarySortField = 'readingTimeMinutes';
-        break;
-      case 'ratings':
-        sortField = 'ratingsCount';
-        break;
-      case 'comments':
-        sortField = 'commentsCount';
         break;
       case 'streak':
         sortField = 'currentStreak';
@@ -373,12 +364,6 @@ export class UsersService {
       baseFilter.level = { $gte: 1 };
     } else if (category === 'readingTime') {
       baseFilter.readingTimeMinutes = { $gt: 0 };
-    } else if (category === 'chaptersRead') {
-      baseFilter.chaptersReadCount = { $gt: 0 };
-    } else if (category === 'ratings') {
-      baseFilter.ratingsCount = { $gt: 0 };
-    } else if (category === 'comments') {
-      baseFilter.commentsCount = { $gt: 0 };
     } else if (category === 'streak') {
       baseFilter.currentStreak = { $gt: 0 };
     }
@@ -510,24 +495,25 @@ export class UsersService {
     skip: number,
     cacheKey: string,
   ): Promise<LeaderboardResponse> {
+    const isAllTime = period === 'all';
     const dateFrom = new Date();
-    if (period === 'week') {
-      dateFrom.setDate(dateFrom.getDate() - 7);
-    } else {
-      // Месяц = ровно 30 дней назад (setMonth(-1) даёт разную длину и капризы на границах, напр. 31-е)
-      dateFrom.setDate(dateFrom.getDate() - 30);
+    if (!isAllTime) {
+      if (period === 'week') {
+        dateFrom.setDate(dateFrom.getDate() - 7);
+      } else {
+        dateFrom.setDate(dateFrom.getDate() - 30);
+      }
     }
 
     let aggregationResult: { userId: string; count: number }[];
     let totalCount: number | null = null;
 
     if (category === 'chaptersRead') {
-      // Агрегация глав, прочитанных за период (readingHistory[].chapters[].readAt)
       const pipeline: PipelineStage[] = [
         { $match: { isBot: { $ne: true }, showStats: { $ne: false } } },
         { $unwind: '$readingHistory' },
         { $unwind: '$readingHistory.chapters' },
-        { $match: { 'readingHistory.chapters.readAt': { $gte: dateFrom } } },
+        ...(isAllTime ? [] : [{ $match: { 'readingHistory.chapters.readAt': { $gte: dateFrom } } }]),
         { $group: { _id: '$_id', count: { $sum: 1 } } },
         { $sort: { count: -1 as const } },
       ];
@@ -539,22 +525,12 @@ export class UsersService {
       }));
     } else if (category === 'comments') {
       const commentModel = this.userModel.db.collection('comments');
-      const pipeline = [
-        {
-          $match: {
-            createdAt: { $gte: dateFrom },
-            isVisible: true,
-          },
-        },
-        {
-          $group: {
-            _id: '$userId',
-            count: { $sum: 1 },
-          },
-        },
+      const pipeline: any[] = [
+        { $match: isAllTime ? { isVisible: true } : { createdAt: { $gte: dateFrom }, isVisible: true } },
+        { $group: { _id: '$userId', count: { $sum: 1 } } },
         { $sort: { count: -1 as const } },
         { $skip: skip },
-        { $limit: limit + 50 }, // берём больше для подсчёта
+        { $limit: limit + 50 },
       ];
       const results = await commentModel.aggregate(pipeline).toArray();
       aggregationResult = results.map((r: any) => ({
@@ -562,31 +538,23 @@ export class UsersService {
         count: r.count,
       }));
     } else {
-      // Агрегация оценок за период: тайтлы + главы
       const titleModel = this.userModel.db.collection('titles');
       const chapterModel = this.userModel.db.collection('chapters');
+      const titleMatch = isAllTime ? [] : [{ $match: { 'ratings.createdAt': { $gte: dateFrom } } }];
+      const chapterMatch = isAllTime ? [] : [{ $match: { 'ratingByUser.createdAt': { $gte: dateFrom } } }];
       const [titleResults, chapterResults] = await Promise.all([
         titleModel
           .aggregate([
             { $unwind: '$ratings' },
-            { $match: { 'ratings.createdAt': { $gte: dateFrom } } },
+            ...titleMatch,
             { $group: { _id: '$ratings.userId', count: { $sum: 1 } } },
           ])
           .toArray(),
         chapterModel
           .aggregate([
             { $unwind: '$ratingByUser' },
-            {
-              $match: {
-                'ratingByUser.createdAt': { $gte: dateFrom },
-              },
-            },
-            {
-              $group: {
-                _id: '$ratingByUser.userId',
-                count: { $sum: 1 },
-              },
-            },
+            ...chapterMatch,
+            { $group: { _id: '$ratingByUser.userId', count: { $sum: 1 } } },
           ])
           .toArray(),
       ]);
