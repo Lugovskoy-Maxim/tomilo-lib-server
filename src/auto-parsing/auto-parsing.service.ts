@@ -329,9 +329,23 @@ export class AutoParsingService implements OnModuleInit {
         );
       }
 
-      // Множество номеров глав, которых ещё нет в БД (объединение по всем источникам)
+      // При нескольких источниках выбираем тот, у которого больше всего глав
+      const sourcesToUse =
+        successfulSources.length === 1
+          ? successfulSources
+          : (() => {
+              const best = successfulSources.reduce((a, b) =>
+                (b.chapters?.length ?? 0) > (a.chapters?.length ?? 0) ? b : a,
+              );
+              this.logger.log(
+                `Selected source with most chapters (${best.chapters.length}): ${best.url}`,
+              );
+              return [best];
+            })();
+
+      // Множество номеров глав, которых ещё нет в БД (по выбранному источнику/источникам)
       const newChapterNumbersSet = new Set<number>();
-      for (const { chapters } of successfulSources) {
+      for (const { chapters } of sourcesToUse) {
         for (const ch of chapters) {
           if (
             ch.number === undefined ||
@@ -351,14 +365,14 @@ export class AutoParsingService implements OnModuleInit {
         (a, b) => a - b,
       );
       this.logger.log(
-        `New chapters to import (from all sources): ${newChapterNumbersList.length}`,
+        `New chapters to import (from selected source): ${newChapterNumbersList.length}`,
       );
 
       if (newChapterNumbersList.length === 0) {
         this.logger.log(
           `No new chapters found for title ${title.name} (all chapters may already exist)`,
         );
-        const firstUsed = successfulSources[0];
+        const firstUsed = sourcesToUse[0];
         await this.autoParsingJobModel.findByIdAndUpdate(jobId, {
           lastChecked: new Date(),
           lastUsedSourceIndex: firstUsed.sourceIndex,
@@ -367,13 +381,13 @@ export class AutoParsingService implements OnModuleInit {
         return [];
       }
 
-      // Импортируем новые главы: для каждого источника — те новые номера, которые есть на нём и ещё не импортированы
+      // Импортируем новые главы из выбранного источника (с макс. количеством глав)
       const remainingToImport = new Set(newChapterNumbersList);
       const allImported: any[] = [];
-      let lastUsedSourceIndex = successfulSources[0].sourceIndex;
-      let lastUsedSourceUrl = successfulSources[0].url;
+      let lastUsedSourceIndex = sourcesToUse[0].sourceIndex;
+      let lastUsedSourceUrl = sourcesToUse[0].url;
 
-      for (const { sourceIndex, url, chapters } of successfulSources) {
+      for (const { sourceIndex, url, chapters } of sourcesToUse) {
         const numbersFromThisSource = chapters
           .filter((ch) => {
             const n = ch.number != null ? Number(ch.number) : NaN;
@@ -413,7 +427,7 @@ export class AutoParsingService implements OnModuleInit {
       });
 
       this.logger.log(
-        `Imported ${allImported.length} new chapters for title ${title.name} from ${successfulSources.length} source(s)`,
+        `Imported ${allImported.length} new chapters for title ${title.name} from selected source`,
       );
       return allImported;
     } catch (error) {
@@ -453,30 +467,46 @@ export class AutoParsingService implements OnModuleInit {
         sources,
         job.lastUsedSourceIndex ?? 0,
       );
-      const sourceUrl = sources[sourceOrder[0]];
-      const result = await this.mangaParserService.syncChaptersFromSource(
-        titleId,
-        sourceUrl,
-        [chapterNumber],
-      );
-      if (result.errors.length > 0) {
-        this.logger.warn(
-          `syncChapterPages chapter ${chapterNumber} errors: ${result.errors.map((e) => e.error).join('; ')}`,
-        );
-        return {
-          synced: result.synced.length > 0,
-          error: result.errors[0]?.error,
-        };
-      }
-      if (result.synced.length > 0) {
+      let lastError: string | undefined;
+      for (const sourceIndex of sourceOrder) {
+        const sourceUrl = sources[sourceIndex];
         this.logger.log(
-          `syncChapterPages: synced chapter ${chapterNumber} for title ${titleId}`,
+          `syncChapterPages: trying source ${sourceIndex + 1}/${sources.length}: ${sourceUrl}`,
         );
-        return { synced: true };
+        try {
+          const result = await this.mangaParserService.syncChaptersFromSource(
+            titleId,
+            sourceUrl,
+            [chapterNumber],
+          );
+          if (result.synced.length > 0) {
+            this.logger.log(
+              `syncChapterPages: synced chapter ${chapterNumber} for title ${titleId} from source ${sourceUrl}`,
+            );
+            await this.autoParsingJobModel.findByIdAndUpdate(job._id, {
+              lastUsedSourceIndex: sourceIndex,
+              lastUsedSourceUrl: sourceUrl,
+            });
+            return { synced: true };
+          }
+          if (result.errors.length > 0) {
+            lastError = result.errors[0]?.error;
+            this.logger.warn(
+              `syncChapterPages source ${sourceUrl}: ${lastError}`,
+            );
+            continue;
+          }
+          lastError = result.skipped[0]?.reason ?? 'not_synced';
+        } catch (err) {
+          lastError = err instanceof Error ? err.message : String(err);
+          this.logger.warn(
+            `syncChapterPages source ${sourceUrl} failed: ${lastError}`,
+          );
+        }
       }
       return {
         synced: false,
-        error: result.skipped[0]?.reason ?? 'not_synced',
+        error: lastError ?? 'all_sources_failed',
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
