@@ -57,6 +57,13 @@ export class AutoParsingJob {
   @Prop({ type: Number, min: 0, max: 23, required: false })
   scheduleHour?: number;
 
+  /**
+   * Minute slot (0, 10, 20, 30, 40, 50) within the hour. Used when cron runs every 10 minutes.
+   * If not set, treated as 0 (run at :00). Only applies when scheduleHour is set.
+   */
+  @Prop({ type: Number, enum: [0, 10, 20, 30, 40, 50], required: false })
+  scheduleMinute?: number;
+
   @Prop()
   lastChecked: Date;
 
@@ -69,4 +76,4 @@ export const AutoParsingJobSchema =
 
 AutoParsingJobSchema.index({ titleId: 1 });
 AutoParsingJobSchema.index({ enabled: 1 });
-AutoParsingJobSchema.index({ frequency: 1, scheduleHour: 1, enabled: 1 });
+AutoParsingJobSchema.index({ frequency: 1, scheduleHour: 1, scheduleMinute: 1, enabled: 1 });

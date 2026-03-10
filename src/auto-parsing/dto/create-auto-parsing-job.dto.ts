@@ -8,6 +8,8 @@ import {
   IsInt,
   Min,
   Max,
+  IsIn,
+  ValidateIf,
 } from 'class-validator';
 import { ParsingFrequency } from '../../schemas/auto-parsing-job.schema';
 
@@ -45,6 +47,16 @@ export class CreateAutoParsingJobDto {
   @Min(0)
   @Max(23)
   scheduleHour?: number;
+
+  /**
+   * Minute slot (0, 10, 20, 30, 40, 50) within the hour. Step is 10 minutes.
+   * If not set, treated as 0. Only applies when scheduleHour is set.
+   */
+  @IsOptional()
+  @ValidateIf((_o, v) => v != null)
+  @IsInt()
+  @IsIn([0, 10, 20, 30, 40, 50])
+  scheduleMinute?: number;
 
   @IsOptional()
   @IsBoolean()

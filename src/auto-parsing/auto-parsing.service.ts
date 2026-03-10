@@ -539,30 +539,34 @@ export class AutoParsingService implements OnModuleInit {
     });
   }
 
-  /** Every hour: run jobs that have scheduleHour set to current hour (spreads load). */
-  @Cron(CronExpression.EVERY_HOUR)
-  async handleScheduledByHourJobs() {
+  /** Every 10 minutes: run jobs that have scheduleHour + scheduleMinute set to current slot. */
+  @Cron('*/10 * * * *')
+  async handleScheduledByHourAndMinuteJobs() {
     const now = new Date();
     const hour = now.getUTCHours();
+    const minuteSlot = Math.floor(now.getUTCMinutes() / 10) * 10 as 0 | 10 | 20 | 30 | 40 | 50;
     const dayOfWeek = now.getUTCDay(); // 0 = Sunday
     const dayOfMonth = now.getUTCDate();
 
-    // Daily: run at scheduleHour every day
+    // Daily: run at scheduleHour:scheduleMinute every day
     await this.processJobsByFrequency(ParsingFrequency.DAILY, {
       scheduleHour: hour,
+      scheduleMinute: minuteSlot,
     });
 
-    // Weekly: run at scheduleHour on Sunday (same day as EVERY_WEEK)
+    // Weekly: run at scheduleHour:scheduleMinute on Sunday (same day as EVERY_WEEK)
     if (dayOfWeek === 0) {
       await this.processJobsByFrequency(ParsingFrequency.WEEKLY, {
         scheduleHour: hour,
+        scheduleMinute: minuteSlot,
       });
     }
 
-    // Monthly: run at scheduleHour on 1st
+    // Monthly: run at scheduleHour:scheduleMinute on 1st
     if (dayOfMonth === 1) {
       await this.processJobsByFrequency(ParsingFrequency.MONTHLY, {
         scheduleHour: hour,
+        scheduleMinute: minuteSlot,
       });
     }
   }
@@ -572,6 +576,7 @@ export class AutoParsingService implements OnModuleInit {
     options?: {
       onlyWithoutScheduleHour?: boolean;
       scheduleHour?: number;
+      scheduleMinute?: number;
     },
   ) {
     const query: Record<string, unknown> = { frequency, enabled: true };
@@ -587,7 +592,12 @@ export class AutoParsingService implements OnModuleInit {
 
     const jobs = await this.autoParsingJobModel.find(query).exec();
 
+    const minuteSlot = options?.scheduleMinute ?? 0;
     for (const job of jobs) {
+      const jobMinute = job.scheduleMinute ?? 0;
+      if (options?.scheduleHour !== undefined && jobMinute !== minuteSlot) {
+        continue;
+      }
       try {
         await this.checkForNewChapters(job._id.toString());
       } catch (error) {
