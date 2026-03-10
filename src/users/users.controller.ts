@@ -1112,6 +1112,7 @@ export class UsersController {
   async getLeaderboard(
     @Query('category') category?: string,
     @Query('period') period?: string,
+    @Query('allPeriods') allPeriods?: string,
     @Query('limit') limit?: string,
     @Query('page') page?: string,
   ): Promise<ApiResponseDto<any>> {
@@ -1120,6 +1121,26 @@ export class UsersController {
       const safeCategory = validCategories.includes(category || '')
         ? (category as 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak' | 'chaptersRead')
         : 'level';
+
+      const wantAllPeriods =
+        allPeriods === '1' ||
+        allPeriods === 'true' ||
+        allPeriods === 'yes';
+      const periodCategories = ['ratings', 'comments', 'chaptersRead'];
+
+      if (wantAllPeriods && periodCategories.includes(safeCategory)) {
+        const data = await this.usersService.getLeaderboardAllPeriods({
+          category: safeCategory as 'ratings' | 'comments' | 'chaptersRead',
+          limit: limit != null ? parseInt(String(limit), 10) : undefined,
+          page: page != null ? parseInt(String(page), 10) : undefined,
+        });
+        return {
+          success: true,
+          data,
+          timestamp: new Date().toISOString(),
+          path: 'users/leaderboard',
+        };
+      }
 
       const validPeriods = ['all', 'month', 'week'];
       const safePeriod = validPeriods.includes(period || '')

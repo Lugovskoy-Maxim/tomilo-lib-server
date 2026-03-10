@@ -51,6 +51,8 @@ const CAN_VIEW_ADULT_CACHE_PREFIX = 'user:canViewAdult:';
 const CAN_VIEW_ADULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 /** Кеш таблицы лидеров: 6 часов (синхронно с текстом на клиенте «Данные обновляются каждые 6 часов») */
 const LEADERBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+/** Кеш лидерборда за период (неделя/месяц): короче, чтобы неделя/месяц/всё время не расходились из-за устаревания */
+const LEADERBOARD_PERIOD_CACHE_TTL_MS = 15 * 60 * 1000; // 15 мин
 
 export type LeaderboardCategory = 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak' | 'chaptersRead';
 export type LeaderboardPeriod = 'all' | 'month' | 'week';
@@ -89,6 +91,13 @@ export interface LeaderboardResponse {
   total: number;
   category: LeaderboardCategory;
   period: LeaderboardPeriod;
+}
+
+/** Ответ лидерборда за все периоды одним запросом (week, month, all). */
+export interface LeaderboardAllPeriodsResponse {
+  week: LeaderboardResponse;
+  month: LeaderboardResponse;
+  all: LeaderboardResponse;
 }
 
 type HomepageActiveUsersSortBy = 'lastActivityAt' | 'level' | 'createdAt';
@@ -455,6 +464,41 @@ export class UsersService {
   }
 
   /**
+   * Получить лидерборд за все периоды (week, month, all) одним запросом.
+   * Имеет смысл только для категорий ratings, comments, chaptersRead.
+   */
+  async getLeaderboardAllPeriods(options: {
+    category: 'ratings' | 'comments' | 'chaptersRead';
+    limit?: number;
+    page?: number;
+  }): Promise<LeaderboardAllPeriodsResponse> {
+    const category = options.category;
+    const limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
+    const page = Math.max(1, Number(options.page) || 1);
+
+    const cacheKey = `leaderboard:${category}:allPeriods:limit:${limit}:page:${page}`;
+    const cached = await this.cacheManager.get(cacheKey);
+    if (cached) {
+      return cached as LeaderboardAllPeriodsResponse;
+    }
+
+    const [week, month, all] = await Promise.all([
+      this.getLeaderboard({ category, period: 'week', limit, page }),
+      this.getLeaderboard({ category, period: 'month', limit, page }),
+      this.getLeaderboard({ category, period: 'all', limit, page }),
+    ]);
+
+    const result: LeaderboardAllPeriodsResponse = { week, month, all };
+    await this.cacheManager.set(cacheKey, result, {
+      ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS,
+    });
+    this.logger.log(
+      `Leaderboard (all periods) fetched: category=${category}, limit=${limit}, page=${page}`,
+    );
+    return result;
+  }
+
+  /**
    * Получить лидерборд за период (неделя или месяц) для ratings, comments или chaptersRead через агрегацию.
    * level, readingTime, streak не используют период — данные кумулятивные.
    */
@@ -470,7 +514,8 @@ export class UsersService {
     if (period === 'week') {
       dateFrom.setDate(dateFrom.getDate() - 7);
     } else {
-      dateFrom.setMonth(dateFrom.getMonth() - 1);
+      // Месяц = ровно 30 дней назад (setMonth(-1) даёт разную длину и капризы на границах, напр. 31-е)
+      dateFrom.setDate(dateFrom.getDate() - 30);
     }
 
     let aggregationResult: { userId: string; count: number }[];
@@ -569,7 +614,7 @@ export class UsersService {
         category,
         period,
       };
-      await this.cacheManager.set(cacheKey, result, { ttl: LEADERBOARD_CACHE_TTL_MS });
+      await this.cacheManager.set(cacheKey, result, { ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS });
       return result;
     }
 
@@ -579,9 +624,13 @@ export class UsersService {
     const userIds = aggregationResult.slice(0, limit).map(r => new Types.ObjectId(r.userId));
     const countMap = new Map(aggregationResult.map(r => [r.userId, r.count]));
 
+    const selectFields =
+      category === 'chaptersRead'
+        ? '_id username avatar role level experience readingTimeMinutes equippedDecorations subscriptionExpiresAt showStats'
+        : '_id username avatar role level experience equippedDecorations subscriptionExpiresAt showStats';
     const users = await this.userModel
       .find({ _id: { $in: userIds }, isBot: { $ne: true } })
-      .select('_id username avatar role level experience equippedDecorations subscriptionExpiresAt showStats')
+      .select(selectFields)
       .populate({ path: 'equippedDecorations.avatar', select: 'imageUrl' })
       .populate({ path: 'equippedDecorations.frame', select: 'imageUrl' })
       .populate({ path: 'equippedDecorations.background', select: 'imageUrl' })
@@ -606,7 +655,7 @@ export class UsersService {
         role: user.role,
         level: user.level ?? 1,
         experience: user.experience ?? 0,
-        readingTimeMinutes: 0,
+        readingTimeMinutes: category === 'chaptersRead' ? (user.readingTimeMinutes ?? 0) : 0,
         chaptersRead: category === 'chaptersRead' ? periodCount : 0,
         ratingsCount: category === 'ratings' ? periodCount : (user.ratingsCount ?? 0),
         commentsCount: category === 'comments' ? periodCount : (user.commentsCount ?? 0),
@@ -641,7 +690,7 @@ export class UsersService {
       period,
     };
 
-    await this.cacheManager.set(cacheKey, result, { ttl: LEADERBOARD_CACHE_TTL_MS });
+    await this.cacheManager.set(cacheKey, result, { ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS });
 
     this.logger.log(
       `Leaderboard (period) fetched: category=${category}, period=${period}, limit=${limit}, page=${page}, total=${result.total}`,
