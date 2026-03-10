@@ -1437,22 +1437,34 @@ export class MangaParserService {
       titleId,
       'asc',
     );
+    const requestedSet =
+      chapterNumbers?.length && chapterNumbers.length > 0
+        ? new Set(chapterNumbers.map((n) => Number(n)))
+        : null;
     const dbChapters =
-      chapterNumbers?.length &&
-      chapterNumbers.length > 0
+      requestedSet != null
         ? allChapters.filter((ch) =>
-            chapterNumbers.includes(Number(ch.chapterNumber)),
+            requestedSet.has(Number(ch.chapterNumber)),
           )
         : allChapters;
+
     const synced: { chapterId: string; chapterNumber: number; pagesCount: number }[] = [];
     const skipped: { chapterNumber: number; reason: string }[] = [];
     const errors: { chapterNumber: number; error: string }[] = [];
 
+    const normalizeSourceNumber = (n: number | string | undefined): number | null =>
+      n == null ? null : Number(n);
+    const findSourceChapter = (num: number) =>
+      sourceChapters.find((ch) => {
+        const sourceNum = normalizeSourceNumber(ch.number);
+        return sourceNum !== null && sourceNum === num;
+      });
+
     for (const dbChapter of dbChapters) {
-      const num = dbChapter.chapterNumber;
-      const sourceChapter = sourceChapters.find(
-        (ch) => ch.number != null && ch.number === num,
-      );
+      const num = Number(dbChapter.chapterNumber);
+      if (Number.isNaN(num)) continue;
+
+      const sourceChapter = findSourceChapter(num);
       if (!sourceChapter) {
         skipped.push({
           chapterNumber: num,
@@ -1467,7 +1479,8 @@ export class MangaParserService {
         });
         continue;
       }
-      try {
+
+      const trySyncChapter = async (): Promise<boolean> => {
         const chapterId = dbChapter._id.toString();
 
         const imageUrls = await this.getChapterImageUrls(
@@ -1478,11 +1491,9 @@ export class MangaParserService {
         if (imageUrls.length > 0) {
           const validation = await this.validateImageUrls(imageUrls);
           if (!validation.allOk && validation.failed) {
-            errors.push({
-              chapterNumber: num,
-              error: `source_page_not_200: ${validation.failed.url} => ${validation.failed.status}`,
-            });
-            continue;
+            throw new Error(
+              `source_page_not_200: ${validation.failed.url} => ${validation.failed.status}`,
+            );
           }
         }
 
@@ -1496,12 +1507,11 @@ export class MangaParserService {
           { syncTempSuffix },
         );
         if (tempPagePaths.length === 0) {
-          errors.push({
-            chapterNumber: num,
-            error: 'no_pages_downloaded',
-          });
-          continue;
+          throw new Error('no_pages_downloaded');
         }
+
+        // Даём время асинхронной загрузке в S3 завершиться перед заменой страниц
+        await new Promise((r) => setTimeout(r, 2000));
 
         const pagePaths = await this.filesService.replaceChapterPagesFromTemp(
           chapterId,
@@ -1516,10 +1526,25 @@ export class MangaParserService {
           chapterNumber: num,
           pagesCount: pagePaths.length,
         });
-        if (sourceChapter.pageCount != null && pagePaths.length !== sourceChapter.pageCount) {
+        if (
+          sourceChapter.pageCount != null &&
+          pagePaths.length !== sourceChapter.pageCount
+        ) {
           this.logger.warn(
             `Synced chapter ${num}: expected ${sourceChapter.pageCount} pages from source, got ${pagePaths.length}`,
           );
+        }
+        return true;
+      };
+
+      try {
+        try {
+          await trySyncChapter();
+        } catch (firstErr) {
+          this.logger.warn(
+            `Sync chapter ${num} failed, retrying once: ${firstErr instanceof Error ? firstErr.message : String(firstErr)}`,
+          );
+          await trySyncChapter();
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -1533,7 +1558,12 @@ export class MangaParserService {
     } catch {
       // ignore
     }
-    return { synced, skipped, errors };
+
+    return {
+      synced,
+      skipped,
+      errors,
+    };
   }
 
   async parseChaptersInfo(
