@@ -1,6 +1,6 @@
 // update-title.dto.ts
 import { PartialType } from '@nestjs/mapped-types';
-import { CreateTitleDto } from './create-title.dto';
+import { CreateTitleDto, RelatedTitleItemDto } from './create-title.dto';
 import {
   IsArray,
   IsBoolean,
@@ -9,7 +9,9 @@ import {
   IsString,
   Min,
   Max,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { TitleStatus } from '../../schemas/title.schema';
 
 export class UpdateTitleDto extends PartialType(CreateTitleDto) {
@@ -87,4 +89,11 @@ export class UpdateTitleDto extends PartialType(CreateTitleDto) {
   @IsOptional()
   @IsBoolean()
   chaptersRemovedByCopyrightHolder?: boolean;
+
+  /** Связанные тайтлы: сиквел, приквел, спинофф и т.д. */
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RelatedTitleItemDto)
+  relatedTitles?: RelatedTitleItemDto[];
 }

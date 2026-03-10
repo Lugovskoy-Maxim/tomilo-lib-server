@@ -286,6 +286,11 @@ export class TitlesService {
       });
     }
 
+    findQuery = findQuery.populate({
+      path: 'relatedTitles.titleId',
+      select: '_id name slug coverImage status type releaseYear averageRating isPublished ageLimit',
+    });
+
     const title = await findQuery.exec();
 
     if (!title) {
@@ -323,6 +328,11 @@ export class TitlesService {
         options: { sort: { chapterNumber: 1 } },
       });
     }
+
+    findQuery = findQuery.populate({
+      path: 'relatedTitles.titleId',
+      select: '_id name slug coverImage status type releaseYear averageRating isPublished ageLimit',
+    });
 
     const title = await findQuery.exec();
     if (title?.chaptersRemovedByCopyrightHolder) title.chapters = [];

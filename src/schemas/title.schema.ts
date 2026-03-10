@@ -115,6 +115,22 @@ export class Title {
 
   @Prop()
   type: string;
+
+  /** Связанные тайтлы: сиквел, приквел, спинофф и т.д. */
+  @Prop({
+    type: [
+      {
+        relationType: {
+          type: String,
+          enum: ['sequel', 'prequel', 'spin_off', 'adaptation', 'side_story', 'alternative_story', 'other'],
+          required: true,
+        },
+        titleId: { type: Types.ObjectId, ref: 'Title', required: true },
+      },
+    ],
+    default: [],
+  })
+  relatedTitles: { relationType: string; titleId: Types.ObjectId }[];
 }
 
 export const TitleSchema = SchemaFactory.createForClass(Title);
