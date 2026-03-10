@@ -145,6 +145,7 @@ export class ChaptersController {
     @Query('titleId') titleId: string,
     @Query('sortBy') sortBy: string = 'chapterNumber',
     @Query('sortOrder') sortOrder: 'asc' | 'desc' = 'desc',
+    @Query('withoutPages') withoutPages?: string,
   ): Promise<ApiResponseDto<any>> {
     try {
       const data = await this.chaptersService.findAll({
@@ -153,6 +154,7 @@ export class ChaptersController {
         titleId,
         sortBy,
         sortOrder,
+        withoutPages: withoutPages === 'true' || withoutPages === '1',
       });
 
       return {

@@ -67,12 +67,15 @@ export class ChaptersService {
     titleId,
     sortBy = 'chapterNumber',
     sortOrder = 'desc',
+    withoutPages = false,
   }: {
     page?: number;
     limit?: number;
     titleId?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    /** Если true, возвращать только главы без страниц (pages отсутствует или пустой массив). */
+    withoutPages?: boolean;
   }) {
     // Если запрашивают главы по тайтлу — не возвращать главы, если они удалены по просьбе правообладателя
     if (titleId && Types.ObjectId.isValid(titleId)) {
@@ -102,6 +105,21 @@ export class ChaptersService {
       } else {
         // if not a valid ObjectId, try matching raw string just in case
         query.titleId = titleId as unknown as Types.ObjectId;
+      }
+    }
+
+    if (withoutPages) {
+      const noPagesCondition = {
+        $or: [
+          { pages: { $exists: false } },
+          { pages: null },
+          { pages: { $size: 0 } },
+        ],
+      };
+      if (Object.keys(query).length > 0) {
+        query.$and = [...(Array.isArray(query.$and) ? query.$and : []), noPagesCondition];
+      } else {
+        Object.assign(query, noPagesCondition);
       }
     }
 
@@ -237,29 +255,6 @@ export class ChaptersService {
       .exec();
   }
 
-  /**
-   * Получить главы тайтла по ID (опционально только с указанными номерами).
-   * Для повторной синхронизации страниц с источником.
-   */
-  async findManyByTitleId(
-    titleId: string,
-    chapterNumbers?: number[],
-  ): Promise<ChapterDocument[]> {
-    if (!Types.ObjectId.isValid(titleId)) {
-      throw new BadRequestException('Invalid title ID');
-    }
-    const query: any = {
-      $or: [
-        { titleId: new Types.ObjectId(titleId) },
-        { titleId: titleId as unknown as Types.ObjectId },
-      ],
-    };
-    if (chapterNumbers != null && chapterNumbers.length > 0) {
-      query.chapterNumber = { $in: chapterNumbers };
-    }
-    return this.chapterModel.find(query).sort({ chapterNumber: 1 }).exec();
-  }
-
   async create(createChapterDto: CreateChapterDto): Promise<ChapterDocument> {
     const { titleId, chapterNumber } = createChapterDto;
 
@@ -300,7 +295,6 @@ export class ChaptersService {
         savedChapter._id.toString(),
         chapterNumber,
         title.name,
-        { titleSlug: title.slug },
       );
     } catch (error) {
       this.logger.error(
@@ -691,7 +685,6 @@ export class ChaptersService {
           savedChapter.id.toString(),
           chapterNumber,
           title.name,
-          { titleSlug: title.slug },
         );
       } catch (error) {
         this.logger.error(
