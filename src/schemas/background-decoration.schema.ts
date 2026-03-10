@@ -28,6 +28,10 @@ export class BackgroundDecoration {
   /** Остаток в наличии. Не задано = без ограничений. При 0 продажа запрещена. */
   @Prop({ min: 0 })
   quantity?: number;
+
+  /** Автор (из предложений пользователей). Получает 10% от каждой продажи. */
+  @Prop({ type: Types.ObjectId, ref: 'User' })
+  authorId?: Types.ObjectId;
 }
 
 export const BackgroundDecorationSchema =

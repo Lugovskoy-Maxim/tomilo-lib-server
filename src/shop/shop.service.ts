@@ -23,6 +23,10 @@ import {
   AvatarFrameDecoration,
   AvatarFrameDecorationDocument,
 } from '../schemas/avatar-frame-decoration.schema';
+import {
+  SuggestedDecoration,
+  SuggestedDecorationDocument,
+} from '../schemas/suggested-decoration.schema';
 import { UsersService } from '../users/users.service';
 import { LoggerService } from '../common/logger/logger.service';
 
@@ -39,6 +43,8 @@ export class ShopService {
     private backgroundDecorationModel: Model<BackgroundDecorationDocument>,
     @InjectModel(CardDecoration.name)
     private cardDecorationModel: Model<CardDecorationDocument>,
+    @InjectModel(SuggestedDecoration.name)
+    private suggestedDecorationModel: Model<SuggestedDecorationDocument>,
     private usersService: UsersService,
     @Inject(CACHE_MANAGER)
     private cacheManager: {
@@ -67,10 +73,10 @@ export class ShopService {
       ],
     };
     const [avatars, frames, backgrounds, cards] = await Promise.all([
-      this.avatarDecorationModel.find(inStockFilter),
-      this.avatarFrameDecorationModel.find(inStockFilter),
-      this.backgroundDecorationModel.find(inStockFilter),
-      this.cardDecorationModel.find(inStockFilter),
+      this.avatarDecorationModel.find(inStockFilter).populate('authorId', 'username').lean(),
+      this.avatarFrameDecorationModel.find(inStockFilter).populate('authorId', 'username').lean(),
+      this.backgroundDecorationModel.find(inStockFilter).populate('authorId', 'username').lean(),
+      this.cardDecorationModel.find(inStockFilter).populate('authorId', 'username').lean(),
     ]);
 
     const result = {
@@ -116,16 +122,28 @@ export class ShopService {
     let decorations;
     switch (type) {
       case 'avatar':
-        decorations = await this.avatarDecorationModel.find(inStockFilter);
+        decorations = await this.avatarDecorationModel
+          .find(inStockFilter)
+          .populate('authorId', 'username')
+          .lean();
         break;
       case 'frame':
-        decorations = await this.avatarFrameDecorationModel.find(inStockFilter);
+        decorations = await this.avatarFrameDecorationModel
+          .find(inStockFilter)
+          .populate('authorId', 'username')
+          .lean();
         break;
       case 'background':
-        decorations = await this.backgroundDecorationModel.find(inStockFilter);
+        decorations = await this.backgroundDecorationModel
+          .find(inStockFilter)
+          .populate('authorId', 'username')
+          .lean();
         break;
       case 'card':
-        decorations = await this.cardDecorationModel.find(inStockFilter);
+        decorations = await this.cardDecorationModel
+          .find(inStockFilter)
+          .populate('authorId', 'username')
+          .lean();
         break;
       default:
         throw new BadRequestException('Invalid decoration type');
@@ -218,10 +236,10 @@ export class ShopService {
       throw new BadRequestException('This decoration is out of stock');
     }
 
-    // Check if user has enough balance (coerce to number: DB may return string)
+    // Check if user has enough balance (coerce to number: DB may return string). Price 0 = free.
     const userBalance = Number(user.balance ?? 0);
     const requiredPrice = Number(price);
-    if (userBalance < requiredPrice) {
+    if (requiredPrice > 0 && userBalance < requiredPrice) {
       throw new BadRequestException(
         `Insufficient balance (available: ${userBalance}, required: ${requiredPrice})`,
       );
@@ -269,8 +287,8 @@ export class ShopService {
       }
     }
 
-    // Deduct balance and add decoration to owned list
-    const newBalance = userBalance - requiredPrice;
+    // Deduct balance (free if price 0) and add decoration to owned list
+    const newBalance = requiredPrice > 0 ? userBalance - requiredPrice : userBalance;
     const updatedOwnedDecorations = [
       ...(user.ownedDecorations || []),
       {
@@ -286,6 +304,23 @@ export class ShopService {
     };
 
     await this.usersService.update(userId, updateUserDto);
+
+    // Author royalty: 10% of sale price to decoration author (only when price > 0)
+    const authorId =
+      decoration.authorId != null ? String(decoration.authorId) : null;
+    if (requiredPrice > 0 && authorId) {
+      const royalty = Math.floor(requiredPrice * 0.1);
+      if (royalty > 0) {
+        try {
+          await this.usersService.addBalance(authorId, royalty);
+          this.logger.log(
+            `Author ${authorId} received ${royalty} coins (10%) for decoration ${decorationId} sale`,
+          );
+        } catch (err) {
+          this.logger.warn(`Failed to pay author royalty: ${(err as Error).message}`);
+        }
+      }
+    }
 
     void this.usersService.checkAchievementsForUser(userId);
 
@@ -386,6 +421,7 @@ export class ShopService {
       description?: string;
       isAvailable?: boolean;
       quantity?: number | null;
+      authorId?: Types.ObjectId;
     },
   ) {
     if (!file || !file.filename) {
@@ -404,6 +440,9 @@ export class ShopService {
     };
     if (payload.quantity !== undefined && payload.quantity !== null) {
       doc.quantity = payload.quantity;
+    }
+    if (payload.authorId) {
+      doc.authorId = payload.authorId;
     }
 
     let decoration;
@@ -447,6 +486,7 @@ export class ShopService {
     rarity?: 'common' | 'rare' | 'epic' | 'legendary';
     isAvailable?: boolean;
     quantity?: number | null;
+    authorId?: Types.ObjectId;
   }) {
     const doc: Record<string, unknown> = {
       name: payload.name,
@@ -458,6 +498,9 @@ export class ShopService {
     };
     if (payload.quantity !== undefined && payload.quantity !== null) {
       doc.quantity = payload.quantity;
+    }
+    if (payload.authorId) {
+      doc.authorId = payload.authorId;
     }
     let decoration;
     switch (payload.type) {
@@ -748,6 +791,268 @@ export class ShopService {
       ownedCards,
       equippedDecorations: user.equippedDecorations,
       decorations,
+    };
+  }
+
+  // --- Suggested decorations (user proposals + voting) ---
+
+  /** Цена в магазине по количеству голосов: 0–4 голоса = бесплатно, иначе 50 + votes*15 (макс 500). */
+  private priceByVotes(votesCount: number): number {
+    if (votesCount < 5) return 0;
+    return Math.min(500, 50 + votesCount * 15);
+  }
+
+  async getSuggestedDecorations(status: 'pending' | 'accepted' | 'rejected' = 'pending') {
+    const list = await this.suggestedDecorationModel
+      .aggregate([
+        { $match: { status } },
+        {
+          $addFields: {
+            votesCount: { $size: { $ifNull: ['$votedUserIds', []] } },
+          },
+        },
+        { $sort: { votesCount: -1, createdAt: -1 } },
+      ])
+      .exec();
+    return list.map((s: any) => ({
+      id: s._id.toString(),
+      type: s.type,
+      name: s.name,
+      description: s.description ?? '',
+      imageUrl: s.imageUrl,
+      authorId: s.authorId?.toString(),
+      votesCount: s.votesCount ?? 0,
+      status: s.status,
+      createdAt: s.createdAt,
+      userHasVoted: false,
+    }));
+  }
+
+  async getSuggestedDecorationsWithUserVote(userId: string | null) {
+    const list = await this.getSuggestedDecorations('pending');
+    if (!userId) return list;
+    const oid = new Types.ObjectId(userId);
+    const withVote = await this.suggestedDecorationModel
+      .find({ status: 'pending' })
+      .select('_id votedUserIds')
+      .lean();
+    const votedSet = new Set<string>();
+    for (const s of withVote) {
+      const ids = (s as any).votedUserIds as Types.ObjectId[];
+      if (ids?.some((id: Types.ObjectId) => id.equals(oid))) {
+        votedSet.add((s as any)._id.toString());
+      }
+    }
+    return list.map((s) => ({
+      ...s,
+      userHasVoted: votedSet.has(s.id),
+    }));
+  }
+
+  /** Один пользователь — одно предложение в неделю (по автору, за последние 7 дней). */
+  private async checkUserCanSuggest(userId: string): Promise<void> {
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const existing = await this.suggestedDecorationModel.findOne({
+      authorId: new Types.ObjectId(userId),
+      createdAt: { $gte: weekAgo },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        'Один аккаунт может предложить только одну декорацию в неделю. Повторите через неделю после предыдущего предложения.',
+      );
+    }
+  }
+
+  async createSuggestion(
+    userId: string,
+    payload: {
+      type: 'avatar' | 'frame' | 'background' | 'card';
+      name: string;
+      description?: string;
+      imageUrl: string;
+    },
+  ) {
+    await this.checkUserCanSuggest(userId);
+
+    const suggestion = await this.suggestedDecorationModel.create({
+      type: payload.type,
+      name: payload.name.trim(),
+      description: payload.description?.trim() ?? '',
+      imageUrl: payload.imageUrl,
+      authorId: new Types.ObjectId(userId),
+      votedUserIds: [],
+      status: 'pending',
+    });
+    this.logger.log(
+      `User ${userId} suggested ${payload.type} decoration: ${suggestion._id} (${payload.name})`,
+    );
+    return {
+      id: suggestion._id.toString(),
+      type: suggestion.type,
+      name: suggestion.name,
+      description: suggestion.description,
+      imageUrl: suggestion.imageUrl,
+      authorId: suggestion.authorId.toString(),
+      votesCount: 0,
+      status: suggestion.status,
+      createdAt: suggestion.createdAt,
+    };
+  }
+
+  async deleteSuggestion(suggestionId: string) {
+    const oid = new Types.ObjectId(suggestionId);
+    const suggestion = await this.suggestedDecorationModel.findByIdAndDelete(oid);
+    if (!suggestion) {
+      throw new NotFoundException('Suggested decoration not found');
+    }
+    this.logger.log(`Suggestion ${suggestionId} deleted (admin)`);
+    return { message: 'Suggestion deleted successfully' };
+  }
+
+  async voteSuggestion(suggestionId: string, userId: string) {
+    const oid = new Types.ObjectId(suggestionId);
+    const suggestion = await this.suggestedDecorationModel.findById(oid);
+    if (!suggestion) {
+      throw new NotFoundException('Suggested decoration not found');
+    }
+    if (suggestion.status !== 'pending') {
+      throw new BadRequestException('This suggestion is no longer accepting votes');
+    }
+    const userOid = new Types.ObjectId(userId);
+    const hasVoted = suggestion.votedUserIds.some((id) => id.equals(userOid));
+    if (hasVoted) {
+      throw new BadRequestException('You have already voted for this suggestion');
+    }
+    suggestion.votedUserIds.push(userOid);
+    await suggestion.save();
+    this.logger.log(`User ${userId} voted for suggestion ${suggestionId}`);
+    return {
+      votesCount: suggestion.votedUserIds.length,
+      userHasVoted: true,
+    };
+  }
+
+  /** Редактирование предложения только автором и только в течение 1 часа после создания. */
+  async updateSuggestion(
+    suggestionId: string,
+    userId: string,
+    payload: { name?: string; description?: string; imageUrl?: string },
+  ) {
+    const oid = new Types.ObjectId(suggestionId);
+    const suggestion = await this.suggestedDecorationModel.findById(oid);
+    if (!suggestion) {
+      throw new NotFoundException('Suggested decoration not found');
+    }
+    if (suggestion.status !== 'pending') {
+      throw new BadRequestException('Это предложение больше нельзя редактировать');
+    }
+    const userOid = new Types.ObjectId(userId);
+    if (!suggestion.authorId.equals(userOid)) {
+      throw new BadRequestException('Редактировать может только автор предложения');
+    }
+    const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+    const createdAt = suggestion.createdAt instanceof Date ? suggestion.createdAt : new Date(suggestion.createdAt);
+    if (createdAt < oneHourAgo) {
+      throw new BadRequestException(
+        'Редактировать предложение можно только в течение 1 часа после отправки. Время вышло.',
+      );
+    }
+    if (payload.name !== undefined) suggestion.name = payload.name.trim();
+    if (payload.description !== undefined) suggestion.description = payload.description?.trim() ?? '';
+    if (payload.imageUrl !== undefined) suggestion.imageUrl = payload.imageUrl;
+    await suggestion.save();
+    this.logger.log(`User ${userId} updated suggestion ${suggestionId}`);
+    return {
+      id: suggestion._id.toString(),
+      type: suggestion.type,
+      name: suggestion.name,
+      description: suggestion.description,
+      imageUrl: suggestion.imageUrl,
+      authorId: suggestion.authorId.toString(),
+      votesCount: suggestion.votedUserIds.length,
+      status: suggestion.status,
+      createdAt: suggestion.createdAt,
+    };
+  }
+
+  /** Еженедельно: принять предложение с наибольшим числом голосов и добавить в магазин. Цена от голосов. */
+  async acceptWeeklyWinner() {
+    const pending = await this.suggestedDecorationModel
+      .aggregate([
+        { $match: { status: 'pending' } },
+        { $addFields: { votesCount: { $size: { $ifNull: ['$votedUserIds', []] } } } },
+        { $sort: { votesCount: -1, createdAt: -1 } },
+        { $limit: 1 },
+      ])
+      .exec();
+    if (pending.length === 0) {
+      this.logger.log('Accept weekly winner: no pending suggestions');
+      return null;
+    }
+    const winner = pending[0] as any;
+    const suggestionId = winner._id.toString();
+    const votesCount = Array.isArray(winner.votedUserIds) ? winner.votedUserIds.length : 0;
+    const price = this.priceByVotes(votesCount);
+    const authorId = winner.authorId;
+
+    const doc: Record<string, unknown> = {
+      name: winner.name,
+      imageUrl: winner.imageUrl,
+      price,
+      rarity: 'common',
+      description: winner.description ?? '',
+      isAvailable: true,
+      authorId: authorId ?? undefined,
+    };
+
+    let decoration: any;
+    switch (winner.type) {
+      case 'avatar':
+        decoration = await this.avatarDecorationModel.create(doc);
+        break;
+      case 'frame':
+        decoration = await this.avatarFrameDecorationModel.create(doc);
+        break;
+      case 'background':
+        decoration = await this.backgroundDecorationModel.create(doc);
+        break;
+      case 'card':
+        decoration = await this.cardDecorationModel.create(doc);
+        break;
+      default:
+        this.logger.warn(`Accept weekly winner: unknown type ${winner.type}`);
+        return null;
+    }
+
+    await this.suggestedDecorationModel.findByIdAndUpdate(winner._id, {
+      status: 'accepted',
+      acceptedDecorationId: decoration._id,
+      acceptedAt: new Date(),
+    });
+
+    // Удалить остальные ожидающие предложения после выбора победителя
+    const deleteResult = await this.suggestedDecorationModel.deleteMany({
+      status: 'pending',
+      _id: { $ne: winner._id },
+    });
+    this.logger.log(
+      `Deleted ${deleteResult.deletedCount} other pending suggestions after accepting winner`,
+    );
+
+    if (typeof this.cacheManager.del === 'function') {
+      await this.cacheManager.del('shop:decorations:all');
+      await this.cacheManager.del(`shop:decorations:${winner.type}`);
+    }
+
+    this.logger.log(
+      `Accepted weekly winner suggestion ${suggestionId} -> ${winner.type} decoration ${decoration._id} (price=${price}, votes=${votesCount})`,
+    );
+    return {
+      suggestionId,
+      decorationId: decoration._id.toString(),
+      type: winner.type,
+      price,
+      votesCount,
     };
   }
 }

@@ -6,6 +6,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { ShopController } from './shop.controller';
 import { ShopAdminController } from './shop-admin.controller';
 import { ShopService } from './shop.service';
+import { ShopSchedulerService } from './shop-scheduler.service';
 import {
   AvatarDecoration,
   AvatarDecorationSchema,
@@ -22,6 +23,10 @@ import {
   AvatarFrameDecoration,
   AvatarFrameDecorationSchema,
 } from '../schemas/avatar-frame-decoration.schema';
+import {
+  SuggestedDecoration,
+  SuggestedDecorationSchema,
+} from '../schemas/suggested-decoration.schema';
 import { UsersModule } from '../users/users.module';
 
 const DECORATIONS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
@@ -37,11 +42,12 @@ const DECORATIONS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
       },
       { name: BackgroundDecoration.name, schema: BackgroundDecorationSchema },
       { name: CardDecoration.name, schema: CardDecorationSchema },
+      { name: SuggestedDecoration.name, schema: SuggestedDecorationSchema },
     ]),
     UsersModule,
   ],
   controllers: [ShopController, ShopAdminController],
-  providers: [ShopService],
+  providers: [ShopService, ShopSchedulerService],
   exports: [ShopService],
 })
 export class ShopModule implements OnModuleInit {
