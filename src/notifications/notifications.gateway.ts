@@ -30,10 +30,20 @@ export class NotificationsGateway
     private readonly notificationsService: NotificationsService,
   ) {}
 
+  private getTokenFromHandshake(client: Socket): string | null {
+    const auth = client.handshake.auth?.token as string | undefined;
+    if (auth) return auth;
+    const query = client.handshake.query?.token as string | undefined;
+    if (query) return query;
+    const authHeader =
+      (client.handshake.headers?.authorization as string) ||
+      (client.handshake.headers?.Authorization as string);
+    if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7).trim();
+    return null;
+  }
+
   async handleConnection(client: Socket) {
-    const token =
-      (client.handshake.auth?.token as string) ||
-      (client.handshake.query?.token as string);
+    const token = this.getTokenFromHandshake(client);
     if (!token) {
       this.logger.warn('Notifications WS: no token, disconnecting');
       client.disconnect(true);
