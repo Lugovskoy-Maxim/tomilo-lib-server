@@ -112,6 +112,6 @@ export class TranslatorTeam {
 export const TranslatorTeamSchema =
   SchemaFactory.createForClass(TranslatorTeam);
 
-TranslatorTeamSchema.index({ slug: 1 });
+// slug: index from @Prop({ unique: true, sparse: true })
 TranslatorTeamSchema.index({ titleIds: 1 });
 TranslatorTeamSchema.index({ name: 'text', description: 'text' });

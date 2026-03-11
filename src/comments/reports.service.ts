@@ -47,9 +47,10 @@ export class ReportsService {
     void this.usersService.incrementReportsCount(userId);
 
     // При жалобе на отсутствие страниц в главе — запускаем синхронизацию из источников автопарсинга
+    const reportType = createReportDto.reportType as ReportType;
     const isMissingPages =
-      createReportDto.reportType === ReportType.MISSING_PAGES ||
-      (createReportDto.reportType === ReportType.ERROR &&
+      reportType === ReportType.MISSING_PAGES ||
+      (reportType === ReportType.ERROR &&
         typeof createReportDto.content === 'string' &&
         createReportDto.content.toLowerCase().includes('отсутствуют страницы'));
     if (

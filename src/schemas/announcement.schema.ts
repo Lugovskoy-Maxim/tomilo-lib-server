@@ -89,7 +89,7 @@ export class Announcement {
 
 export const AnnouncementSchema = SchemaFactory.createForClass(Announcement);
 
-AnnouncementSchema.index({ slug: 1 }, { unique: true });
+// slug: index from @Prop({ unique: true })
 AnnouncementSchema.index({ isPublished: 1, publishedAt: -1 });
 AnnouncementSchema.index({ isPinned: 1, publishedAt: -1 });
 AnnouncementSchema.index({ tags: 1 });

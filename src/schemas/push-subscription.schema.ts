@@ -28,4 +28,4 @@ export const PushSubscriptionSchema =
   SchemaFactory.createForClass(PushSubscription);
 
 PushSubscriptionSchema.index({ userId: 1 });
-PushSubscriptionSchema.index({ endpoint: 1 }, { unique: true });
+// endpoint: index from @Prop({ unique: true })

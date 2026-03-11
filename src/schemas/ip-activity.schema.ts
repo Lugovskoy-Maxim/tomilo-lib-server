@@ -15,7 +15,7 @@ export interface IPActivityLog {
 export class IPActivity {
   _id: Types.ObjectId;
 
-  @Prop({ required: true, unique: true, index: true })
+  @Prop({ required: true, unique: true })
   ip: string;
 
   @Prop({ default: null, type: Date })
@@ -108,8 +108,7 @@ export class IPActivity {
 
 export const IPActivitySchema = SchemaFactory.createForClass(IPActivity);
 
-// Индексы для оптимизации запросов
-IPActivitySchema.index({ ip: 1 });
+// Индексы для оптимизации запросов (ip: index from @Prop({ unique: true }))
 IPActivitySchema.index({ isBlocked: 1 });
 IPActivitySchema.index({ botScore: -1 });
 IPActivitySchema.index({ lastRequestAt: -1 });

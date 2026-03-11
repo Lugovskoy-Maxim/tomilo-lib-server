@@ -97,6 +97,6 @@ export class DailyStats {
 export const DailyStatsSchema = SchemaFactory.createForClass(DailyStats);
 
 // Индексы для быстрого поиска
-DailyStatsSchema.index({ date: 1 });
+// date: index from @Prop({ unique: true })
 DailyStatsSchema.index({ date: -1 });
 DailyStatsSchema.index({ date: 1, isRecorded: 1 });

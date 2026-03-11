@@ -206,7 +206,7 @@ export class ChaptersController {
   }
 
   @Get('reactions/emojis')
-  async getReactionEmojis(): Promise<ApiResponseDto<string[]>> {
+  getReactionEmojis(): Promise<ApiResponseDto<string[]>> {
     return {
       success: true,
       data: [...ALLOWED_REACTION_EMOJIS],
@@ -217,7 +217,7 @@ export class ChaptersController {
 
   /** Health check for rating feature: GET /api/chapters/rating/health → 200 if route is registered (after deploy). */
   @Get('rating/health')
-  async ratingHealth(): Promise<ApiResponseDto<{ rating: string }>> {
+  ratingHealth(): Promise<ApiResponseDto<{ rating: string }>> {
     return {
       success: true,
       data: { rating: 'available' },
@@ -661,6 +661,9 @@ export class ChaptersController {
 
   /** GET one chapter by id — declared last so static paths (e.g. rating/health) and :id/… routes match first */
   @Get(':id')
+  @Header('Cache-Control', 'no-cache, no-store, must-revalidate')
+  @Header('Pragma', 'no-cache')
+  @Header('Expires', '0')
   async findOne(
     @Param('id') id: string,
     @Req() req?: any,

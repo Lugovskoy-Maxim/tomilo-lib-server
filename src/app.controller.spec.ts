@@ -95,7 +95,9 @@ describe('AppController', () => {
   describe('root', () => {
     it('should return "Hello World!"', () => {
       expect(appController.getHello()).toBe('Hello World!');
-      expect(appService.getHello).toHaveBeenCalled();
+      expect(
+        (appService.getHello as jest.Mock).mock.calls.length,
+      ).toBeGreaterThan(0);
     });
   });
 
@@ -118,8 +120,12 @@ describe('AppController', () => {
       expect(result.data).toEqual(mockStats);
       expect(result.data?.dailyHistory).toBeUndefined();
       expect(result.data?.monthlyHistory).toBeUndefined();
-      expect(appService.getStats).toHaveBeenCalled();
-      expect(appService.getRecentStats).not.toHaveBeenCalled();
+      expect(
+        (appService.getStats as jest.Mock).mock.calls.length,
+      ).toBeGreaterThan(0);
+      expect((appService.getRecentStats as jest.Mock).mock.calls.length).toBe(
+        0,
+      );
     });
 
     it('should return stats with daily and monthly history when includeHistory=true', async () => {
@@ -156,13 +162,17 @@ describe('AppController', () => {
       expect(result.success).toBe(true);
       expect(result.data?.dailyHistory).toHaveLength(1);
       expect(result.data?.monthlyHistory).toHaveLength(1);
-      expect(appService.getRecentStats).toHaveBeenCalledWith(7);
+      expect((appService.getRecentStats as jest.Mock).mock.lastCall?.[0]).toBe(
+        7,
+      );
     });
 
     it('should use default 30 days for history when historyDays is not provided', async () => {
       (appService.getRecentStats as jest.Mock).mockResolvedValue([]);
       await appController.getStats('true');
-      expect(appService.getRecentStats).toHaveBeenCalledWith(30);
+      expect((appService.getRecentStats as jest.Mock).mock.lastCall?.[0]).toBe(
+        30,
+      );
     });
   });
 
@@ -179,7 +189,9 @@ describe('AppController', () => {
       );
       expect(result.success).toBe(true);
       expect(result.data).toEqual(dailyData);
-      expect(appService.getRecentStats).toHaveBeenCalledWith(14);
+      expect((appService.getRecentStats as jest.Mock).mock.lastCall?.[0]).toBe(
+        14,
+      );
     });
 
     it('should return monthly history when type=monthly', async () => {
@@ -193,7 +205,12 @@ describe('AppController', () => {
       );
       expect(result.success).toBe(true);
       expect(result.data).toEqual(monthlyData);
-      expect(appService.getMonthlyStats).toHaveBeenCalledWith(2025, 2);
+      expect((appService.getMonthlyStats as jest.Mock).mock.lastCall?.[0]).toBe(
+        2025,
+      );
+      expect((appService.getMonthlyStats as jest.Mock).mock.lastCall?.[1]).toBe(
+        2,
+      );
     });
 
     it('should return yearly history when type=yearly', async () => {
@@ -203,7 +220,9 @@ describe('AppController', () => {
       const result = await appController.getStatsHistory('yearly', '2025');
       expect(result.success).toBe(true);
       expect(result.data).toEqual(yearlyData);
-      expect(appService.getYearlyStats).toHaveBeenCalledWith(2025);
+      expect((appService.getYearlyStats as jest.Mock).mock.lastCall?.[0]).toBe(
+        2025,
+      );
     });
 
     it('should return all history when type is not specified', async () => {

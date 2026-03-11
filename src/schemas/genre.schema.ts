@@ -19,4 +19,4 @@ export class Genre {
 
 export const GenreSchema = SchemaFactory.createForClass(Genre);
 GenreSchema.index({ name: 1 });
-GenreSchema.index({ slug: 1 });
+// slug: index from @Prop({ unique: true })

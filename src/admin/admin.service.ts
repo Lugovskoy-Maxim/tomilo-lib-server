@@ -726,8 +726,10 @@ export class AdminService {
     const loadAvg = os.loadavg();
     const cpuUsage = Math.min(100, Math.round((loadAvg[0] ?? 0) * 100));
 
+    /** Mongoose connection state: 1 = connected */
+    const CONNECTED_STATE = 1;
     let dbStatus: 'connected' | 'disconnected' = 'disconnected';
-    if (this.connection?.readyState === 1) {
+    if (Number(this.connection?.readyState) === CONNECTED_STATE) {
       dbStatus = 'connected';
     }
 
@@ -757,7 +759,7 @@ export class AdminService {
     };
   }
 
-  async getSystemInfo(): Promise<{
+  getSystemInfo(): Promise<{
     uptime: number;
     uptimeFormatted: string;
     memory: { used: number; total: number; usedPercent: number };

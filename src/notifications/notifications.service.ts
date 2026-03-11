@@ -46,8 +46,12 @@ export class NotificationsService {
   /** Push unread_count to user over WebSocket (no-op if gateway not available). */
   private async notifyUnreadCount(userId: string): Promise<void> {
     if (!this.notificationsGateway) return;
-    setImmediate(() => {
-      this.notificationsGateway!.emitUnreadCountToUser(userId).catch(() => {});
+    await new Promise<void>((resolve) => {
+      setImmediate(() => {
+        this.notificationsGateway!.emitUnreadCountToUser(userId)
+          .catch(() => {})
+          .finally(resolve);
+      });
     });
   }
 
