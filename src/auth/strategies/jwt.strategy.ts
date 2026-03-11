@@ -1,9 +1,10 @@
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { LoggerService } from '../../common/logger/logger.service';
 import { UsersService } from '../../users/users.service';
-import { getJwtSecret } from '../../config/jwt.config';
+import { getJwtSecretFromConfig } from '../../config/jwt.config';
 
 const COOKIE_ACCESS_TOKEN = 'access_token';
 
@@ -18,13 +19,16 @@ function jwtFromCookieOrHeader(req: any): string | null {
 export class JwtStrategy extends PassportStrategy(Strategy) {
   private readonly logger = new LoggerService();
 
-  constructor(private usersService: UsersService) {
+  constructor(
+    private usersService: UsersService,
+    private configService: ConfigService,
+  ) {
     super({
       jwtFromRequest: jwtFromCookieOrHeader,
       ignoreExpiration: false,
       secretOrKeyProvider: (_req, _token, done) => {
         try {
-          done(null, getJwtSecret());
+          done(null, getJwtSecretFromConfig(this.configService));
         } catch (e) {
           done(e as Error, undefined);
         }
@@ -33,7 +37,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
     this.logger.setContext(JwtStrategy.name);
 
-    const secretSource = process.env.JWT_SECRET
+    const secretSource = this.configService.get<string>('JWT_SECRET')
       ? 'environment variable'
       : 'dev default';
     this.logger.log(

@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AuthService } from './auth.service';
@@ -19,15 +20,20 @@ import {
   PendingRegistrationSchema,
 } from '../schemas/pending-registration.schema';
 import { EmailModule } from '../email/email.module';
-import { getJwtSecret } from '../config/jwt.config';
+import { getJwtSecretFromConfig } from '../config/jwt.config';
 
 @Module({
   imports: [
     UsersModule,
     PassportModule,
-    JwtModule.register({
-      secret: getJwtSecret(),
-      signOptions: { expiresIn: '365d' },
+    ConfigModule,
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        secret: getJwtSecretFromConfig(config),
+        signOptions: { expiresIn: '365d' },
+      }),
     }),
     MongooseModule.forFeature([
       { name: User.name, schema: UserSchema },
