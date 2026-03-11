@@ -7,11 +7,11 @@ import { getJwtSecret } from '../../config/jwt.config';
 
 const COOKIE_ACCESS_TOKEN = 'access_token';
 
-/** Extract JWT from cookie (access_token) or Authorization Bearer header. */
+/** Extract JWT: prefer Authorization Bearer (reliable cross-origin), then cookie. */
 function jwtFromCookieOrHeader(req: any): string | null {
-  const fromCookie = req?.cookies?.[COOKIE_ACCESS_TOKEN];
-  if (fromCookie) return fromCookie;
-  return ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+  const fromHeader = ExtractJwt.fromAuthHeaderAsBearerToken()(req);
+  if (fromHeader) return fromHeader;
+  return req?.cookies?.[COOKIE_ACCESS_TOKEN] ?? null;
 }
 
 @Injectable()
@@ -39,32 +39,28 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       `Validating JWT token with payload: ${JSON.stringify(payload)}`,
     );
 
-    // Check if all required fields are present
-    if (!payload.userId || !payload.email) {
+    const userId =
+      typeof payload.userId === 'string'
+        ? payload.userId
+        : payload.userId?.toString?.();
+    if (!userId || !payload.email) {
       this.logger.warn(`Invalid token payload: ${JSON.stringify(payload)}`);
-      return null; // Return null to indicate authentication failure
+      return null;
     }
 
-    // Проверяем наличие обязательных полей
-    if (!payload.userId || !payload.email) {
-      this.logger.warn(`Invalid token payload: ${JSON.stringify(payload)}`);
-      return null; // Return null to indicate authentication failure
-    }
-
-    // Проверяем, существует ли пользователь в базе данных
     try {
-      const existingUser = await this.usersService.findById(payload.userId);
+      const existingUser = await this.usersService.findById(userId);
       if (!existingUser) {
-        this.logger.warn(`User not found in database: ${payload.userId}`);
-        return null; // Return null to indicate authentication failure
+        this.logger.warn(`User not found in database: ${userId}`);
+        return null;
       }
     } catch (error) {
       this.logger.warn(`Error checking user existence: ${error.message}`);
-      return null; // Return null to indicate authentication failure
+      return null;
     }
 
     const user = {
-      userId: payload.userId,
+      userId,
       email: payload.email,
       username: payload.username || '', // Добавляем значение по умолчанию
       roles: payload.role ? [payload.role] : [], // Используем payload.role и преобразуем в массив

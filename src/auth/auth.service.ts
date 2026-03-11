@@ -223,9 +223,11 @@ export class AuthService {
   }
 
   login(user: any) {
+    const userIdStr =
+      user._id?.toString?.() ?? (typeof user._id === 'string' ? user._id : String(user._id));
     const payload = {
       email: user.email,
-      userId: user._id,
+      userId: userIdStr,
       username: user.username,
       role: user.role,
     };
@@ -242,7 +244,7 @@ export class AuthService {
       access_token,
       refresh_token,
       user: {
-        id: user._id,
+        id: userIdStr,
         email: user.email,
         username: user.username,
         role: user.role,
