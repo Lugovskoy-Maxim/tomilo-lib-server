@@ -29,9 +29,8 @@ describe('NotificationsController', () => {
     }).compile();
 
     controller = module.get<NotificationsController>(NotificationsController);
-    notificationsService = module.get<NotificationsService>(
-      NotificationsService,
-    );
+    notificationsService =
+      module.get<NotificationsService>(NotificationsService);
   });
 
   it('should be defined', () => {

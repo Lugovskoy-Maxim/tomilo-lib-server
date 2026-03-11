@@ -30,7 +30,8 @@ export class PromoCodeUsage {
   updatedAt: Date;
 }
 
-export const PromoCodeUsageSchema = SchemaFactory.createForClass(PromoCodeUsage);
+export const PromoCodeUsageSchema =
+  SchemaFactory.createForClass(PromoCodeUsage);
 
 PromoCodeUsageSchema.index({ promoCodeId: 1 });
 PromoCodeUsageSchema.index({ userId: 1 });

@@ -99,7 +99,8 @@ export class AuthController {
     @Response({ passthrough: true }) res: express.Response,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.authService.requestRegistrationCode(createUserDto);
+      const data =
+        await this.authService.requestRegistrationCode(createUserDto);
       return {
         success: true,
         data,
@@ -339,7 +340,8 @@ export class AuthController {
   async linkVk(
     @Request() req,
     @Response({ passthrough: true }) res: express.Response,
-    @Body() body: {
+    @Body()
+    body: {
       code?: string;
       redirect_uri?: string;
       code_verifier?: string;
@@ -353,7 +355,10 @@ export class AuthController {
     // Второй шаг: только resolve (код одноразовый) — берём ожидающую привязку из кэша
     if (body.resolve && !body?.code) {
       const pending = await this.authService.getAndClearPendingLink(userId);
-      if (!pending || (pending.provider !== 'vk' && pending.provider !== 'vk_id')) {
+      if (
+        !pending ||
+        (pending.provider !== 'vk' && pending.provider !== 'vk_id')
+      ) {
         throw new BadRequestException(
           'No pending VK link. Start by linking with code first, then use resolve after 409.',
         );
@@ -365,7 +370,11 @@ export class AuthController {
         body.resolve,
       );
       if (result.switchToUser) {
-        setAuthCookies(res, result.switchToUser.access_token, result.switchToUser.refresh_token);
+        setAuthCookies(
+          res,
+          result.switchToUser.access_token,
+          result.switchToUser.refresh_token,
+        );
         return {
           success: true,
           data: result.switchToUser,
@@ -411,7 +420,11 @@ export class AuthController {
         body.resolve,
       );
       if (result.switchToUser) {
-        setAuthCookies(res, result.switchToUser.access_token, result.switchToUser.refresh_token);
+        setAuthCookies(
+          res,
+          result.switchToUser.access_token,
+          result.switchToUser.refresh_token,
+        );
         return {
           success: true,
           data: result.switchToUser,
@@ -431,7 +444,11 @@ export class AuthController {
       };
     }
 
-    const linkResult = await this.authService.linkProvider(userId, provider, providerId);
+    const linkResult = await this.authService.linkProvider(
+      userId,
+      provider,
+      providerId,
+    );
     if ('conflict' in linkResult && linkResult.conflict) {
       await this.authService.setPendingLink(userId, provider, providerId);
       res.status(HttpStatus.CONFLICT);
@@ -461,7 +478,8 @@ export class AuthController {
   async linkYandex(
     @Request() req,
     @Response({ passthrough: true }) res: express.Response,
-    @Body() body: {
+    @Body()
+    body: {
       code?: string;
       access_token?: string;
       resolve?: 'use_existing' | 'link_here' | 'merge';
@@ -484,7 +502,11 @@ export class AuthController {
         body.resolve,
       );
       if (result.switchToUser) {
-        setAuthCookies(res, result.switchToUser.access_token, result.switchToUser.refresh_token);
+        setAuthCookies(
+          res,
+          result.switchToUser.access_token,
+          result.switchToUser.refresh_token,
+        );
         return {
           success: true,
           data: result.switchToUser,
@@ -520,7 +542,11 @@ export class AuthController {
         body.resolve,
       );
       if (result.switchToUser) {
-        setAuthCookies(res, result.switchToUser.access_token, result.switchToUser.refresh_token);
+        setAuthCookies(
+          res,
+          result.switchToUser.access_token,
+          result.switchToUser.refresh_token,
+        );
         return {
           success: true,
           data: result.switchToUser,
@@ -540,7 +566,11 @@ export class AuthController {
       };
     }
 
-    const linkResult = await this.authService.linkProvider(userId, 'yandex', providerId);
+    const linkResult = await this.authService.linkProvider(
+      userId,
+      'yandex',
+      providerId,
+    );
     if ('conflict' in linkResult && linkResult.conflict) {
       await this.authService.setPendingLink(userId, 'yandex', providerId);
       res.status(HttpStatus.CONFLICT);

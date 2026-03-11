@@ -11,7 +11,10 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
-import { ChapterUnlock, ChapterUnlockDocument } from '../schemas/chapter-unlock.schema';
+import {
+  ChapterUnlock,
+  ChapterUnlockDocument,
+} from '../schemas/chapter-unlock.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
 import { ALLOWED_REACTION_EMOJIS } from '../schemas/comment.schema';
 import { CreateChapterDto } from './dto/create-chapter.dto';
@@ -30,14 +33,19 @@ export class ChaptersService {
 
   constructor(
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
-    @InjectModel(ChapterUnlock.name) private chapterUnlockModel: Model<ChapterUnlockDocument>,
+    @InjectModel(ChapterUnlock.name)
+    private chapterUnlockModel: Model<ChapterUnlockDocument>,
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
     private filesService: FilesService,
     private notificationsService: NotificationsService,
     @Inject(forwardRef(() => UsersService))
     private usersService: UsersService,
     @Inject(CACHE_MANAGER)
-    private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown, ttl?: number) => Promise<void>; del?: (k: string) => Promise<void> },
+    private cacheManager: {
+      get: (k: string) => Promise<unknown>;
+      set: (k: string, v: unknown, ttl?: number) => Promise<void>;
+      del?: (k: string) => Promise<void>;
+    },
   ) {}
 
   private async invalidateRecentUpdatesCache(): Promise<void> {
@@ -117,7 +125,10 @@ export class ChaptersService {
         ],
       };
       if (Object.keys(query).length > 0) {
-        query.$and = [...(Array.isArray(query.$and) ? query.$and : []), noPagesCondition];
+        query.$and = [
+          ...(Array.isArray(query.$and) ? query.$and : []),
+          noPagesCondition,
+        ];
       } else {
         Object.assign(query, noPagesCondition);
       }
@@ -129,7 +140,10 @@ export class ChaptersService {
     const [chapters, total] = await Promise.all([
       this.chapterModel
         .find(query)
-        .populate({ path: 'titleId', select: 'name slug _id chaptersRemovedByCopyrightHolder' })
+        .populate({
+          path: 'titleId',
+          select: 'name slug _id chaptersRemovedByCopyrightHolder',
+        })
         .sort(sortOptions)
         .skip(skip)
         .limit(limit)
@@ -159,7 +173,9 @@ export class ChaptersService {
     const cached = await this.cacheManager.get(key);
     if (typeof cached === 'number') return cached;
     const total = await this.chapterModel.countDocuments(query);
-    await this.cacheManager.set(key, total, { ttl: CHAPTERS_COUNT_CACHE_TTL_MS } as any);
+    await this.cacheManager.set(key, total, {
+      ttl: CHAPTERS_COUNT_CACHE_TTL_MS,
+    } as any);
     return total;
   }
 
@@ -170,7 +186,10 @@ export class ChaptersService {
 
     const chapter = await this.chapterModel
       .findById(id)
-      .populate({ path: 'titleId', select: 'name slug _id chaptersRemovedByCopyrightHolder' })
+      .populate({
+        path: 'titleId',
+        select: 'name slug _id chaptersRemovedByCopyrightHolder',
+      })
       .lean()
       .exec();
 
@@ -178,7 +197,9 @@ export class ChaptersService {
       throw new NotFoundException('Chapter not found');
     }
 
-    const title = chapter.titleId as { chaptersRemovedByCopyrightHolder?: boolean } | null;
+    const title = chapter.titleId as {
+      chaptersRemovedByCopyrightHolder?: boolean;
+    } | null;
     if (title?.chaptersRemovedByCopyrightHolder) {
       throw new NotFoundException('Chapter not found');
     }
@@ -342,10 +363,7 @@ export class ChaptersService {
     }
 
     // Удаляем файлы главы (новая и старая структура папок)
-    await this.filesService.deleteChapterPages(
-      id,
-      chapter.titleId?.toString(),
-    );
+    await this.filesService.deleteChapterPages(id, chapter.titleId?.toString());
 
     // Удаляем главу из тайтла
     await this.titleModel.findByIdAndUpdate(chapter.titleId, {
@@ -438,7 +456,8 @@ export class ChaptersService {
 
       // Проверяем, нужно ли сбросить недельный счетчик
       const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      const needWeekReset = !title.lastWeekReset || title.lastWeekReset < oneWeekAgo;
+      const needWeekReset =
+        !title.lastWeekReset || title.lastWeekReset < oneWeekAgo;
 
       if (needWeekReset) {
         update.weekViews = 1;
@@ -495,7 +514,10 @@ export class ChaptersService {
 
     // Balance checking and deduction are done in the controller; here we persist the unlock
     const existing = await this.chapterUnlockModel
-      .findOne({ userId: new Types.ObjectId(userId), chapterId: new Types.ObjectId(chapterId) })
+      .findOne({
+        userId: new Types.ObjectId(userId),
+        chapterId: new Types.ObjectId(chapterId),
+      })
       .exec();
     if (!existing) {
       await this.chapterUnlockModel.create({
@@ -530,13 +552,17 @@ export class ChaptersService {
     }
 
     if (userId && Types.ObjectId.isValid(userId)) {
-      const hasSubscription = await this.usersService.getSubscriptionExpiresAt(userId);
+      const hasSubscription =
+        await this.usersService.getSubscriptionExpiresAt(userId);
       if (hasSubscription && now < new Date(hasSubscription)) {
         return true;
       }
 
       const unlocked = await this.chapterUnlockModel
-        .findOne({ userId: new Types.ObjectId(userId), chapterId: new Types.ObjectId(chapterId) })
+        .findOne({
+          userId: new Types.ObjectId(userId),
+          chapterId: new Types.ObjectId(chapterId),
+        })
         .exec();
       if (unlocked) {
         return true;
@@ -831,7 +857,9 @@ export class ChaptersService {
     }
 
     const averageRating =
-      ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 100) / 100 : undefined;
+      ratingCount > 0
+        ? Math.round((ratingSum / ratingCount) * 100) / 100
+        : undefined;
     return {
       ratingSum,
       ratingCount,
@@ -859,7 +887,9 @@ export class ChaptersService {
     const ratingSum = Number((chapter as any).ratingSum) || 0;
     const ratingCount = Number((chapter as any).ratingCount) || 0;
     const averageRating =
-      ratingCount > 0 ? Math.round((ratingSum / ratingCount) * 100) / 100 : undefined;
+      ratingCount > 0
+        ? Math.round((ratingSum / ratingCount) * 100) / 100
+        : undefined;
     let userRating: number | null | undefined;
     if (userId) {
       const ratingByUser = (chapter as any).ratingByUser || [];
@@ -922,11 +952,12 @@ export class ChaptersService {
       .filter((r) => r.userIds.length > 0)
       .map((r) => ({ emoji: r.emoji, userIds: r.userIds }));
 
-    const updated = await this.chapterModel.findByIdAndUpdate(
-      chapterId,
-      { $set: { reactions: newReactions } },
-      { new: true },
-    )
+    const updated = await this.chapterModel
+      .findByIdAndUpdate(
+        chapterId,
+        { $set: { reactions: newReactions } },
+        { new: true },
+      )
       .populate({ path: 'titleId', select: 'name slug _id' })
       .exec();
 

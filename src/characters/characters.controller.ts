@@ -43,7 +43,8 @@ export class CharactersController {
     ApiResponseDto<{ characters: any[]; total: number }>
   > {
     try {
-      const characters = await this.charactersService.findPendingForModeration();
+      const characters =
+        await this.charactersService.findPendingForModeration();
       return {
         success: true,
         data: { characters, total: characters.length },
@@ -68,8 +69,14 @@ export class CharactersController {
   ): Promise<ApiResponseDto<{ characters: any[]; total: number }>> {
     try {
       const page = Math.max(1, parseInt(String(pageStr || '1'), 10) || 1);
-      const limit = Math.min(100, Math.max(1, parseInt(String(limitStr || '24'), 10) || 24));
-      const { characters, total } = await this.charactersService.findPaginated(page, limit);
+      const limit = Math.min(
+        100,
+        Math.max(1, parseInt(String(limitStr || '24'), 10) || 24),
+      );
+      const { characters, total } = await this.charactersService.findPaginated(
+        page,
+        limit,
+      );
       return {
         success: true,
         data: { characters, total },
@@ -170,7 +177,10 @@ export class CharactersController {
       storage: memoryStorage(),
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
-          return cb(new BadRequestException('Only image files are allowed'), false);
+          return cb(
+            new BadRequestException('Only image files are allowed'),
+            false,
+          );
         }
         cb(null, true);
       },
@@ -262,7 +272,10 @@ export class CharactersController {
       storage: memoryStorage(),
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
-          return cb(new BadRequestException('Only image files are allowed'), false);
+          return cb(
+            new BadRequestException('Only image files are allowed'),
+            false,
+          );
         }
         cb(null, true);
       },
@@ -389,7 +402,10 @@ export class CharactersController {
       storage: memoryStorage(),
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
-          return cb(new BadRequestException('Only image files are allowed'), false);
+          return cb(
+            new BadRequestException('Only image files are allowed'),
+            false,
+          );
         }
         cb(null, true);
       },
@@ -473,7 +489,10 @@ export class CharactersController {
       storage: memoryStorage(),
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.match(/\/(jpg|jpeg|png|webp)$/)) {
-          return cb(new BadRequestException('Only image files are allowed'), false);
+          return cb(
+            new BadRequestException('Only image files are allowed'),
+            false,
+          );
         }
         cb(null, true);
       },

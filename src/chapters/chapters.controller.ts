@@ -312,10 +312,11 @@ export class ChaptersController {
         sortOrder,
       });
       const userId = req?.user?.userId ?? undefined;
-      data.chapters = await this.chaptersService.enrichChaptersWithRatingAndReactions(
-        data.chapters,
-        userId,
-      );
+      data.chapters =
+        await this.chaptersService.enrichChaptersWithRatingAndReactions(
+          data.chapters,
+          userId,
+        );
 
       return {
         success: true,
@@ -359,7 +360,8 @@ export class ChaptersController {
           path: `chapters/by-number/${titleId}`,
         };
       }
-      const chapterId = (chapter as any)._id?.toString?.() ?? (chapter as any).id;
+      const chapterId =
+        (chapter as any)._id?.toString?.() ?? (chapter as any).id;
       const chapterObj =
         typeof (chapter as any).toObject === 'function'
           ? (chapter as any).toObject()
@@ -369,7 +371,8 @@ export class ChaptersController {
         chapterId,
         userId ?? undefined,
       );
-      const { reactions } = await this.chaptersService.getReactionsCount(chapterId);
+      const { reactions } =
+        await this.chaptersService.getReactionsCount(chapterId);
       const data = {
         ...chapterObj,
         ...rating,
@@ -671,7 +674,10 @@ export class ChaptersController {
           ? (chapter as any).toObject()
           : chapter;
       const userId = req?.user?.userId ?? null;
-      const rating = await this.chaptersService.getRating(id, userId ?? undefined);
+      const rating = await this.chaptersService.getRating(
+        id,
+        userId ?? undefined,
+      );
       const { reactions } = await this.chaptersService.getReactionsCount(id);
       const data = {
         ...chapterObj,

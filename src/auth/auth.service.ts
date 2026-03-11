@@ -79,7 +79,12 @@ export class AuthService {
     const key = PENDING_LINK_CACHE_PREFIX + userId;
     const value = await this.cache.get(key);
     await this.cache.del(key);
-    if (!value || typeof value !== 'object' || !('provider' in value) || !('providerId' in value)) {
+    if (
+      !value ||
+      typeof value !== 'object' ||
+      !('provider' in value) ||
+      !('providerId' in value)
+    ) {
       return null;
     }
     return value as PendingLink;
@@ -127,9 +132,7 @@ export class AuthService {
    * Проверяет и начисляет опыт за ежедневный вход (раз в день).
    * Возвращает информацию о начислении или null.
    */
-  private async awardDailyLoginExp(
-    userId: string,
-  ): Promise<{
+  private async awardDailyLoginExp(userId: string): Promise<{
     expGained: number;
     levelUp: boolean;
     newLevel?: number;
@@ -362,7 +365,9 @@ export class AuthService {
       throw new ConflictException('Неверный код.');
     }
     if (pending.username !== username) {
-      throw new ConflictException('Имя пользователя не совпадает с запросом кода.');
+      throw new ConflictException(
+        'Имя пользователя не совпадает с запросом кода.',
+      );
     }
 
     const existing = await this.userModel.findOne({
@@ -526,7 +531,9 @@ export class AuthService {
 
     if (user) {
       // Нормализуем oauthProviders из legacy oauth при первом обновлении
-      const list = Array.isArray(user.oauthProviders) ? [...user.oauthProviders] : [];
+      const list = Array.isArray(user.oauthProviders)
+        ? [...user.oauthProviders]
+        : [];
       if (list.length === 0 && user.oauth?.provider && user.oauth?.providerId) {
         list.push({
           provider: user.oauth.provider,
@@ -577,12 +584,8 @@ export class AuthService {
    * Получить providerId ВКонтакте по коду авторизации (для привязки аккаунта без учёта email).
    * redirect_uri должен совпадать с тем, что использовался при получении code.
    */
-  async getVkProviderId(
-    code: string,
-    redirectUri?: string,
-  ): Promise<string> {
-    const redirect =
-      redirectUri?.trim() || process.env.VK_REDIRECT_URI || '';
+  async getVkProviderId(code: string, redirectUri?: string): Promise<string> {
+    const redirect = redirectUri?.trim() || process.env.VK_REDIRECT_URI || '';
     try {
       const tokenResponse = await axios.get(
         `https://oauth.vk.com/access_token?` +
@@ -664,9 +667,10 @@ export class AuthService {
   /**
    * Получить providerId Яндекса по code или access_token (для привязки аккаунта без учёта email).
    */
-  async getYandexProviderId(
-    codeOrToken: { code?: string; access_token?: string },
-  ): Promise<string> {
+  async getYandexProviderId(codeOrToken: {
+    code?: string;
+    access_token?: string;
+  }): Promise<string> {
     let accessToken = codeOrToken.access_token;
     if (codeOrToken.code && !accessToken) {
       const params = new URLSearchParams();
@@ -716,8 +720,12 @@ export class AuthService {
     });
   }
 
-  private ensureOAuthProvidersList(user: UserDocument): { provider: string; providerId: string }[] {
-    const list = Array.isArray(user.oauthProviders) ? [...user.oauthProviders] : [];
+  private ensureOAuthProvidersList(
+    user: UserDocument,
+  ): { provider: string; providerId: string }[] {
+    const list = Array.isArray(user.oauthProviders)
+      ? [...user.oauthProviders]
+      : [];
     if (list.length === 0 && user.oauth?.provider && user.oauth?.providerId) {
       list.push({
         provider: user.oauth.provider,
@@ -736,7 +744,10 @@ export class AuthService {
       (p) => !(p.provider === provider && p.providerId === providerId),
     );
     user.oauthProviders = list;
-    if (user.oauth?.provider === provider && user.oauth?.providerId === providerId) {
+    if (
+      user.oauth?.provider === provider &&
+      user.oauth?.providerId === providerId
+    ) {
       user.oauth = list[0] ?? undefined;
     }
   }
@@ -747,7 +758,10 @@ export class AuthService {
     providerId: string,
   ): void {
     const list = this.ensureOAuthProvidersList(user);
-    if (list.some((p) => p.provider === provider && p.providerId === providerId)) return;
+    if (
+      list.some((p) => p.provider === provider && p.providerId === providerId)
+    )
+      return;
     list.push({ provider, providerId });
     user.oauthProviders = list;
     if (!user.oauth?.provider) {
@@ -777,7 +791,11 @@ export class AuthService {
       return { linked: true };
     }
 
-    const other = await this.findOtherUserByProvider(userId, provider, providerId);
+    const other = await this.findOtherUserByProvider(
+      userId,
+      provider,
+      providerId,
+    );
     if (other) {
       return {
         conflict: true,
@@ -804,7 +822,11 @@ export class AuthService {
     action: ResolveLinkAction,
   ): Promise<{ linked: true; switchToUser?: any }> {
     const currentUser = await this.userModel.findById(currentUserId);
-    const other = await this.findOtherUserByProvider(currentUserId, provider, providerId);
+    const other = await this.findOtherUserByProvider(
+      currentUserId,
+      provider,
+      providerId,
+    );
     if (!currentUser) {
       throw new ConflictException('User not found');
     }
@@ -827,7 +849,9 @@ export class AuthService {
       await other.save();
       this.addProviderToUser(currentUser, provider, providerId);
       await currentUser.save();
-      this.logger.log(`Unlinked ${provider} from user ${other._id}, linked to ${currentUserId}`);
+      this.logger.log(
+        `Unlinked ${provider} from user ${other._id}, linked to ${currentUserId}`,
+      );
       return { linked: true };
     }
 
@@ -835,7 +859,9 @@ export class AuthService {
     await this.mergeUserInto(other, currentUser);
     this.addProviderToUser(currentUser, provider, providerId);
     await currentUser.save();
-    this.logger.log(`Merged user ${other._id} into ${currentUserId}, linked ${provider}`);
+    this.logger.log(
+      `Merged user ${other._id} into ${currentUserId}, linked ${provider}`,
+    );
     return { linked: true };
   }
 
@@ -853,25 +879,56 @@ export class AuthService {
       a: { titleId: Types.ObjectId; category: string; addedAt: Date }[],
       b: { titleId: Types.ObjectId; category: string; addedAt: Date }[],
     ) => {
-      const byTitle = new Map<string, { titleId: Types.ObjectId; category: string; addedAt: Date }>();
+      const byTitle = new Map<
+        string,
+        { titleId: Types.ObjectId; category: string; addedAt: Date }
+      >();
       for (const x of a) {
         const key = x.titleId.toString();
-        if (!byTitle.has(key)) byTitle.set(key, { ...x, addedAt: x.addedAt ?? new Date() });
+        if (!byTitle.has(key))
+          byTitle.set(key, { ...x, addedAt: x.addedAt ?? new Date() });
       }
       for (const x of b) {
         const key = x.titleId.toString();
-        if (!byTitle.has(key)) byTitle.set(key, { ...x, addedAt: x.addedAt ?? new Date() });
+        if (!byTitle.has(key))
+          byTitle.set(key, { ...x, addedAt: x.addedAt ?? new Date() });
       }
       return Array.from(byTitle.values());
     };
 
-    const aBookmarks = (target.bookmarks ?? []) as { titleId: Types.ObjectId; category: string; addedAt: Date }[];
-    const bBookmarks = (other.bookmarks ?? []) as { titleId: Types.ObjectId; category: string; addedAt: Date }[];
+    const aBookmarks = (target.bookmarks ?? []) as {
+      titleId: Types.ObjectId;
+      category: string;
+      addedAt: Date;
+    }[];
+    const bBookmarks = (other.bookmarks ?? []) as {
+      titleId: Types.ObjectId;
+      category: string;
+      addedAt: Date;
+    }[];
     target.bookmarks = mergeBookmarks(aBookmarks, bBookmarks) as any;
 
-    const aHistory = (target.readingHistory ?? []) as { titleId: Types.ObjectId; chapters: { chapterId: Types.ObjectId; chapterNumber: number; chapterTitle?: string; readAt: Date }[]; readAt: Date }[];
-    const bHistory = (other.readingHistory ?? []) as { titleId: Types.ObjectId; chapters: { chapterId: Types.ObjectId; chapterNumber: number; chapterTitle?: string; readAt: Date }[]; readAt: Date }[];
-    const historyByTitle = new Map<string, typeof aHistory[0]>();
+    const aHistory = (target.readingHistory ?? []) as {
+      titleId: Types.ObjectId;
+      chapters: {
+        chapterId: Types.ObjectId;
+        chapterNumber: number;
+        chapterTitle?: string;
+        readAt: Date;
+      }[];
+      readAt: Date;
+    }[];
+    const bHistory = (other.readingHistory ?? []) as {
+      titleId: Types.ObjectId;
+      chapters: {
+        chapterId: Types.ObjectId;
+        chapterNumber: number;
+        chapterTitle?: string;
+        readAt: Date;
+      }[];
+      readAt: Date;
+    }[];
+    const historyByTitle = new Map<string, (typeof aHistory)[0]>();
     for (const h of aHistory) {
       const key = h.titleId.toString();
       historyByTitle.set(key, { ...h, readAt: h.readAt ?? new Date() });
@@ -882,23 +939,45 @@ export class AuthService {
       if (!existing) {
         historyByTitle.set(key, { ...h, readAt: h.readAt ?? new Date() });
       } else {
-        const chMap = new Map<string, { chapterId: Types.ObjectId; chapterNumber: number; chapterTitle?: string; readAt: Date }>();
+        const chMap = new Map<
+          string,
+          {
+            chapterId: Types.ObjectId;
+            chapterNumber: number;
+            chapterTitle?: string;
+            readAt: Date;
+          }
+        >();
         for (const c of existing.chapters ?? []) {
-          chMap.set(c.chapterId.toString(), { ...c, readAt: c.readAt ?? new Date() });
+          chMap.set(c.chapterId.toString(), {
+            ...c,
+            readAt: c.readAt ?? new Date(),
+          });
         }
-        for (const c of (h.chapters ?? []) as { chapterId: Types.ObjectId; chapterNumber: number; chapterTitle?: string; readAt: Date }[]) {
+        for (const c of (h.chapters ?? []) as {
+          chapterId: Types.ObjectId;
+          chapterNumber: number;
+          chapterTitle?: string;
+          readAt: Date;
+        }[]) {
           const ckey = c.chapterId.toString();
-          if (!chMap.has(ckey)) chMap.set(ckey, { ...c, readAt: c.readAt ?? new Date() });
+          if (!chMap.has(ckey))
+            chMap.set(ckey, { ...c, readAt: c.readAt ?? new Date() });
         }
         existing.chapters = Array.from(chMap.values());
       }
     }
     target.readingHistory = Array.from(historyByTitle.values()) as any;
 
-    const aChars = (target.favoriteCharacters ?? []) as Types.ObjectId[];
-    const bChars = (other.favoriteCharacters ?? []) as Types.ObjectId[];
-    const charSet = new Set([...aChars.map((c) => c.toString()), ...bChars.map((c) => c.toString())]);
-    target.favoriteCharacters = Array.from(charSet).map((id) => new Types.ObjectId(id)) as any;
+    const aChars = target.favoriteCharacters ?? [];
+    const bChars = other.favoriteCharacters ?? [];
+    const charSet = new Set([
+      ...aChars.map((c) => c.toString()),
+      ...bChars.map((c) => c.toString()),
+    ]);
+    target.favoriteCharacters = Array.from(charSet).map(
+      (id) => new Types.ObjectId(id),
+    ) as any;
 
     target.experience = (target.experience ?? 0) + (other.experience ?? 0);
     target.balance = (target.balance ?? 0) + (other.balance ?? 0);
@@ -907,8 +986,14 @@ export class AuthService {
       { userId: otherId },
       { $set: { userId: targetId } },
     );
-    await this.reportModel.updateMany({ userId: otherId }, { $set: { userId: targetId } });
-    await this.reportModel.updateMany({ creatorId: otherId }, { $set: { creatorId: targetId } });
+    await this.reportModel.updateMany(
+      { userId: otherId },
+      { $set: { userId: targetId } },
+    );
+    await this.reportModel.updateMany(
+      { creatorId: otherId },
+      { $set: { creatorId: targetId } },
+    );
 
     await this.userModel.deleteOne({ _id: otherId });
     this.logger.log(`Deleted merged user ${otherId}`);

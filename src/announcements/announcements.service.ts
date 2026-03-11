@@ -43,7 +43,9 @@ export class AnnouncementsService {
 
     const existing = await this.announcementModel.findOne({ slug }).exec();
     if (existing) {
-      throw new ConflictException(`Announcement with slug "${slug}" already exists`);
+      throw new ConflictException(
+        `Announcement with slug "${slug}" already exists`,
+      );
     }
 
     const payload: Partial<Announcement> = {
@@ -94,7 +96,9 @@ export class AnnouncementsService {
         .findOne({ slug, _id: { $ne: new Types.ObjectId(id) } })
         .exec();
       if (existing) {
-        throw new ConflictException(`Announcement with slug "${slug}" already exists`);
+        throw new ConflictException(
+          `Announcement with slug "${slug}" already exists`,
+        );
       }
     }
 

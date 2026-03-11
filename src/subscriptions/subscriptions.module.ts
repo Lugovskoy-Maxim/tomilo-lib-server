@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MongooseModule } from '@nestjs/mongoose';
-import { TitleSubscription, TitleSubscriptionSchema } from '../schemas/title-subscription.schema';
+import {
+  TitleSubscription,
+  TitleSubscriptionSchema,
+} from '../schemas/title-subscription.schema';
 import { Title, TitleSchema } from '../schemas/title.schema';
 import { SubscriptionsController } from './subscriptions.controller';
 import { SubscriptionsService } from './subscriptions.service';

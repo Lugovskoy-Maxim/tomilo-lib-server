@@ -432,7 +432,12 @@ export class UsersController {
   ): Promise<ApiResponseDto<any>> {
     try {
       const options: { category?: any; grouped?: boolean } = {};
-      if (category && ['reading', 'planned', 'completed', 'favorites', 'dropped'].includes(category)) {
+      if (
+        category &&
+        ['reading', 'planned', 'completed', 'favorites', 'dropped'].includes(
+          category,
+        )
+      ) {
         options.category = category;
       }
       if (grouped === 'true' || grouped === '1') options.grouped = true;
@@ -464,7 +469,9 @@ export class UsersController {
   async getBookmarkStatus(
     @Request() req,
     @Param('titleId') titleId: string,
-  ): Promise<ApiResponseDto<{ isBookmarked: boolean; category: string | null }>> {
+  ): Promise<
+    ApiResponseDto<{ isBookmarked: boolean; category: string | null }>
+  > {
     try {
       const data = await this.usersService.getBookmarkStatus(
         req.user.userId,
@@ -491,9 +498,16 @@ export class UsersController {
   // 📊 Получить количество закладок по категориям
   @Get('profile/bookmarks/counts')
   @UseGuards(JwtAuthGuard)
-  async getBookmarksCounts(
-    @Request() req,
-  ): Promise<ApiResponseDto<{ reading: number; planned: number; completed: number; favorites: number; dropped: number; total: number }>> {
+  async getBookmarksCounts(@Request() req): Promise<
+    ApiResponseDto<{
+      reading: number;
+      planned: number;
+      completed: number;
+      favorites: number;
+      dropped: number;
+      total: number;
+    }>
+  > {
     try {
       const data = await this.usersService.getBookmarksCounts(req.user.userId);
 
@@ -520,15 +534,17 @@ export class UsersController {
   async getReadingProgress(
     @Request() req,
     @Param('titleId') titleId: string,
-  ): Promise<ApiResponseDto<{
-    titleId: string;
-    lastChapterId: string | null;
-    lastChapterNumber: number | null;
-    chaptersRead: number;
-    totalChapters: number;
-    progressPercent: number;
-    readAt: Date | null;
-  }>> {
+  ): Promise<
+    ApiResponseDto<{
+      titleId: string;
+      lastChapterId: string | null;
+      lastChapterNumber: number | null;
+      chaptersRead: number;
+      totalChapters: number;
+      progressPercent: number;
+      readAt: Date | null;
+    }>
+  > {
     try {
       const data = await this.usersService.getReadingProgressForTitle(
         req.user.userId,
@@ -561,9 +577,13 @@ export class UsersController {
     @Query('category') category?: string,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const cat = (category && ['reading', 'planned', 'completed', 'favorites', 'dropped'].includes(category))
-        ? category
-        : 'reading';
+      const cat =
+        category &&
+        ['reading', 'planned', 'completed', 'favorites', 'dropped'].includes(
+          category,
+        )
+          ? category
+          : 'reading';
       const data = await this.usersService.addBookmark(
         req.user.userId,
         titleId,
@@ -599,7 +619,12 @@ export class UsersController {
     @Body('category') category: string,
   ): Promise<ApiResponseDto<any>> {
     try {
-      if (!category || !['reading', 'planned', 'completed', 'favorites', 'dropped'].includes(category)) {
+      if (
+        !category ||
+        !['reading', 'planned', 'completed', 'favorites', 'dropped'].includes(
+          category,
+        )
+      ) {
         throw new BadRequestException(
           'Invalid category. Use: reading, planned, completed, favorites, dropped',
         );
@@ -673,9 +698,15 @@ export class UsersController {
   ): Promise<ApiResponseDto<any>> {
     try {
       const options: { page?: number; limit?: number; light?: boolean } = {};
-      if (page != null) options.page = Math.max(1, parseInt(String(page), 10) || 1);
-      if (limit != null) options.limit = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50));
-      if (light !== undefined) options.light = light === 'true' || light === '1';
+      if (page != null)
+        options.page = Math.max(1, parseInt(String(page), 10) || 1);
+      if (limit != null)
+        options.limit = Math.min(
+          100,
+          Math.max(1, parseInt(String(limit), 10) || 50),
+        );
+      if (light !== undefined)
+        options.light = light === 'true' || light === '1';
       const data = await this.usersService.getReadingHistory(
         req.user.userId,
         Object.keys(options).length ? options : undefined,
@@ -705,8 +736,19 @@ export class UsersController {
     @Query('limit') limit?: string,
   ): Promise<ApiResponseDto<{ events: unknown[] }>> {
     try {
-      const options = limit != null ? { limit: Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50)) } : undefined;
-      const data = await this.usersService.getProgressHistory(req.user.userId, options);
+      const options =
+        limit != null
+          ? {
+              limit: Math.min(
+                100,
+                Math.max(1, parseInt(String(limit), 10) || 50),
+              ),
+            }
+          : undefined;
+      const data = await this.usersService.getProgressHistory(
+        req.user.userId,
+        options,
+      );
       return {
         success: true,
         data,
@@ -735,9 +777,15 @@ export class UsersController {
   ): Promise<ApiResponseDto<any>> {
     try {
       const options: { page?: number; limit?: number; light?: boolean } = {};
-      if (page != null) options.page = Math.max(1, parseInt(String(page), 10) || 1);
-      if (limit != null) options.limit = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 50));
-      if (light !== undefined) options.light = light === 'true' || light === '1';
+      if (page != null)
+        options.page = Math.max(1, parseInt(String(page), 10) || 1);
+      if (limit != null)
+        options.limit = Math.min(
+          100,
+          Math.max(1, parseInt(String(limit), 10) || 50),
+        );
+      if (light !== undefined)
+        options.light = light === 'true' || light === '1';
       const data = await this.usersService.getReadingHistory(
         req.user.userId,
         Object.keys(options).length ? options : undefined,
@@ -765,7 +813,9 @@ export class UsersController {
   async getTitleReadChapterIds(
     @Request() req,
     @Param('titleId') titleId: string,
-  ): Promise<ApiResponseDto<{ chapterIds: string[]; chapterNumbers: number[] }>> {
+  ): Promise<
+    ApiResponseDto<{ chapterIds: string[]; chapterNumbers: number[] }>
+  > {
     try {
       const data = await this.usersService.getTitleReadChapterIds(
         req.user.userId,
@@ -1117,15 +1167,26 @@ export class UsersController {
     @Query('page') page?: string,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const validCategories = ['level', 'readingTime', 'ratings', 'comments', 'streak', 'chaptersRead'];
+      const validCategories = [
+        'level',
+        'readingTime',
+        'ratings',
+        'comments',
+        'streak',
+        'chaptersRead',
+      ];
       const safeCategory = validCategories.includes(category || '')
-        ? (category as 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak' | 'chaptersRead')
+        ? (category as
+            | 'level'
+            | 'readingTime'
+            | 'ratings'
+            | 'comments'
+            | 'streak'
+            | 'chaptersRead')
         : 'level';
 
       const wantAllPeriods =
-        allPeriods === '1' ||
-        allPeriods === 'true' ||
-        allPeriods === 'yes';
+        allPeriods === '1' || allPeriods === 'true' || allPeriods === 'yes';
       const periodCategories = ['ratings', 'comments', 'chaptersRead'];
 
       if (wantAllPeriods && periodCategories.includes(safeCategory)) {
@@ -1188,10 +1249,13 @@ export class UsersController {
         limit: limit != null ? parseInt(String(limit), 10) : undefined,
         days: days != null ? parseInt(String(days), 10) : undefined,
         sortBy:
-          sortBy === 'level' || sortBy === 'createdAt' || sortBy === 'lastActivityAt'
+          sortBy === 'level' ||
+          sortBy === 'createdAt' ||
+          sortBy === 'lastActivityAt'
             ? sortBy
             : undefined,
-        sortOrder: sortOrder === 'asc' || sortOrder === 'desc' ? sortOrder : undefined,
+        sortOrder:
+          sortOrder === 'asc' || sortOrder === 'desc' ? sortOrder : undefined,
         verification:
           verification === 'email' ||
           verification === 'oauth' ||
@@ -1207,7 +1271,8 @@ export class UsersController {
           requireRecentActivity != null
             ? requireRecentActivity === 'true' || requireRecentActivity === '1'
             : undefined,
-        responseFormat: format === 'extended' || format === 'compact' ? format : undefined,
+        responseFormat:
+          format === 'extended' || format === 'compact' ? format : undefined,
       });
 
       return {
@@ -1560,7 +1625,10 @@ export class UsersController {
     },
   ): Promise<ApiResponseDto<any>> {
     try {
-      const userAgent = typeof req.headers?.['user-agent'] === 'string' ? req.headers['user-agent'] : undefined;
+      const userAgent =
+        typeof req.headers?.['user-agent'] === 'string'
+          ? req.headers['user-agent']
+          : undefined;
       await this.usersService.savePushSubscription(
         req.user.userId,
         body,

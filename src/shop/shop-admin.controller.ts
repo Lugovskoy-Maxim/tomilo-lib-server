@@ -162,7 +162,10 @@ export class ShopAdminController {
       limits: { fileSize: 20 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.startsWith('image/')) {
-          return cb(new BadRequestException('Only image files are allowed'), false);
+          return cb(
+            new BadRequestException('Only image files are allowed'),
+            false,
+          );
         }
         cb(null, true);
       },
@@ -187,7 +190,9 @@ export class ShopAdminController {
     try {
       const file = (req as any).file ?? req.file ?? null;
       const quantity =
-        body.quantity !== undefined && body.quantity !== null && body.quantity !== ''
+        body.quantity !== undefined &&
+        body.quantity !== null &&
+        body.quantity !== ''
           ? Number(body.quantity)
           : body.stock !== undefined && body.stock !== null && body.stock !== ''
             ? Number(body.stock)
@@ -203,8 +208,11 @@ export class ShopAdminController {
           price: body.price !== undefined ? Number(body.price) : undefined,
           rarity: body.rarity,
           description: body.description,
-          isAvailable: isAvailable as boolean | undefined,
-          quantity: quantity !== undefined && !Number.isNaN(quantity) ? quantity : undefined,
+          isAvailable: isAvailable,
+          quantity:
+            quantity !== undefined && !Number.isNaN(quantity)
+              ? quantity
+              : undefined,
         });
         return {
           success: true,
@@ -222,11 +230,13 @@ export class ShopAdminController {
         price: body.price !== undefined ? Number(body.price) : undefined,
         rarity: body.rarity,
         description: body.description,
-        isAvailable: isAvailable as boolean | undefined,
+        isAvailable: isAvailable,
         quantity:
           quantity !== undefined && !Number.isNaN(quantity)
             ? quantity
-            : (body.quantity as number | null) ?? (body.stock as number | null) ?? undefined,
+            : ((body.quantity as number | null) ??
+              (body.stock as number | null) ??
+              undefined),
       });
       return {
         success: true,
@@ -253,36 +263,36 @@ export class ShopAdminController {
   @Roles('admin')
   @UseInterceptors(
     FileInterceptor('file', {
-        storage: diskStorage({
-          destination: (_req, _file, cb) => {
-            const dir = './uploads/decorations';
-            fs.mkdirSync(dir, { recursive: true });
-            cb(null, dir);
-          },
-          filename: (_req, file, cb) => {
-            const ext =
-              path.extname(file.originalname) ||
-              (file.mimetype === 'image/gif'
-                ? '.gif'
-                : file.mimetype === 'image/webp'
-                  ? '.webp'
-                  : '.png');
-            cb(
-              null,
-              `decoration-${Date.now()}-${Math.random().toString(36).slice(2, 9)}${ext}`,
-            );
-          },
-        }),
-        limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
-        fileFilter: (_req, file, cb) => {
-          if (!file.mimetype.startsWith('image/')) {
-            return cb(
-              new BadRequestException('Only image files are allowed'),
-              false,
-            );
-          }
-          cb(null, true);
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          const dir = './uploads/decorations';
+          fs.mkdirSync(dir, { recursive: true });
+          cb(null, dir);
         },
+        filename: (_req, file, cb) => {
+          const ext =
+            path.extname(file.originalname) ||
+            (file.mimetype === 'image/gif'
+              ? '.gif'
+              : file.mimetype === 'image/webp'
+                ? '.webp'
+                : '.png');
+          cb(
+            null,
+            `decoration-${Date.now()}-${Math.random().toString(36).slice(2, 9)}${ext}`,
+          );
+        },
+      }),
+      limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+      fileFilter: (_req, file, cb) => {
+        if (!file.mimetype.startsWith('image/')) {
+          return cb(
+            new BadRequestException('Only image files are allowed'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
     }),
   )
   async uploadDecoration(
@@ -305,15 +315,21 @@ export class ShopAdminController {
         throw new BadRequestException('Image file is required');
       }
       const rawQuantityInput =
-        body.quantity !== undefined && body.quantity !== null && body.quantity !== ''
+        body.quantity !== undefined &&
+        body.quantity !== null &&
+        body.quantity !== ''
           ? body.quantity
           : body.stock;
       const quantityRaw =
-        rawQuantityInput === undefined || rawQuantityInput === null || rawQuantityInput === ''
+        rawQuantityInput === undefined ||
+        rawQuantityInput === null ||
+        rawQuantityInput === ''
           ? undefined
           : Number(rawQuantityInput);
       const quantity =
-        quantityRaw !== undefined && !Number.isNaN(quantityRaw) ? quantityRaw : undefined;
+        quantityRaw !== undefined && !Number.isNaN(quantityRaw)
+          ? quantityRaw
+          : undefined;
       const priceNum =
         body.price !== undefined && body.price !== null && body.price !== ''
           ? Number(body.price)
@@ -321,19 +337,17 @@ export class ShopAdminController {
       const name =
         body.name !== undefined && String(body.name).trim() !== ''
           ? String(body.name).trim()
-          : (file.originalname && file.originalname.replace(/\.[^.]+$/, '')) || 'Unnamed';
-      const data = await this.shopService.uploadDecoration(
-        body.type,
-        file,
-        {
-          name,
-          price: !Number.isNaN(priceNum) ? priceNum : 0,
-          rarity: body.rarity ?? 'common',
-          description: body.description ?? '',
-          isAvailable: body.isAvailable === 'true' || body.isAvailable === undefined,
-          quantity,
-        },
-      );
+          : (file.originalname && file.originalname.replace(/\.[^.]+$/, '')) ||
+            'Unnamed';
+      const data = await this.shopService.uploadDecoration(body.type, file, {
+        name,
+        price: !Number.isNaN(priceNum) ? priceNum : 0,
+        rarity: body.rarity ?? 'common',
+        description: body.description ?? '',
+        isAvailable:
+          body.isAvailable === 'true' || body.isAvailable === undefined,
+        quantity,
+      });
       return {
         success: true,
         data,

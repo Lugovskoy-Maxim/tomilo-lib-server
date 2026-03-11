@@ -64,7 +64,13 @@ export interface ReadingProgressResponseDto {
 
 /** Событие в истории прогресса (для GET profile/progress-history) */
 export type ProgressHistoryEventDto =
-  | { id: string; type: 'exp_gain'; amount: number; reason: string; timestamp: string }
+  | {
+      id: string;
+      type: 'exp_gain';
+      amount: number;
+      reason: string;
+      timestamp: string;
+    }
   | {
       id: string;
       type: 'level_up';

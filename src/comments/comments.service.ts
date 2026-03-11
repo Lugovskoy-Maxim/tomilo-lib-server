@@ -77,7 +77,10 @@ export class CommentsService {
       await this.usersService.incrementCommentsCount(userId);
     } catch (error) {
       // Не блокируем создание комментария при ошибке инкремента
-      console.warn(`Failed to increment commentsCount for user ${userId}:`, error.message);
+      console.warn(
+        `Failed to increment commentsCount for user ${userId}:`,
+        error.message,
+      );
     }
 
     // Уведомление автору родительского комментария об ответе (не себе)
@@ -337,7 +340,10 @@ export class CommentsService {
       try {
         await this.usersService.decrementCommentsCount(commentOwnerId);
       } catch (error) {
-        console.warn(`Failed to decrement commentsCount for user ${commentOwnerId}:`, error.message);
+        console.warn(
+          `Failed to decrement commentsCount for user ${commentOwnerId}:`,
+          error.message,
+        );
       }
     }
   }
@@ -419,7 +425,10 @@ export class CommentsService {
 
     // Уведомление автору комментария о новой реакции (не себе), с группировкой
     if (addedReaction && commentOwnerId && commentOwnerId !== userId) {
-      const totalCount = newReactions.reduce((sum, r) => sum + r.userIds.length, 0);
+      const totalCount = newReactions.reduce(
+        (sum, r) => sum + r.userIds.length,
+        0,
+      );
       const reactor = await this.commentModel.db
         .collection('users')
         .findOne(
@@ -472,7 +481,8 @@ export class CommentsService {
     likes?: number;
     dislikes?: number;
   }): { emoji: string; count: number; userIds: Types.ObjectId[] }[] {
-    const out: { emoji: string; count: number; userIds: Types.ObjectId[] }[] = [];
+    const out: { emoji: string; count: number; userIds: Types.ObjectId[] }[] =
+      [];
     const seen = new Set<string>();
 
     for (const r of comment.reactions || []) {
@@ -482,20 +492,14 @@ export class CommentsService {
         seen.add(r.emoji);
       }
     }
-    if (
-      (comment.likedBy?.length ?? 0) > 0 &&
-      !seen.has('👍')
-    ) {
+    if ((comment.likedBy?.length ?? 0) > 0 && !seen.has('👍')) {
       out.push({
         emoji: '👍',
         count: comment.likes ?? comment.likedBy!.length,
         userIds: comment.likedBy!,
       });
     }
-    if (
-      (comment.dislikedBy?.length ?? 0) > 0 &&
-      !seen.has('👎')
-    ) {
+    if ((comment.dislikedBy?.length ?? 0) > 0 && !seen.has('👎')) {
       out.push({
         emoji: '👎',
         count: comment.dislikes ?? comment.dislikedBy!.length,
@@ -514,9 +518,7 @@ export class CommentsService {
     }));
     if (currentUserId && list.length > 0) {
       comment.myReactions = list
-        .filter((r) =>
-          r.userIds.some((id) => id.toString() === currentUserId),
-        )
+        .filter((r) => r.userIds.some((id) => id.toString() === currentUserId))
         .map((r) => r.emoji);
     }
   }
@@ -559,7 +561,11 @@ export class CommentsService {
   private async getEntityContext(
     entityType: CommentEntityType,
     entityId: string,
-  ): Promise<{ titleId?: string; chapterId?: string; entityName?: string } | null> {
+  ): Promise<{
+    titleId?: string;
+    chapterId?: string;
+    entityName?: string;
+  } | null> {
     if (!Types.ObjectId.isValid(entityId)) return null;
     const oid = new Types.ObjectId(entityId);
     if (entityType === CommentEntityType.TITLE) {
@@ -567,7 +573,9 @@ export class CommentsService {
       if (!title) return null;
       return {
         titleId: entityId,
-        entityName: (title as any).name ? `«${(title as any).name}»` : undefined,
+        entityName: (title as any).name
+          ? `«${(title as any).name}»`
+          : undefined,
       };
     }
     if (entityType === CommentEntityType.CHAPTER) {
@@ -583,7 +591,9 @@ export class CommentsService {
       return {
         titleId: ch.titleId?._id?.toString(),
         chapterId: entityId,
-        entityName: titleName ? `«${titleName}» — ${chapterLabel}` : chapterLabel,
+        entityName: titleName
+          ? `«${titleName}» — ${chapterLabel}`
+          : chapterLabel,
       };
     }
     return null;

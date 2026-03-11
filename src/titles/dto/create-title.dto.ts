@@ -15,7 +15,15 @@ import {
 import { Type } from 'class-transformer';
 import { TitleStatus } from '../../schemas/title.schema';
 
-export const RELATED_TITLE_TYPES = ['sequel', 'prequel', 'spin_off', 'adaptation', 'side_story', 'alternative_story', 'other'] as const;
+export const RELATED_TITLE_TYPES = [
+  'sequel',
+  'prequel',
+  'spin_off',
+  'adaptation',
+  'side_story',
+  'alternative_story',
+  'other',
+] as const;
 
 export class RelatedTitleItemDto {
   @IsString()

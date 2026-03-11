@@ -34,5 +34,6 @@ export class AvatarFrameDecoration {
   authorId?: Types.ObjectId;
 }
 
-export const AvatarFrameDecorationSchema =
-  SchemaFactory.createForClass(AvatarFrameDecoration);
+export const AvatarFrameDecorationSchema = SchemaFactory.createForClass(
+  AvatarFrameDecoration,
+);

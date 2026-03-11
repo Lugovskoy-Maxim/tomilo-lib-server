@@ -86,19 +86,26 @@ export class MangabuffParser implements MangaParser {
   }
 
   /** Извлекает HTML списка глав из ответа /chapters/load */
-  private getChaptersHtmlFromResponse(response: { data?: unknown }): string | null {
+  private getChaptersHtmlFromResponse(response: {
+    data?: unknown;
+  }): string | null {
     if (!response.data || typeof response.data !== 'object') return null;
-    const content = (response.data as { content?: unknown }).content ?? response.data;
+    const content =
+      (response.data as { content?: unknown }).content ?? response.data;
     return typeof content === 'string' ? content : null;
   }
 
   /** Формирует заголовок Cookie из ответа axios для последующих запросов */
-  private getCookieHeaderFromResponse(response: { headers: Record<string, unknown> }): string {
+  private getCookieHeaderFromResponse(response: {
+    headers: Record<string, unknown>;
+  }): string {
     const setCookie = response.headers['set-cookie'];
     if (!setCookie) return '';
     const list = Array.isArray(setCookie) ? setCookie : [setCookie];
     return list
-      .map((h: unknown) => (typeof h === 'string' ? h : '').split(';')[0].trim())
+      .map((h: unknown) =>
+        (typeof h === 'string' ? h : '').split(';')[0].trim(),
+      )
       .filter(Boolean)
       .join('; ');
   }

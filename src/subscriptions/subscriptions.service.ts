@@ -28,7 +28,9 @@ export class SubscriptionsService {
     if (!Types.ObjectId.isValid(titleId)) {
       throw new BadRequestException('Invalid title ID');
     }
-    const exists = await this.titleModel.exists({ _id: new Types.ObjectId(titleId) }).exec();
+    const exists = await this.titleModel
+      .exists({ _id: new Types.ObjectId(titleId) })
+      .exec();
     if (!exists) {
       throw new NotFoundException('Title not found');
     }
@@ -62,17 +64,18 @@ export class SubscriptionsService {
       _id: s._id.toString(),
       userId: s.userId.toString(),
       titleId: s.titleId?._id?.toString?.() ?? s.titleId?.toString?.() ?? '',
-      titleInfo: s.titleId && typeof s.titleId === 'object'
-        ? {
-            _id: (s.titleId as any)._id?.toString?.() ?? (s.titleId as any).toString?.(),
-            name: (s.titleId as any).name,
-            slug: (s.titleId as any).slug,
-            coverImage: (s.titleId as any).coverImage,
-          }
-        : undefined,
+      titleInfo:
+        s.titleId && typeof s.titleId === 'object'
+          ? {
+              _id: s.titleId._id?.toString?.() ?? s.titleId.toString?.(),
+              name: s.titleId.name,
+              slug: s.titleId.slug,
+              coverImage: s.titleId.coverImage,
+            }
+          : undefined,
       notifyOnNewChapter: s.notifyOnNewChapter ?? true,
       notifyOnAnnouncement: s.notifyOnAnnouncement ?? true,
-      createdAt: (s as any).createdAt,
+      createdAt: s.createdAt,
     }));
 
     return {
@@ -116,7 +119,10 @@ export class SubscriptionsService {
   async subscribeToTitle(
     userId: string,
     titleId: string,
-    options: { notifyOnNewChapter?: boolean; notifyOnAnnouncement?: boolean } = {},
+    options: {
+      notifyOnNewChapter?: boolean;
+      notifyOnAnnouncement?: boolean;
+    } = {},
   ): Promise<any> {
     await this.ensureTitleExists(titleId);
     const uid = new Types.ObjectId(userId);
@@ -166,7 +172,10 @@ export class SubscriptionsService {
     }
     const sub = await this.subscriptionModel
       .findOneAndUpdate(
-        { userId: new Types.ObjectId(userId), titleId: new Types.ObjectId(titleId) },
+        {
+          userId: new Types.ObjectId(userId),
+          titleId: new Types.ObjectId(titleId),
+        },
         { $set: updates },
         { new: true },
       )

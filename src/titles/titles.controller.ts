@@ -101,7 +101,10 @@ export class TitlesController {
    * @param req - запрос
    * @param includeAdult - query параметр от клиента (опционально)
    */
-  private async getCanViewAdult(req: any, includeAdult?: string): Promise<boolean> {
+  private async getCanViewAdult(
+    req: any,
+    includeAdult?: string,
+  ): Promise<boolean> {
     // Явный запрос 18+ от клиента — показываем и гостям, и авторизованным
     if (includeAdult === 'true') return true;
 
@@ -116,7 +119,9 @@ export class TitlesController {
       const decoded = jwt.verify(token, jwtSecret) as { userId?: string };
 
       if (decoded?.userId) {
-        const userCanViewAdult = await this.usersService.getCanViewAdult(decoded.userId);
+        const userCanViewAdult = await this.usersService.getCanViewAdult(
+          decoded.userId,
+        );
         if (!userCanViewAdult) return false;
         if (includeAdult !== undefined) return includeAdult === 'true';
         return true;
@@ -152,8 +157,7 @@ export class TitlesController {
     const min = sorted[sorted.length - 1];
     const max = sorted[0];
     const isConsecutive =
-      sorted.length === max - min + 1 &&
-      sorted.every((n, i) => n === max - i);
+      sorted.length === max - min + 1 && sorted.every((n, i) => n === max - i);
     if (isConsecutive) return `Главы ${min}–${max}`;
     return `Главы ${sorted.join(', ')}`;
   }
@@ -334,7 +338,10 @@ export class TitlesController {
   ): Promise<ApiResponseDto<any>> {
     try {
       const pageNum = Math.max(1, Math.floor(Number(page)) || 1);
-      const limitNum = Math.max(1, Math.min(100, Math.floor(Number(limit)) || 18));
+      const limitNum = Math.max(
+        1,
+        Math.min(100, Math.floor(Number(limit)) || 18),
+      );
       const canViewAdult = await this.getCanViewAdult(req, includeAdult);
       const titlesWithChapters =
         await this.titlesService.getTitlesWithRecentChapters(
@@ -345,11 +352,14 @@ export class TitlesController {
       const data = titlesWithChapters.map((item: any) => {
         const releaseDate = item.lastUpdate
           ? new Date(item.lastUpdate)
-          : (item.latestChapter && new Date(item.latestChapter.releaseDate)) || null;
+          : (item.latestChapter && new Date(item.latestChapter.releaseDate)) ||
+            null;
         const chapterNumbers = item.recentChapterNumbers ?? [];
         const chapterSummary = this.formatChapterSummary(chapterNumbers);
         const maxChapter =
-          chapterNumbers.length > 0 ? Math.max(...chapterNumbers) : item.maxChapter;
+          chapterNumbers.length > 0
+            ? Math.max(...chapterNumbers)
+            : item.maxChapter;
 
         return {
           id: item._id?.toString(),
@@ -852,7 +862,8 @@ export class TitlesController {
 
     try {
       // userId доступен через JwtAuthGuard
-      const userId = req.user?.userId || req.user?.id || req.user?._id?.toString();
+      const userId =
+        req.user?.userId || req.user?.id || req.user?._id?.toString();
 
       if (!userId) {
         return {
@@ -958,9 +969,7 @@ export class TitlesController {
    */
   @Get('titles/:id/stats')
   @Header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
-  async getTitleStats(
-    @Param('id') id: string,
-  ): Promise<ApiResponseDto<any>> {
+  async getTitleStats(@Param('id') id: string): Promise<ApiResponseDto<any>> {
     try {
       const data = await this.titlesService.getTitleStats(id);
 
@@ -1150,7 +1159,11 @@ export class TitlesController {
     @Req() req: { user: { userId: string } },
   ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.titlesService.updateRating(id, req.user.userId, rating);
+      const data = await this.titlesService.updateRating(
+        id,
+        req.user.userId,
+        rating,
+      );
 
       return {
         success: true,
@@ -1213,7 +1226,7 @@ export class TitlesController {
     try {
       const canViewAdult = await this.getCanViewAdult(req, includeAdult);
       const decodedGenre = this.decodeParam(genre) || genre;
-      
+
       const result = await this.titlesService.findAll({
         page: Number(page),
         limit: Number(limit),
@@ -1272,12 +1285,16 @@ export class TitlesController {
     try {
       const limitNum = Math.min(50, Math.max(1, Number(limit) || 10));
       const canViewAdult = await this.getCanViewAdult(req, includeAdult);
-      const releaseYearNum = releaseYear ? this.parseNumber(releaseYear) : undefined;
+      const releaseYearNum = releaseYear
+        ? this.parseNumber(releaseYear)
+        : undefined;
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'day',
         limitNum,
         canViewAdult,
-        type || releaseYearNum != null ? { type, releaseYear: releaseYearNum ?? undefined } : undefined,
+        type || releaseYearNum != null
+          ? { type, releaseYear: releaseYearNum ?? undefined }
+          : undefined,
       );
 
       const data = titles.map((title: any) => ({
@@ -1322,12 +1339,16 @@ export class TitlesController {
     try {
       const limitNum = Math.min(50, Math.max(1, Number(limit) || 10));
       const canViewAdult = await this.getCanViewAdult(req, includeAdult);
-      const releaseYearNum = releaseYear ? this.parseNumber(releaseYear) : undefined;
+      const releaseYearNum = releaseYear
+        ? this.parseNumber(releaseYear)
+        : undefined;
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'week',
         limitNum,
         canViewAdult,
-        type || releaseYearNum != null ? { type, releaseYear: releaseYearNum ?? undefined } : undefined,
+        type || releaseYearNum != null
+          ? { type, releaseYear: releaseYearNum ?? undefined }
+          : undefined,
       );
 
       const data = titles.map((title: any) => ({
@@ -1372,12 +1393,16 @@ export class TitlesController {
     try {
       const limitNum = Math.min(50, Math.max(1, Number(limit) || 10));
       const canViewAdult = await this.getCanViewAdult(req, includeAdult);
-      const releaseYearNum = releaseYear ? this.parseNumber(releaseYear) : undefined;
+      const releaseYearNum = releaseYear
+        ? this.parseNumber(releaseYear)
+        : undefined;
       const titles = await this.titlesService.getTopTitlesForPeriod(
         'month',
         limitNum,
         canViewAdult,
-        type || releaseYearNum != null ? { type, releaseYear: releaseYearNum ?? undefined } : undefined,
+        type || releaseYearNum != null
+          ? { type, releaseYear: releaseYearNum ?? undefined }
+          : undefined,
       );
 
       const data = titles.map((title: any) => ({

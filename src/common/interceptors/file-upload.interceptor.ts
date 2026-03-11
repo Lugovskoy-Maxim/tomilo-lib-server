@@ -16,7 +16,9 @@ export class FileUploadInterceptor {
       storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
         const isImage = file.mimetype.startsWith('image/');
-        const matchesRegex = options.fileTypes ? file.mimetype.match(options.fileTypes) : true;
+        const matchesRegex = options.fileTypes
+          ? file.mimetype.match(options.fileTypes)
+          : true;
         if (!isImage && !matchesRegex) {
           return cb(
             new BadRequestException(
@@ -47,7 +49,9 @@ export class FileUploadInterceptor {
       storage: memoryStorage(),
       fileFilter: (req, file, cb) => {
         const isImage = file.mimetype.startsWith('image/');
-        const matchesRegex = options.fileTypes ? file.mimetype.match(options.fileTypes) : true;
+        const matchesRegex = options.fileTypes
+          ? file.mimetype.match(options.fileTypes)
+          : true;
         if (!isImage && !matchesRegex) {
           return cb(
             new BadRequestException(

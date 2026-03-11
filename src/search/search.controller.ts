@@ -32,7 +32,11 @@ export class SearchController {
     @Query('q') query: string,
     @Query('limit') limit = 5,
     @Query('includeAdult') includeAdult?: string,
-  ): Promise<ApiResponseDto<{ id: string; title: string; slug: string; cover: string; type: string }[]>> {
+  ): Promise<
+    ApiResponseDto<
+      { id: string; title: string; slug: string; cover: string; type: string }[]
+    >
+  > {
     try {
       if (!query || query.length < 2) {
         return {
@@ -46,9 +50,11 @@ export class SearchController {
       let canViewAdult = false;
       const userId = extractUserIdFromRequest(req);
       if (userId) {
-        const userCanViewAdult = await this.usersService.getCanViewAdult(userId);
+        const userCanViewAdult =
+          await this.usersService.getCanViewAdult(userId);
         if (userCanViewAdult) {
-          canViewAdult = includeAdult !== undefined ? includeAdult === 'true' : true;
+          canViewAdult =
+            includeAdult !== undefined ? includeAdult === 'true' : true;
         }
       }
 
@@ -96,9 +102,11 @@ export class SearchController {
       let canViewAdult = false;
       const userId = extractUserIdFromRequest(req);
       if (userId) {
-        const userCanViewAdult = await this.usersService.getCanViewAdult(userId);
+        const userCanViewAdult =
+          await this.usersService.getCanViewAdult(userId);
         if (userCanViewAdult) {
-          canViewAdult = includeAdult !== undefined ? includeAdult === 'true' : true;
+          canViewAdult =
+            includeAdult !== undefined ? includeAdult === 'true' : true;
         }
       }
 

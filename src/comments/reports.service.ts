@@ -59,10 +59,7 @@ export class ReportsService {
       createReportDto.titleId
     ) {
       void this.autoParsingService
-        .syncChapterPages(
-          createReportDto.titleId,
-          createReportDto.entityId,
-        )
+        .syncChapterPages(createReportDto.titleId, createReportDto.entityId)
         .then((r) => {
           if (r.synced) {
             this.logger.log(

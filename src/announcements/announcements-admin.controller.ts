@@ -34,7 +34,9 @@ export class AnnouncementsAdminController {
   @Get()
   async findAll(
     @Query() query: QueryAnnouncementDto,
-  ): Promise<ApiResponseDto<{ announcements: unknown[]; pagination: unknown }>> {
+  ): Promise<
+    ApiResponseDto<{ announcements: unknown[]; pagination: unknown }>
+  > {
     const data = await this.announcementsService.findAll(query, {
       forPublic: false,
     });

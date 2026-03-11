@@ -54,7 +54,13 @@ const LEADERBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 /** Кеш лидерборда за период (неделя/месяц): короче, чтобы неделя/месяц/всё время не расходились из-за устаревания */
 const LEADERBOARD_PERIOD_CACHE_TTL_MS = 15 * 60 * 1000; // 15 мин
 
-export type LeaderboardCategory = 'level' | 'readingTime' | 'ratings' | 'comments' | 'streak' | 'chaptersRead';
+export type LeaderboardCategory =
+  | 'level'
+  | 'readingTime'
+  | 'ratings'
+  | 'comments'
+  | 'streak'
+  | 'chaptersRead';
 export type LeaderboardPeriod = 'all' | 'month' | 'week';
 
 export interface LeaderboardUser {
@@ -153,7 +159,11 @@ export class UsersService {
     @Inject(CACHE_MANAGER)
     private cacheManager: {
       get: (k: string) => Promise<unknown>;
-      set: (k: string, v: unknown, ttl?: number | { ttl: number }) => Promise<void>;
+      set: (
+        k: string,
+        v: unknown,
+        ttl?: number | { ttl: number },
+      ) => Promise<void>;
     },
     @Optional()
     @Inject(forwardRef(() => NotificationsGateway))
@@ -211,11 +221,12 @@ export class UsersService {
   ): Promise<any[]> {
     const safeLimit = Math.min(50, Math.max(1, Number(options.limit) || 10));
     const safeDays = Math.min(30, Math.max(1, Number(options.days) || 7));
-    const sortBy: HomepageActiveUsersSortBy = options.sortBy || 'lastActivityAt';
+    const sortBy: HomepageActiveUsersSortBy =
+      options.sortBy || 'lastActivityAt';
     const sortOrder: HomepageActiveUsersSortOrder =
       options.sortOrder === 'asc' ? 'asc' : 'desc';
     const verification: HomepageActiveUsersVerification =
-      options.verification === 'none' ? 'any' : (options.verification || 'any');
+      options.verification === 'none' ? 'any' : options.verification || 'any';
     const requireAvatar = options.requireAvatar !== false;
     const responseFormat: HomepageActiveUsersResponseFormat =
       options.responseFormat === 'extended' ? 'extended' : 'compact';
@@ -282,12 +293,14 @@ export class UsersService {
    * Получить лидерборд пользователей по заданной категории.
    * Кеширует результат на 6 часов (LEADERBOARD_CACHE_TTL_MS).
    */
-  async getLeaderboard(options: {
-    category?: LeaderboardCategory;
-    period?: LeaderboardPeriod;
-    limit?: number;
-    page?: number;
-  } = {}): Promise<LeaderboardResponse> {
+  async getLeaderboard(
+    options: {
+      category?: LeaderboardCategory;
+      period?: LeaderboardPeriod;
+      limit?: number;
+      page?: number;
+    } = {},
+  ): Promise<LeaderboardResponse> {
     const category: LeaderboardCategory = options.category || 'level';
     const period: LeaderboardPeriod = options.period || 'all';
     const limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
@@ -302,13 +315,24 @@ export class UsersService {
 
     // Для категорий ratings, comments, chaptersRead все три периода считаем через агрегацию,
     // чтобы "всё время" не зависело от старых/неполных счётчиков в документе пользователя (all >= month >= week).
-    if (category === 'ratings' || category === 'comments' || category === 'chaptersRead') {
-      return this.getLeaderboardByPeriod(category, period, limit, page, skip, cacheKey);
+    if (
+      category === 'ratings' ||
+      category === 'comments' ||
+      category === 'chaptersRead'
+    ) {
+      return this.getLeaderboardByPeriod(
+        category,
+        period,
+        limit,
+        page,
+        skip,
+        cacheKey,
+      );
     }
 
     let sortField: string;
     let secondarySortField: string | null = null;
-    
+
     // Здесь только кумулятивные категории: level, readingTime, streak (ratings/comments/chaptersRead обработаны выше)
     switch (category) {
       case 'level':
@@ -416,9 +440,9 @@ export class UsersService {
       createdAt: user.createdAt,
       showStats: user.showStats,
       subscriptionExpiresAt: user.subscriptionExpiresAt
-        ? (user.subscriptionExpiresAt instanceof Date
-            ? user.subscriptionExpiresAt.toISOString()
-            : user.subscriptionExpiresAt)
+        ? user.subscriptionExpiresAt instanceof Date
+          ? user.subscriptionExpiresAt.toISOString()
+          : user.subscriptionExpiresAt
         : null,
       equippedDecorations: user.equippedDecorations
         ? {
@@ -513,7 +537,15 @@ export class UsersService {
         { $match: { isBot: { $ne: true }, showStats: { $ne: false } } },
         { $unwind: '$readingHistory' },
         { $unwind: '$readingHistory.chapters' },
-        ...(isAllTime ? [] : [{ $match: { 'readingHistory.chapters.readAt': { $gte: dateFrom } } }]),
+        ...(isAllTime
+          ? []
+          : [
+              {
+                $match: {
+                  'readingHistory.chapters.readAt': { $gte: dateFrom },
+                },
+              },
+            ]),
         { $group: { _id: '$_id', count: { $sum: 1 } } },
         { $sort: { count: -1 as const } },
       ];
@@ -526,7 +558,11 @@ export class UsersService {
     } else if (category === 'comments') {
       const commentModel = this.userModel.db.collection('comments');
       const pipeline: any[] = [
-        { $match: isAllTime ? { isVisible: true } : { createdAt: { $gte: dateFrom }, isVisible: true } },
+        {
+          $match: isAllTime
+            ? { isVisible: true }
+            : { createdAt: { $gte: dateFrom }, isVisible: true },
+        },
         { $group: { _id: '$userId', count: { $sum: 1 } } },
         { $sort: { count: -1 as const } },
         { $skip: skip },
@@ -540,8 +576,12 @@ export class UsersService {
     } else {
       const titleModel = this.userModel.db.collection('titles');
       const chapterModel = this.userModel.db.collection('chapters');
-      const titleMatch = isAllTime ? [] : [{ $match: { 'ratings.createdAt': { $gte: dateFrom } } }];
-      const chapterMatch = isAllTime ? [] : [{ $match: { 'ratingByUser.createdAt': { $gte: dateFrom } } }];
+      const titleMatch = isAllTime
+        ? []
+        : [{ $match: { 'ratings.createdAt': { $gte: dateFrom } } }];
+      const chapterMatch = isAllTime
+        ? []
+        : [{ $match: { 'ratingByUser.createdAt': { $gte: dateFrom } } }];
       const [titleResults, chapterResults] = await Promise.all([
         titleModel
           .aggregate([
@@ -562,11 +602,13 @@ export class UsersService {
       const countByUser = new Map<string, number>();
       for (const r of titleResults as any[]) {
         const id = r._id?.toString();
-        if (id) countByUser.set(id, (countByUser.get(id) ?? 0) + (r.count ?? 0));
+        if (id)
+          countByUser.set(id, (countByUser.get(id) ?? 0) + (r.count ?? 0));
       }
       for (const r of chapterResults as any[]) {
         const id = r._id?.toString();
-        if (id) countByUser.set(id, (countByUser.get(id) ?? 0) + (r.count ?? 0));
+        if (id)
+          countByUser.set(id, (countByUser.get(id) ?? 0) + (r.count ?? 0));
       }
       const fullRatingsList = [...countByUser.entries()]
         .map(([userId, count]) => ({ userId, count }))
@@ -582,15 +624,19 @@ export class UsersService {
         category,
         period,
       };
-      await this.cacheManager.set(cacheKey, result, { ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS });
+      await this.cacheManager.set(cacheKey, result, {
+        ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS,
+      });
       return result;
     }
 
     const totalForResponse = totalCount ?? aggregationResult.length;
 
     // Получаем данные пользователей
-    const userIds = aggregationResult.slice(0, limit).map(r => new Types.ObjectId(r.userId));
-    const countMap = new Map(aggregationResult.map(r => [r.userId, r.count]));
+    const userIds = aggregationResult
+      .slice(0, limit)
+      .map((r) => new Types.ObjectId(r.userId));
+    const countMap = new Map(aggregationResult.map((r) => [r.userId, r.count]));
 
     const selectFields =
       category === 'chaptersRead'
@@ -609,12 +655,12 @@ export class UsersService {
     // Сортируем по count из агрегации
     const usersMap = new Map(users.map((u: any) => [u._id.toString(), u]));
     const sortedUserIds = aggregationResult
-      .filter(r => usersMap.has(r.userId))
+      .filter((r) => usersMap.has(r.userId))
       .slice(0, limit)
-      .map(r => r.userId);
+      .map((r) => r.userId);
 
-    const transformedUsers: LeaderboardUser[] = sortedUserIds.map(userId => {
-      const user = usersMap.get(userId) as any;
+    const transformedUsers: LeaderboardUser[] = sortedUserIds.map((userId) => {
+      const user = usersMap.get(userId);
       const periodCount = countMap.get(userId) ?? 0;
       return {
         _id: user._id.toString(),
@@ -623,10 +669,13 @@ export class UsersService {
         role: user.role,
         level: user.level ?? 1,
         experience: user.experience ?? 0,
-        readingTimeMinutes: category === 'chaptersRead' ? (user.readingTimeMinutes ?? 0) : 0,
+        readingTimeMinutes:
+          category === 'chaptersRead' ? (user.readingTimeMinutes ?? 0) : 0,
         chaptersRead: category === 'chaptersRead' ? periodCount : 0,
-        ratingsCount: category === 'ratings' ? periodCount : (user.ratingsCount ?? 0),
-        commentsCount: category === 'comments' ? periodCount : (user.commentsCount ?? 0),
+        ratingsCount:
+          category === 'ratings' ? periodCount : (user.ratingsCount ?? 0),
+        commentsCount:
+          category === 'comments' ? periodCount : (user.commentsCount ?? 0),
         likesReceivedCount: 0,
         currentStreak: 0,
         longestStreak: 0,
@@ -635,9 +684,9 @@ export class UsersService {
         completedTitlesCount: 0,
         createdAt: user.createdAt,
         subscriptionExpiresAt: user.subscriptionExpiresAt
-          ? (user.subscriptionExpiresAt instanceof Date
-              ? user.subscriptionExpiresAt.toISOString()
-              : user.subscriptionExpiresAt)
+          ? user.subscriptionExpiresAt instanceof Date
+            ? user.subscriptionExpiresAt.toISOString()
+            : user.subscriptionExpiresAt
           : null,
         showStats: user.showStats,
         equippedDecorations: user.equippedDecorations
@@ -658,7 +707,9 @@ export class UsersService {
       period,
     };
 
-    await this.cacheManager.set(cacheKey, result, { ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS });
+    await this.cacheManager.set(cacheKey, result, {
+      ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS,
+    });
 
     this.logger.log(
       `Leaderboard (period) fetched: category=${category}, period=${period}, limit=${limit}, page=${page}, total=${result.total}`,
@@ -681,7 +732,9 @@ export class UsersService {
       .lean()
       .exec();
     const canViewAdult = user?.displaySettings?.isAdult !== false;
-    await this.cacheManager.set(key, canViewAdult, { ttl: CAN_VIEW_ADULT_CACHE_TTL_MS });
+    await this.cacheManager.set(key, canViewAdult, {
+      ttl: CAN_VIEW_ADULT_CACHE_TTL_MS,
+    });
     return canViewAdult;
   }
 
@@ -794,13 +847,15 @@ export class UsersService {
     }
     const didMigrate = this.normalizeBookmarksIfNeeded(user as UserDocument);
     if (didMigrate) await user.save();
-    const plain = (user as any).toObject ? (user as any).toObject() : { ...user };
+    const plain = (user as any).toObject
+      ? (user as any).toObject()
+      : { ...user };
     plain.bookmarks = this.repairBookmarksPlain(plain.bookmarks);
     // Явный флаг «ежедневный бонус уже получен сегодня» (по дате сервера), чтобы клиент не зависел от часового пояса
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const lastExp = (plain as any).lastLoginExpDate
-      ? new Date((plain as any).lastLoginExpDate)
+    const lastExp = plain.lastLoginExpDate
+      ? new Date(plain.lastLoginExpDate)
       : null;
     plain.dailyBonusClaimedToday =
       !!lastExp &&
@@ -849,7 +904,10 @@ export class UsersService {
       sanitized.notifications = sanitized.notificationPreferences;
       delete sanitized.notificationPreferences;
     }
-    if (sanitized.bookmarks !== undefined && Array.isArray(sanitized.bookmarks)) {
+    if (
+      sanitized.bookmarks !== undefined &&
+      Array.isArray(sanitized.bookmarks)
+    ) {
       sanitized.bookmarks = this.normalizeBookmarksFromInput(
         sanitized.bookmarks as any[],
       ) as any;
@@ -911,7 +969,9 @@ export class UsersService {
       .exec();
     const count = result.modifiedCount ?? 0;
     if (count > 0) {
-      this.logger.log(`Processed scheduled deletions: ${count} user(s) marked as deleted`);
+      this.logger.log(
+        `Processed scheduled deletions: ${count} user(s) marked as deleted`,
+      );
     }
     return count;
   }
@@ -953,7 +1013,9 @@ export class UsersService {
           : new Types.ObjectId(this.extractTitleIdFromBookmark(b));
       return {
         titleId,
-        category: BOOKMARK_CATEGORIES.includes(b.category) ? b.category : 'reading',
+        category: BOOKMARK_CATEGORIES.includes(b.category)
+          ? b.category
+          : 'reading',
         addedAt: b.addedAt ? new Date(b.addedAt) : new Date(),
       };
     });
@@ -966,14 +1028,20 @@ export class UsersService {
   private sanitizeBookmarksBeforeSave(user: UserDocument): void {
     const raw = (user as any).bookmarks;
     if (!raw || !Array.isArray(raw) || raw.length === 0) return;
-    const valid: Array<{ titleId: Types.ObjectId; category: string; addedAt: Date }> = [];
+    const valid: Array<{
+      titleId: Types.ObjectId;
+      category: string;
+      addedAt: Date;
+    }> = [];
     for (const b of raw) {
       if (b == null) continue;
       const titleIdStr = this.extractTitleIdFromBookmark(b);
       if (!titleIdStr || !Types.ObjectId.isValid(titleIdStr)) continue;
       valid.push({
         titleId: new Types.ObjectId(titleIdStr),
-        category: BOOKMARK_CATEGORIES.includes(b?.category) ? b.category : 'reading',
+        category: BOOKMARK_CATEGORIES.includes(b?.category)
+          ? b.category
+          : 'reading',
         addedAt: b?.addedAt ? new Date(b.addedAt) : new Date(),
       });
     }
@@ -1053,7 +1121,9 @@ export class UsersService {
         if (!titleIdStr || !Types.ObjectId.isValid(titleIdStr)) return null;
         return {
           titleId: new Types.ObjectId(titleIdStr),
-          category: BOOKMARK_CATEGORIES.includes(b?.category) ? b.category : ('reading' as const),
+          category: BOOKMARK_CATEGORIES.includes(b?.category)
+            ? b.category
+            : ('reading' as const),
           addedAt: b?.addedAt ? new Date(b.addedAt) : new Date(),
         };
       })
@@ -1071,10 +1141,13 @@ export class UsersService {
       .map((b: any) => {
         const titleIdStr = this.extractTitleIdFromBookmark(b);
         if (!titleIdStr || !Types.ObjectId.isValid(titleIdStr)) return null;
-        const titleId = b.titleId && typeof b.titleId === 'object' ? b.titleId : titleIdStr;
+        const titleId =
+          b.titleId && typeof b.titleId === 'object' ? b.titleId : titleIdStr;
         return {
           titleId,
-          category: BOOKMARK_CATEGORIES.includes(b?.category) ? b.category : 'reading',
+          category: BOOKMARK_CATEGORIES.includes(b?.category)
+            ? b.category
+            : 'reading',
           addedAt: b?.addedAt ? new Date(b.addedAt) : new Date(),
           _id: b._id,
         };
@@ -1085,8 +1158,10 @@ export class UsersService {
   private isCorruptedBookmark(b: any): boolean {
     if (!b || typeof b !== 'object' || typeof b === 'string') return false;
     if (b.titleId || b.title) return false;
-    const hasCharKeys = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]
-      .every((i) => typeof b[String(i)] === 'string');
+    const hasCharKeys = [
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+      21, 22, 23,
+    ].every((i) => typeof b[String(i)] === 'string');
     return hasCharKeys;
   }
 
@@ -1130,7 +1205,9 @@ export class UsersService {
       (b: any) => this.getBookmarkTitleIdStr(b) === titleId,
     );
     const oldCategory =
-      existingIndex >= 0 ? (user.bookmarks as any[])[existingIndex]?.category : null;
+      existingIndex >= 0
+        ? (user.bookmarks as any[])[existingIndex]?.category
+        : null;
     const entry = {
       titleId: titleObjectId,
       category,
@@ -1145,19 +1222,24 @@ export class UsersService {
     this.sanitizeBookmarksBeforeSave(user as UserDocument);
     await user.save();
 
-    if (isNewBookmark) void this.incrementDailyQuestProgress(userId, 'add_bookmark', 1);
+    if (isNewBookmark)
+      void this.incrementDailyQuestProgress(userId, 'add_bookmark', 1);
     // Достижение «Завершающий»: учёт тайтлов в категории «Прочитано»
     if (category === 'completed' && oldCategory !== 'completed') {
       try {
         await this.incrementCompletedTitlesCount(userId);
       } catch (e) {
-        this.logger.warn(`Failed to increment completedTitlesCount: ${(e as Error).message}`);
+        this.logger.warn(
+          `Failed to increment completedTitlesCount: ${(e as Error).message}`,
+        );
       }
     } else if (oldCategory === 'completed' && category !== 'completed') {
       try {
         await this.decrementCompletedTitlesCount(userId);
       } catch (e) {
-        this.logger.warn(`Failed to decrement completedTitlesCount: ${(e as Error).message}`);
+        this.logger.warn(
+          `Failed to decrement completedTitlesCount: ${(e as Error).message}`,
+        );
       }
     }
 
@@ -1194,7 +1276,9 @@ export class UsersService {
       try {
         await this.decrementCompletedTitlesCount(userId);
       } catch (e) {
-        this.logger.warn(`Failed to decrement completedTitlesCount: ${(e as Error).message}`);
+        this.logger.warn(
+          `Failed to decrement completedTitlesCount: ${(e as Error).message}`,
+        );
       }
     }
     return (await this.userModel
@@ -1232,13 +1316,17 @@ export class UsersService {
       try {
         await this.decrementCompletedTitlesCount(userId);
       } catch (e) {
-        this.logger.warn(`Failed to decrement completedTitlesCount: ${(e as Error).message}`);
+        this.logger.warn(
+          `Failed to decrement completedTitlesCount: ${(e as Error).message}`,
+        );
       }
     } else if (oldCategory !== 'completed' && category === 'completed') {
       try {
         await this.incrementCompletedTitlesCount(userId);
       } catch (e) {
-        this.logger.warn(`Failed to increment completedTitlesCount: ${(e as Error).message}`);
+        this.logger.warn(
+          `Failed to increment completedTitlesCount: ${(e as Error).message}`,
+        );
       }
     }
     return (await this.userModel
@@ -1278,9 +1366,7 @@ export class UsersService {
   /**
    * Получить количество закладок по категориям
    */
-  async getBookmarksCounts(
-    userId: string,
-  ): Promise<{
+  async getBookmarksCounts(userId: string): Promise<{
     reading: number;
     planned: number;
     completed: number;
@@ -1376,9 +1462,8 @@ export class UsersService {
 
     const lastChapter = sortedChapters[0];
     const chaptersRead = historyEntry.chapters.length;
-    const progressPercent = totalChapters > 0
-      ? Math.round((chaptersRead / totalChapters) * 100)
-      : 0;
+    const progressPercent =
+      totalChapters > 0 ? Math.round((chaptersRead / totalChapters) * 100) : 0;
 
     return {
       titleId,
@@ -1403,7 +1488,8 @@ export class UsersService {
       .findById(new Types.ObjectId(userId))
       .populate({
         path: 'bookmarks.titleId',
-        select: '_id title slug coverImage type status isAdult chaptersCount latestChapterNumber',
+        select:
+          '_id title slug coverImage type status isAdult chaptersCount latestChapterNumber',
       })
       .select('bookmarks');
 
@@ -1506,7 +1592,9 @@ export class UsersService {
   }
 
   /** Безопасно получить titleId записи истории как строку. */
-  private getHistoryTitleIdStr(entry: { titleId?: Types.ObjectId } | null): string {
+  private getHistoryTitleIdStr(
+    entry: { titleId?: Types.ObjectId } | null,
+  ): string {
     if (entry?.titleId == null) return '';
     const t = entry.titleId;
     if (typeof t === 'string') return t;
@@ -1515,7 +1603,9 @@ export class UsersService {
   }
 
   /** Безопасно получить chapterId как строку. */
-  private getHistoryChapterIdStr(ch: { chapterId?: Types.ObjectId } | null): string {
+  private getHistoryChapterIdStr(
+    ch: { chapterId?: Types.ObjectId } | null,
+  ): string {
     if (ch?.chapterId == null) return '';
     const t = ch.chapterId;
     if (typeof t === 'string') return t;
@@ -1719,17 +1809,23 @@ export class UsersService {
     }
 
     // Award experience for reading (только если не бот И глава новая)
-    let progressEvent: {
-      expGained: number;
-      reason: string;
-      levelUp: boolean;
-      newLevel?: number;
-      oldLevel?: number;
-      bonusCoins?: number;
-      streakBonus?: number;
-    } | undefined = undefined;
-    let oldRankInfo: { rank: number; stars: number; name: string; minLevel: number } | undefined = undefined;
-    let newRankInfo: { rank: number; stars: number; name: string; minLevel: number } | undefined = undefined;
+    let progressEvent:
+      | {
+          expGained: number;
+          reason: string;
+          levelUp: boolean;
+          newLevel?: number;
+          oldLevel?: number;
+          bonusCoins?: number;
+          streakBonus?: number;
+        }
+      | undefined = undefined;
+    let oldRankInfo:
+      | { rank: number; stars: number; name: string; minLevel: number }
+      | undefined = undefined;
+    let newRankInfo:
+      | { rank: number; stars: number; name: string; minLevel: number }
+      | undefined = undefined;
 
     if (!botDetectionResult.isBot && isNewChapter) {
       const oldLevel = user.level;
@@ -1756,7 +1852,10 @@ export class UsersService {
 
       progressEvent = {
         expGained: totalExp,
-        reason: streakBonus > 0 ? `Чтение главы + бонус за серию ${user.currentStreak} дней` : 'Чтение главы',
+        reason:
+          streakBonus > 0
+            ? `Чтение главы + бонус за серию ${user.currentStreak} дней`
+            : 'Чтение главы',
         levelUp: leveledUp,
         oldLevel: leveledUp ? oldLevel : undefined,
         newLevel: leveledUp ? user.level : undefined,
@@ -1766,7 +1865,9 @@ export class UsersService {
     } else if (botDetectionResult.isBot) {
       this.logger.warn(`Skipping XP award for bot user ${userId}`);
     } else if (!isNewChapter) {
-      this.logger.log(`Skipping XP award for already read chapter ${chapterId} by user ${userId}`);
+      this.logger.log(
+        `Skipping XP award for already read chapter ${chapterId} by user ${userId}`,
+      );
     }
 
     // Проверка достижений
@@ -1779,35 +1880,35 @@ export class UsersService {
     const socialConnections =
       (user.emailVerified ? 1 : 0) + (user.oauthProviders?.length ?? 0);
 
-    const { updatedAchievements, newUnlocked, totalExpReward: achievementExp } =
-      this.achievementsService.checkAchievements(
-        user.achievements ?? [],
-        {
-          chaptersRead: totalChaptersRead,
-          bookmarksCount: totalBookmarks,
-          userLevel: user.level,
-          daysSinceJoined,
-          socialConnections,
-          commentsCount: user.commentsCount ?? 0,
-          ratingsCount: user.ratingsCount ?? 0,
-          longestStreak: user.longestStreak ?? 0,
-          completedTitlesCount: user.completedTitlesCount ?? 0,
-          readingTimeMinutes: user.readingTimeMinutes ?? 0,
-          balance: user.balance ?? 0,
-          ownedDecorationsCount: (user as any).ownedDecorations?.length ?? 0,
-          likesReceivedCount: user.likesReceivedCount ?? 0,
-          titlesReadCount: user.titlesReadCount ?? 0,
-          reportsCount: user.reportsCount ?? 0,
-        },
-      );
+    const {
+      updatedAchievements,
+      newUnlocked,
+      totalExpReward: achievementExp,
+    } = this.achievementsService.checkAchievements(user.achievements ?? [], {
+      chaptersRead: totalChaptersRead,
+      bookmarksCount: totalBookmarks,
+      userLevel: user.level,
+      daysSinceJoined,
+      socialConnections,
+      commentsCount: user.commentsCount ?? 0,
+      ratingsCount: user.ratingsCount ?? 0,
+      longestStreak: user.longestStreak ?? 0,
+      completedTitlesCount: user.completedTitlesCount ?? 0,
+      readingTimeMinutes: user.readingTimeMinutes ?? 0,
+      balance: user.balance ?? 0,
+      ownedDecorationsCount: (user as any).ownedDecorations?.length ?? 0,
+      likesReceivedCount: user.likesReceivedCount ?? 0,
+      titlesReadCount: user.titlesReadCount ?? 0,
+      reportsCount: user.reportsCount ?? 0,
+    });
 
     if (newUnlocked.length > 0) {
       user.achievements = updatedAchievements;
-      
+
       // Начисляем опыт за достижения (если не бот)
       if (!botDetectionResult.isBot && achievementExp > 0) {
         user.experience += achievementExp;
-        
+
         // Проверяем level up от достижений
         while (user.experience >= this.calculateNextLevelExp(user.level)) {
           user.level += 1;
@@ -1818,13 +1919,13 @@ export class UsersService {
             progressEvent.bonusCoins = (progressEvent.bonusCoins ?? 0) + coins;
           }
         }
-        
+
         if (progressEvent) {
           progressEvent.expGained += achievementExp;
           progressEvent.reason += ` + ${achievementExp} XP за достижения`;
         }
       }
-      
+
       this.logger.log(
         `User ${userId} unlocked ${newUnlocked.length} achievement(s): ${newUnlocked.map((a) => `${a.name} (+${a.expReward} XP)`).join(', ')}`,
       );
@@ -1845,7 +1946,11 @@ export class UsersService {
         amount: progressEvent.expGained,
         reason: progressEvent.reason,
       });
-      if (progressEvent.levelUp && progressEvent.oldLevel != null && progressEvent.newLevel != null) {
+      if (
+        progressEvent.levelUp &&
+        progressEvent.oldLevel != null &&
+        progressEvent.newLevel != null
+      ) {
         newEvents.push({
           type: 'level_up' as const,
           timestamp: new Date(),
@@ -1876,7 +1981,9 @@ export class UsersService {
       });
     }
     if (newEvents.length > 0) {
-      (user as any).progressEvents = newEvents.concat(existingEvents).slice(0, MAX_PROGRESS_EVENTS);
+      (user as any).progressEvents = newEvents
+        .concat(existingEvents)
+        .slice(0, MAX_PROGRESS_EVENTS);
     }
 
     // Убираем битые закладки, чтобы не падать на валидации при save
@@ -1983,7 +2090,9 @@ export class UsersService {
     }>;
     const events: ProgressHistoryEventDto[] = raw
       .slice(0, limit)
-      .map((e, i) => this.mapProgressEventToDto(e, `${userId}-${Date.now()}-${i}`));
+      .map((e, i) =>
+        this.mapProgressEventToDto(e, `${userId}-${Date.now()}-${i}`),
+      );
     return { events };
   }
 
@@ -2001,7 +2110,10 @@ export class UsersService {
     },
     id: string,
   ): ProgressHistoryEventDto {
-    const timestamp = typeof e.timestamp === 'string' ? e.timestamp : new Date(e.timestamp).toISOString();
+    const timestamp =
+      typeof e.timestamp === 'string'
+        ? e.timestamp
+        : new Date(e.timestamp).toISOString();
     if (e.type === 'exp_gain') {
       return {
         id,
@@ -2017,8 +2129,22 @@ export class UsersService {
         type: 'level_up',
         oldLevel: e.oldLevel ?? 0,
         newLevel: e.newLevel ?? 0,
-        oldRank: e.oldRank ? { rank: e.oldRank.rank, stars: e.oldRank.stars, name: e.oldRank.name, minLevel: e.oldRank.minLevel } : undefined,
-        newRank: e.newRank ? { rank: e.newRank.rank, stars: e.newRank.stars, name: e.newRank.name, minLevel: e.newRank.minLevel } : undefined,
+        oldRank: e.oldRank
+          ? {
+              rank: e.oldRank.rank,
+              stars: e.oldRank.stars,
+              name: e.oldRank.name,
+              minLevel: e.oldRank.minLevel,
+            }
+          : undefined,
+        newRank: e.newRank
+          ? {
+              rank: e.newRank.rank,
+              stars: e.newRank.stars,
+              name: e.newRank.name,
+              minLevel: e.newRank.minLevel,
+            }
+          : undefined,
         timestamp,
       };
     }
@@ -2379,7 +2505,7 @@ export class UsersService {
 
   /** Бонусы за достижение определённых milestone streak */
   private static readonly STREAK_BONUSES: Record<number, number> = {
-    7: 50,   // 50 XP за 7 дней подряд
+    7: 50, // 50 XP за 7 дней подряд
     14: 100, // 100 XP за 14 дней подряд
     21: 150, // 150 XP за 21 день подряд
     30: 250, // 250 XP за 30 дней подряд
@@ -2486,9 +2612,7 @@ export class UsersService {
    * Начисляет опыт за ежедневный вход (раз в день).
    * Возвращает объект с информацией о начислении или null если уже был вход сегодня.
    */
-  async awardDailyLoginExp(
-    userId: string,
-  ): Promise<{
+  async awardDailyLoginExp(userId: string): Promise<{
     expGained: number;
     experience: number;
     level: number;
@@ -2548,6 +2672,32 @@ export class UsersService {
       `User ${userId} awarded ${UsersService.DAILY_LOGIN_EXP} XP for daily login. Current level: ${user.level}, XP: ${user.experience}`,
     );
 
+    // Отправка прогресса по WebSocket для тостов (опыт за ежедневный вход)
+    if (this.notificationsGateway) {
+      setImmediate(() => {
+        try {
+          this.notificationsGateway!.emitProgressToUser(userId, {
+            type: 'exp_gain',
+            amount: UsersService.DAILY_LOGIN_EXP,
+            reason: 'Ежедневный вход',
+          });
+          if (leveledUp) {
+            const oldRank = this.levelToRank(oldLevel);
+            const newRank = this.levelToRank(user.level);
+            this.notificationsGateway!.emitProgressToUser(userId, {
+              type: 'level_up',
+              oldLevel,
+              newLevel: user.level,
+              oldRank,
+              newRank,
+            });
+          }
+        } catch (e) {
+          this.logger.warn(`WS progress emit failed for user ${userId} (daily login)`, e);
+        }
+      });
+    }
+
     void this.checkAchievementsForUser(userId);
     void this.getOrCreateDailyQuests(userId).then(() =>
       this.incrementDailyQuestProgress(userId, 'daily_login', 1),
@@ -2574,10 +2724,9 @@ export class UsersService {
     }
 
     await this.userModel
-      .findByIdAndUpdate(
-        new Types.ObjectId(userId),
-        { $inc: { ratingsCount: 1 } },
-      )
+      .findByIdAndUpdate(new Types.ObjectId(userId), {
+        $inc: { ratingsCount: 1 },
+      })
       .exec();
 
     this.logger.log(`Incremented ratingsCount for user ${userId}`);
@@ -2594,10 +2743,9 @@ export class UsersService {
     }
 
     await this.userModel
-      .findByIdAndUpdate(
-        new Types.ObjectId(userId),
-        { $inc: { commentsCount: 1 } },
-      )
+      .findByIdAndUpdate(new Types.ObjectId(userId), {
+        $inc: { commentsCount: 1 },
+      })
       .exec();
 
     this.logger.log(`Incremented commentsCount for user ${userId}`);
@@ -2614,10 +2762,9 @@ export class UsersService {
     }
 
     await this.userModel
-      .findByIdAndUpdate(
-        new Types.ObjectId(userId),
-        { $inc: { commentsCount: -1 } },
-      )
+      .findByIdAndUpdate(new Types.ObjectId(userId), {
+        $inc: { commentsCount: -1 },
+      })
       .exec();
 
     this.logger.log(`Decremented commentsCount for user ${userId}`);
@@ -2633,10 +2780,9 @@ export class UsersService {
     }
 
     await this.userModel
-      .findByIdAndUpdate(
-        new Types.ObjectId(userId),
-        { $inc: { likesReceivedCount: 1 } },
-      )
+      .findByIdAndUpdate(new Types.ObjectId(userId), {
+        $inc: { likesReceivedCount: 1 },
+      })
       .exec();
 
     this.logger.log(`Incremented likesReceivedCount for user ${userId}`);
@@ -2652,10 +2798,9 @@ export class UsersService {
     }
 
     await this.userModel
-      .findByIdAndUpdate(
-        new Types.ObjectId(userId),
-        { $inc: { likesReceivedCount: -1 } },
-      )
+      .findByIdAndUpdate(new Types.ObjectId(userId), {
+        $inc: { likesReceivedCount: -1 },
+      })
       .exec();
 
     this.logger.log(`Decremented likesReceivedCount for user ${userId}`);
@@ -2670,10 +2815,9 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID');
     }
     await this.userModel
-      .findByIdAndUpdate(
-        new Types.ObjectId(userId),
-        { $inc: { completedTitlesCount: 1 } },
-      )
+      .findByIdAndUpdate(new Types.ObjectId(userId), {
+        $inc: { completedTitlesCount: 1 },
+      })
       .exec();
     this.logger.log(`Incremented completedTitlesCount for user ${userId}`);
     void this.checkAchievementsForUser(userId);
@@ -2691,7 +2835,10 @@ export class UsersService {
         {
           $set: {
             completedTitlesCount: {
-              $max: [0, { $add: [{ $ifNull: ['$completedTitlesCount', 0] }, -1] }],
+              $max: [
+                0,
+                { $add: [{ $ifNull: ['$completedTitlesCount', 0] }, -1] },
+              ],
             },
           },
         },
@@ -2709,10 +2856,9 @@ export class UsersService {
     }
 
     await this.userModel
-      .findByIdAndUpdate(
-        new Types.ObjectId(userId),
-        { $inc: { reportsCount: 1 } },
-      )
+      .findByIdAndUpdate(new Types.ObjectId(userId), {
+        $inc: { reportsCount: 1 },
+      })
       .exec();
 
     this.logger.log(`Incremented reportsCount for user ${userId}`);
@@ -2738,27 +2884,27 @@ export class UsersService {
     const socialConnections =
       (user.emailVerified ? 1 : 0) + (user.oauthProviders?.length ?? 0);
 
-    const { updatedAchievements, newUnlocked, totalExpReward: achievementExp } =
-      this.achievementsService.checkAchievements(
-        user.achievements ?? [],
-        {
-          chaptersRead: totalChaptersRead,
-          bookmarksCount: totalBookmarks,
-          userLevel: user.level,
-          daysSinceJoined,
-          socialConnections,
-          commentsCount: user.commentsCount ?? 0,
-          ratingsCount: user.ratingsCount ?? 0,
-          longestStreak: user.longestStreak ?? 0,
-          completedTitlesCount: user.completedTitlesCount ?? 0,
-          readingTimeMinutes: user.readingTimeMinutes ?? 0,
-          balance: user.balance ?? 0,
-          ownedDecorationsCount: (user as any).ownedDecorations?.length ?? 0,
-          likesReceivedCount: user.likesReceivedCount ?? 0,
-          titlesReadCount: user.titlesReadCount ?? 0,
-          reportsCount: user.reportsCount ?? 0,
-        },
-      );
+    const {
+      updatedAchievements,
+      newUnlocked,
+      totalExpReward: achievementExp,
+    } = this.achievementsService.checkAchievements(user.achievements ?? [], {
+      chaptersRead: totalChaptersRead,
+      bookmarksCount: totalBookmarks,
+      userLevel: user.level,
+      daysSinceJoined,
+      socialConnections,
+      commentsCount: user.commentsCount ?? 0,
+      ratingsCount: user.ratingsCount ?? 0,
+      longestStreak: user.longestStreak ?? 0,
+      completedTitlesCount: user.completedTitlesCount ?? 0,
+      readingTimeMinutes: user.readingTimeMinutes ?? 0,
+      balance: user.balance ?? 0,
+      ownedDecorationsCount: (user as any).ownedDecorations?.length ?? 0,
+      likesReceivedCount: user.likesReceivedCount ?? 0,
+      titlesReadCount: user.titlesReadCount ?? 0,
+      reportsCount: user.reportsCount ?? 0,
+    });
 
     if (newUnlocked.length === 0) {
       if (updatedAchievements.length !== (user.achievements ?? []).length) {
@@ -2813,7 +2959,9 @@ export class UsersService {
   /**
    * Возвращает список достижений с прогрессом пользователя для отображения в профиле.
    */
-  async getProfileAchievementsForUser(userId: string): Promise<ProfileAchievementDto[]> {
+  async getProfileAchievementsForUser(
+    userId: string,
+  ): Promise<ProfileAchievementDto[]> {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user ID');
     }
@@ -2868,13 +3016,62 @@ export class UsersService {
     rewardExp: number;
     rewardCoins: number;
   }[] = [
-    { type: 'read_chapters', name: 'Читатель дня', description: 'Прочитайте 3 главы', target: 3, rewardExp: 5, rewardCoins: 2 },
-    { type: 'read_chapters', name: 'Погружение', description: 'Прочитайте 5 глав', target: 5, rewardExp: 8, rewardCoins: 3 },
-    { type: 'read_chapters', name: 'Марафон', description: 'Прочитайте 10 глав', target: 10, rewardExp: 15, rewardCoins: 5 },
-    { type: 'add_bookmark', name: 'В закладки', description: 'Добавьте мангу в закладки', target: 1, rewardExp: 5, rewardCoins: 2 },
-    { type: 'leave_comment', name: 'Ваше мнение', description: 'Оставьте комментарий', target: 1, rewardExp: 5, rewardCoins: 2 },
-    { type: 'rate_title', name: 'Оценка', description: 'Поставьте оценку тайтлу или главе', target: 1, rewardExp: 5, rewardCoins: 2 },
-    { type: 'daily_login', name: 'Ежедневный вход', description: 'Зайдите на сайт', target: 1, rewardExp: 5, rewardCoins: 2 },
+    {
+      type: 'read_chapters',
+      name: 'Читатель дня',
+      description: 'Прочитайте 3 главы',
+      target: 3,
+      rewardExp: 5,
+      rewardCoins: 2,
+    },
+    {
+      type: 'read_chapters',
+      name: 'Погружение',
+      description: 'Прочитайте 5 глав',
+      target: 5,
+      rewardExp: 8,
+      rewardCoins: 3,
+    },
+    {
+      type: 'read_chapters',
+      name: 'Марафон',
+      description: 'Прочитайте 10 глав',
+      target: 10,
+      rewardExp: 15,
+      rewardCoins: 5,
+    },
+    {
+      type: 'add_bookmark',
+      name: 'В закладки',
+      description: 'Добавьте мангу в закладки',
+      target: 1,
+      rewardExp: 5,
+      rewardCoins: 2,
+    },
+    {
+      type: 'leave_comment',
+      name: 'Ваше мнение',
+      description: 'Оставьте комментарий',
+      target: 1,
+      rewardExp: 5,
+      rewardCoins: 2,
+    },
+    {
+      type: 'rate_title',
+      name: 'Оценка',
+      description: 'Поставьте оценку тайтлу или главе',
+      target: 1,
+      rewardExp: 5,
+      rewardCoins: 2,
+    },
+    {
+      type: 'daily_login',
+      name: 'Ежедневный вход',
+      description: 'Зайдите на сайт',
+      target: 1,
+      rewardExp: 5,
+      rewardCoins: 2,
+    },
   ];
 
   private static getStartOfDayUTC(d: Date = new Date()): Date {
@@ -2917,7 +3114,11 @@ export class UsersService {
         ? UsersService.getStartOfDayUTC(new Date(existing.date))
         : null;
 
-      if (existingDate && existingDate.getTime() === today.getTime() && existing?.quests?.length) {
+      if (
+        existingDate &&
+        existingDate.getTime() === today.getTime() &&
+        existing?.quests?.length
+      ) {
         return {
           date: today.toISOString(),
           quests: existing.quests.map((q) => ({
@@ -2955,7 +3156,10 @@ export class UsersService {
       try {
         await user.save();
       } catch (err: unknown) {
-        if ((err as { name?: string })?.name === 'VersionError' && attempt < maxRetries - 1) {
+        if (
+          (err as { name?: string })?.name === 'VersionError' &&
+          attempt < maxRetries - 1
+        ) {
           continue;
         }
         throw err;
@@ -3010,7 +3214,10 @@ export class UsersService {
         await user.save();
         return;
       } catch (err: unknown) {
-        if ((err as { name?: string })?.name === 'VersionError' && attempt < maxRetries - 1) {
+        if (
+          (err as { name?: string })?.name === 'VersionError' &&
+          attempt < maxRetries - 1
+        ) {
           continue;
         }
         throw err;
@@ -3019,7 +3226,10 @@ export class UsersService {
   }
 
   /** Забрать награду за выполненное задание. */
-  async claimDailyQuest(userId: string, questId: string): Promise<{
+  async claimDailyQuest(
+    userId: string,
+    questId: string,
+  ): Promise<{
     success: boolean;
     expGained?: number;
     coinsGained?: number;
@@ -3042,7 +3252,9 @@ export class UsersService {
       if (!dq?.quests?.length) {
         return { success: false, message: 'Нет заданий на сегодня' };
       }
-      const questDate = dq.date ? UsersService.getStartOfDayUTC(new Date(dq.date)) : null;
+      const questDate = dq.date
+        ? UsersService.getStartOfDayUTC(new Date(dq.date))
+        : null;
       if (!questDate || questDate.getTime() !== today.getTime()) {
         return { success: false, message: 'Задания устарели' };
       }
@@ -3071,7 +3283,10 @@ export class UsersService {
       try {
         await user.save();
       } catch (err: unknown) {
-        if ((err as { name?: string })?.name === 'VersionError' && attempt < maxRetries - 1) {
+        if (
+          (err as { name?: string })?.name === 'VersionError' &&
+          attempt < maxRetries - 1
+        ) {
           continue;
         }
         throw err;
@@ -3168,14 +3383,19 @@ export class UsersService {
           const idStr =
             typeof bookmark === 'string'
               ? bookmark
-              : bookmark?.titleId?.toString?.() ?? (bookmark?.titleId as Types.ObjectId)?.toString?.();
+              : (bookmark?.titleId?.toString?.() ??
+                (bookmark?.titleId as Types.ObjectId)?.toString?.());
           if (!idStr) continue;
           try {
             const titleExists = await this.checkTitleExists(idStr);
             if (titleExists) {
               validBookmarks.push(
                 typeof bookmark === 'string'
-                  ? { titleId: new Types.ObjectId(bookmark), category: 'reading', addedAt: new Date() }
+                  ? {
+                      titleId: new Types.ObjectId(bookmark),
+                      category: 'reading',
+                      addedAt: new Date(),
+                    }
                   : bookmark,
               );
             } else {
@@ -3187,7 +3407,11 @@ export class UsersService {
           } catch {
             validBookmarks.push(
               typeof bookmark === 'string'
-                ? { titleId: new Types.ObjectId(bookmark), category: 'reading', addedAt: new Date() }
+                ? {
+                    titleId: new Types.ObjectId(bookmark),
+                    category: 'reading',
+                    addedAt: new Date(),
+                  }
                 : bookmark,
             );
           }
@@ -3413,8 +3637,7 @@ export class UsersService {
     targetUserId: string,
   ): boolean {
     if (!targetUserPrivacy) return false;
-    const visibility =
-      targetUserPrivacy.readingHistoryVisibility ?? 'private';
+    const visibility = targetUserPrivacy.readingHistoryVisibility ?? 'private';
 
     switch (visibility) {
       case 'public':
@@ -3484,7 +3707,7 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    const targetUserId = (targetUser._id as Types.ObjectId).toString();
+    const targetUserId = targetUser._id.toString();
     const canViewProfile = this.canViewProfile(
       targetUser.privacy ?? null,
       viewerId,
@@ -3498,12 +3721,15 @@ export class UsersService {
 
     const isOwnProfile = viewerId === targetUserId;
     const showExtendedProfile =
-      (targetUser.privacy?.profileVisibility === 'public' || isOwnProfile || isFriend);
+      targetUser.privacy?.profileVisibility === 'public' ||
+      isOwnProfile ||
+      isFriend;
     const canViewBookmarks =
-      isOwnProfile || (targetUser.showBookmarks !== false && showExtendedProfile);
+      isOwnProfile ||
+      (targetUser.showBookmarks !== false && showExtendedProfile);
     const canViewHistory =
       isOwnProfile ||
-      ((targetUser.showReadingHistory !== false) &&
+      (targetUser.showReadingHistory !== false &&
         this.canViewReadingHistory(
           targetUser.privacy ?? null,
           viewerId,
@@ -3562,9 +3788,8 @@ export class UsersService {
       ((targetUser as any).showAchievements !== false && showExtendedProfile);
     if (canViewAchievements) {
       try {
-        profile.achievements = await this.getProfileAchievementsForUser(
-          targetUserId,
-        );
+        profile.achievements =
+          await this.getProfileAchievementsForUser(targetUserId);
       } catch {
         profile.achievements = [];
       }
@@ -3700,7 +3925,9 @@ export class UsersService {
 
     if (displaySettings.isAdult !== undefined) {
       const key = `${CAN_VIEW_ADULT_CACHE_PREFIX}${userId}`;
-      await this.cacheManager.set(key, displaySettings.isAdult !== false, { ttl: CAN_VIEW_ADULT_CACHE_TTL_MS });
+      await this.cacheManager.set(key, displaySettings.isAdult !== false, {
+        ttl: CAN_VIEW_ADULT_CACHE_TTL_MS,
+      });
     }
 
     this.logger.log(

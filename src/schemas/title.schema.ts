@@ -122,7 +122,15 @@ export class Title {
       {
         relationType: {
           type: String,
-          enum: ['sequel', 'prequel', 'spin_off', 'adaptation', 'side_story', 'alternative_story', 'other'],
+          enum: [
+            'sequel',
+            'prequel',
+            'spin_off',
+            'adaptation',
+            'side_story',
+            'alternative_story',
+            'other',
+          ],
           required: true,
         },
         titleId: { type: Types.ObjectId, ref: 'Title', required: true },
@@ -136,7 +144,7 @@ export class Title {
 export const TitleSchema = SchemaFactory.createForClass(Title);
 
 TitleSchema.index({ name: 'text', altNames: 'text', description: 'text' });
-TitleSchema.index({ slug: 1 });
+// slug: index from @Prop({ unique: true })
 TitleSchema.index({ genres: 1 });
 TitleSchema.index({ status: 1 });
 TitleSchema.index({ averageRating: -1 });

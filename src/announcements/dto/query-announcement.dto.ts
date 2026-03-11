@@ -1,4 +1,11 @@
-import { IsOptional, IsString, IsInt, Min, Max, IsBoolean } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsInt,
+  Min,
+  Max,
+  IsBoolean,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class QueryAnnouncementDto {

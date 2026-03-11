@@ -28,20 +28,20 @@ function slugify(text: string): string {
 
 function toResponse(doc: TranslatorTeamDocument) {
   const obj = doc.toObject ? doc.toObject() : doc;
-  const id = (obj as any)._id?.toString?.();
+  const id = obj._id?.toString?.();
   return {
     ...obj,
-    _id: id || (obj as any)._id,
+    _id: id || obj._id,
     chaptersCount: 0,
     subscribersCount: 0,
     totalViews: 0,
-    members: ((obj as any).members || []).map((m: any) => ({
+    members: (obj.members || []).map((m: any) => ({
       ...m,
       _id: m._id?.toString?.() ?? m._id,
       userId: m.userId?.toString?.(),
     })),
-    titleIds: ((obj as any).titleIds || []).map((id: any) =>
-      typeof id === 'string' ? id : id?.toString?.() ?? id,
+    titleIds: (obj.titleIds || []).map((id: any) =>
+      typeof id === 'string' ? id : (id?.toString?.() ?? id),
     ),
   };
 }
@@ -72,11 +72,7 @@ export class TranslatorTeamsService {
     }));
   }
 
-  async findAll(options: {
-    page?: number;
-    limit?: number;
-    search?: string;
-  }) {
+  async findAll(options: { page?: number; limit?: number; search?: string }) {
     const page = Math.max(1, options.page ?? 1);
     const limit = Math.min(100, Math.max(1, options.limit ?? 20));
     const skip = (page - 1) * limit;
@@ -90,12 +86,20 @@ export class TranslatorTeamsService {
     }
 
     const [teams, total] = await Promise.all([
-      this.teamModel.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit).lean().exec(),
+      this.teamModel
+        .find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean()
+        .exec(),
       this.teamModel.countDocuments(query),
     ]);
 
     return {
-      teams: teams.map((t) => toResponse(t as unknown as TranslatorTeamDocument)),
+      teams: teams.map((t) =>
+        toResponse(t as unknown as TranslatorTeamDocument),
+      ),
       total,
       page,
       limit,
@@ -114,7 +118,9 @@ export class TranslatorTeamsService {
   }
 
   async findBySlug(slug: string): Promise<TranslatorTeamDocument> {
-    const team = await this.teamModel.findOne({ slug, isActive: { $ne: false } }).exec();
+    const team = await this.teamModel
+      .findOne({ slug, isActive: { $ne: false } })
+      .exec();
     if (!team) {
       throw new NotFoundException('Translator team not found');
     }
@@ -189,12 +195,14 @@ export class TranslatorTeamsService {
 
     const update: Record<string, unknown> = {};
     if (dto.name !== undefined) update.name = dto.name;
-    if (dto.slug !== undefined) update.slug = dto.slug.trim() || slugify(team.name);
+    if (dto.slug !== undefined)
+      update.slug = dto.slug.trim() || slugify(team.name);
     if (dto.description !== undefined) update.description = dto.description;
     if (dto.avatar !== undefined) update.avatar = dto.avatar;
     if (dto.banner !== undefined) update.banner = dto.banner;
     if (dto.socialLinks !== undefined) update.socialLinks = dto.socialLinks;
-    if (dto.donationLinks !== undefined) update.donationLinks = dto.donationLinks;
+    if (dto.donationLinks !== undefined)
+      update.donationLinks = dto.donationLinks;
     if (dto.isVerified !== undefined) update.isVerified = dto.isVerified;
     if (dto.isActive !== undefined) update.isActive = dto.isActive;
     if (dto.members !== undefined) {
@@ -225,7 +233,10 @@ export class TranslatorTeamsService {
     await this.teamModel.findByIdAndDelete(team._id).exec();
   }
 
-  async addMember(teamId: string, dto: AddMemberDto): Promise<TranslatorTeamDocument> {
+  async addMember(
+    teamId: string,
+    dto: AddMemberDto,
+  ): Promise<TranslatorTeamDocument> {
     const team = await this.findById(teamId);
     const newMember = {
       _id: new Types.ObjectId(),
@@ -265,7 +276,10 @@ export class TranslatorTeamsService {
     return updated;
   }
 
-  async addTitle(teamId: string, titleId: string): Promise<TranslatorTeamDocument> {
+  async addTitle(
+    teamId: string,
+    titleId: string,
+  ): Promise<TranslatorTeamDocument> {
     if (!Types.ObjectId.isValid(titleId)) {
       throw new BadRequestException('Invalid title ID');
     }

@@ -29,7 +29,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     // Нормализация: ValidationPipe возвращает { message: string[], error: string }
     const message =
-      typeof raw === 'object' && raw !== null && 'message' in (raw as object)
+      typeof raw === 'object' && raw !== null && 'message' in raw
         ? (raw as { message: string | string[] }).message
         : raw;
     const errors = Array.isArray(message) ? message : [message];
@@ -52,7 +52,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     response.status(status).json({
       success: false,
-      message: typeof message === 'string' ? message : errors[0] ?? 'An error occurred',
+      message:
+        typeof message === 'string'
+          ? message
+          : (errors[0] ?? 'An error occurred'),
       errors,
       timestamp: new Date().toISOString(),
       path: request.url,

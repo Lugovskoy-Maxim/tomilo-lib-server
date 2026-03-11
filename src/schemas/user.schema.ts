@@ -484,7 +484,11 @@ export const UserSchema = SchemaFactory.createForClass(User);
 // progressEvents задаём вручную: achievement должен быть Mixed, иначе при save() — "Cast to string failed"
 const progressEventElementSchema = new MongooseSchema(
   {
-    type: { type: String, enum: ['exp_gain', 'level_up', 'achievement'], required: true },
+    type: {
+      type: String,
+      enum: ['exp_gain', 'level_up', 'achievement'],
+      required: true,
+    },
     timestamp: { type: Date, required: true },
     amount: Number,
     reason: String,
@@ -506,9 +510,23 @@ UserSchema.add({
 
 // Перед сохранением убираем закладки без titleId и приводим к формату { titleId: ObjectId, category, addedAt }
 UserSchema.pre('save', function (next) {
-  if (this.bookmarks && Array.isArray(this.bookmarks) && this.bookmarks.length > 0) {
-    const out: Array<{ titleId: Types.ObjectId; category: string; addedAt: Date }> = [];
-    const categories = ['reading', 'planned', 'completed', 'favorites', 'dropped'];
+  if (
+    this.bookmarks &&
+    Array.isArray(this.bookmarks) &&
+    this.bookmarks.length > 0
+  ) {
+    const out: Array<{
+      titleId: Types.ObjectId;
+      category: string;
+      addedAt: Date;
+    }> = [];
+    const categories = [
+      'reading',
+      'planned',
+      'completed',
+      'favorites',
+      'dropped',
+    ];
     for (const b of this.bookmarks as any[]) {
       if (b == null) continue;
       const tid = b.titleId;
@@ -522,7 +540,8 @@ UserSchema.pre('save', function (next) {
               : (tid?.toString?.() ?? tid?._id?.toString?.() ?? '');
       if (idStr.length !== 24 || !Types.ObjectId.isValid(idStr)) continue;
       out.push({
-        titleId: tid instanceof Types.ObjectId ? tid : new Types.ObjectId(idStr),
+        titleId:
+          tid instanceof Types.ObjectId ? tid : new Types.ObjectId(idStr),
         category: categories.includes(b?.category) ? b.category : 'reading',
         addedAt: b?.addedAt ? new Date(b.addedAt) : new Date(),
       });
@@ -537,7 +556,10 @@ UserSchema.index({ 'readingHistory.chapters.chapterId': 1 });
 UserSchema.index({ 'readingHistory.readAt': -1 });
 UserSchema.index({ 'bookmarks.titleId': 1 });
 UserSchema.index({ birthDate: 1 });
-UserSchema.index({ 'oauthProviders.provider': 1, 'oauthProviders.providerId': 1 });
+UserSchema.index({
+  'oauthProviders.provider': 1,
+  'oauthProviders.providerId': 1,
+});
 
 // Индексы для лидерборда
 UserSchema.index({ level: -1, experience: -1 });

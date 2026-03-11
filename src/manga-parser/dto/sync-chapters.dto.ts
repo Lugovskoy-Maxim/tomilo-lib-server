@@ -1,4 +1,10 @@
-import { IsString, IsUrl, IsOptional, IsArray, IsNumber } from 'class-validator';
+import {
+  IsString,
+  IsUrl,
+  IsOptional,
+  IsArray,
+  IsNumber,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class SyncChaptersDto {

@@ -95,7 +95,8 @@ export class ShopController {
   async getSuggestions(@Request() req): Promise<ApiResponseDto<any>> {
     try {
       const userId = req.user?.userId ?? null;
-      const data = await this.shopService.getSuggestedDecorationsWithUserVote(userId);
+      const data =
+        await this.shopService.getSuggestedDecorationsWithUserVote(userId);
       return {
         success: true,
         data,
@@ -141,13 +142,18 @@ export class ShopController {
       limits: { fileSize: 20 * 1024 * 1024 },
       fileFilter: (_req, file, cb) => {
         if (!file.mimetype.startsWith('image/')) {
-          return cb(new BadRequestException('Only image files are allowed'), false);
+          return cb(
+            new BadRequestException('Only image files are allowed'),
+            false,
+          );
         }
         cb(null, true);
       },
     }),
   )
-  async uploadSuggestionImage(@Req() req: Express.Request): Promise<ApiResponseDto<{ imageUrl: string }>> {
+  async uploadSuggestionImage(
+    @Req() req: Express.Request,
+  ): Promise<ApiResponseDto<{ imageUrl: string }>> {
     const file = (req as any).file ?? req.file ?? null;
     if (!file?.filename) {
       return {
@@ -239,7 +245,9 @@ export class ShopController {
   @Delete('suggestions/:id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
-  async deleteSuggestion(@Param('id') id: string): Promise<ApiResponseDto<{ message: string }>> {
+  async deleteSuggestion(
+    @Param('id') id: string,
+  ): Promise<ApiResponseDto<{ message: string }>> {
     try {
       const data = await this.shopService.deleteSuggestion(id);
       return {
@@ -271,11 +279,15 @@ export class ShopController {
     body: { name?: string; description?: string; imageUrl?: string },
   ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.shopService.updateSuggestion(id, req.user.userId, {
-        name: body.name,
-        description: body.description,
-        imageUrl: body.imageUrl,
-      });
+      const data = await this.shopService.updateSuggestion(
+        id,
+        req.user.userId,
+        {
+          name: body.name,
+          description: body.description,
+          imageUrl: body.imageUrl,
+        },
+      );
       return {
         success: true,
         data,

@@ -28,7 +28,10 @@ export class SubscriptionsController {
     @Query('limit') limit?: string,
   ): Promise<ApiResponseDto<any>> {
     const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(String(limit), 10) || 20));
+    const limitNum = Math.min(
+      100,
+      Math.max(1, parseInt(String(limit), 10) || 20),
+    );
     const data = await this.subscriptionsService.getMyTitleSubscriptions(
       req.user.userId,
       pageNum,
@@ -67,7 +70,8 @@ export class SubscriptionsController {
   async getTitleSubscribersCount(
     @Param('titleId') titleId: string,
   ): Promise<ApiResponseDto<{ count: number }>> {
-    const count = await this.subscriptionsService.getTitleSubscribersCount(titleId);
+    const count =
+      await this.subscriptionsService.getTitleSubscribersCount(titleId);
     return {
       success: true,
       data: { count },
@@ -82,7 +86,12 @@ export class SubscriptionsController {
   @HttpCode(HttpStatus.OK)
   async subscribeToTitle(
     @Request() req,
-    @Body() body: { titleId: string; notifyOnNewChapter?: boolean; notifyOnAnnouncement?: boolean },
+    @Body()
+    body: {
+      titleId: string;
+      notifyOnNewChapter?: boolean;
+      notifyOnAnnouncement?: boolean;
+    },
   ): Promise<ApiResponseDto<any>> {
     const { titleId, notifyOnNewChapter, notifyOnAnnouncement } = body;
     if (!titleId) {
@@ -117,7 +126,10 @@ export class SubscriptionsController {
     @Request() req,
     @Param('titleId') titleId: string,
   ): Promise<ApiResponseDto<void>> {
-    await this.subscriptionsService.unsubscribeFromTitle(req.user.userId, titleId);
+    await this.subscriptionsService.unsubscribeFromTitle(
+      req.user.userId,
+      titleId,
+    );
     return {
       success: true,
       timestamp: new Date().toISOString(),
@@ -131,7 +143,8 @@ export class SubscriptionsController {
   async updateTitleSubscription(
     @Request() req,
     @Param('titleId') titleId: string,
-    @Body() body: { notifyOnNewChapter?: boolean; notifyOnAnnouncement?: boolean },
+    @Body()
+    body: { notifyOnNewChapter?: boolean; notifyOnAnnouncement?: boolean },
   ): Promise<ApiResponseDto<any>> {
     const data = await this.subscriptionsService.updateTitleSubscription(
       req.user.userId,

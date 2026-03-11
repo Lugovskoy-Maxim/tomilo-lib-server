@@ -40,7 +40,7 @@ function toResponse(doc: any) {
       userId: m.userId?.toString?.(),
     })),
     titleIds: (obj.titleIds || []).map((id: any) =>
-      typeof id === 'string' ? id : id?.toString?.() ?? id,
+      typeof id === 'string' ? id : (id?.toString?.() ?? id),
     ),
   };
 }
@@ -48,7 +48,9 @@ function toResponse(doc: any) {
 @Controller('translator-teams')
 @UsePipes(new ValidationPipe({ whitelist: true }))
 export class TranslatorTeamsController {
-  constructor(private readonly translatorTeamsService: TranslatorTeamsService) {}
+  constructor(
+    private readonly translatorTeamsService: TranslatorTeamsService,
+  ) {}
 
   @Get()
   async findAll(
@@ -83,9 +85,7 @@ export class TranslatorTeamsController {
   }
 
   @Get('slug/:slug')
-  async findBySlug(
-    @Param('slug') slug: string,
-  ): Promise<ApiResponseDto<any>> {
+  async findBySlug(@Param('slug') slug: string): Promise<ApiResponseDto<any>> {
     const team = await this.translatorTeamsService.findBySlug(
       decodeURIComponent(slug),
     );

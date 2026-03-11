@@ -52,7 +52,7 @@ describe('SearchController', () => {
       ];
       mockSearchService.searchTitles.mockResolvedValue(mockTitles);
 
-      const req = { headers: {} };
+      const req = { user: { userId: 'u1' }, headers: {} };
       const result = await controller.searchTitles(
         req as any,
         'test query',

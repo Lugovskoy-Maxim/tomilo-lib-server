@@ -219,7 +219,12 @@ export class StatsController {
     const stats = await this.statsService.recordDailyStats();
     return {
       success: true,
-      data: { success: true, message: 'OK', date: new Date().toISOString().split('T')[0], recorded: !!stats },
+      data: {
+        success: true,
+        message: 'OK',
+        date: new Date().toISOString().split('T')[0],
+        recorded: !!stats,
+      },
       timestamp: new Date().toISOString(),
       path: '/stats/record',
       method: 'POST',

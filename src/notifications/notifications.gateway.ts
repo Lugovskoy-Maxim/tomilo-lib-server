@@ -75,10 +75,15 @@ export class NotificationsGateway
       const { count } = await this.notificationsService.getUnreadCount(userId);
       client.emit('unread_count', { count });
     } catch (e) {
-      this.logger.warn(`Notifications WS: getUnreadCount failed for ${userId}`, e);
+      this.logger.warn(
+        `Notifications WS: getUnreadCount failed for ${userId}`,
+        e,
+      );
     }
 
-    this.logger.log(`Notifications WS: client ${client.id} joined room ${room}`);
+    this.logger.log(
+      `Notifications WS: client ${client.id} joined room ${room}`,
+    );
   }
 
   handleDisconnect(client: Socket) {
@@ -99,7 +104,10 @@ export class NotificationsGateway
       const room = `${USER_ROOM_PREFIX}${userId}`;
       this.server.to(room).emit('unread_count', { count });
     } catch (e) {
-      this.logger.warn(`Notifications WS: emitUnreadCountToUser failed for ${userId}`, e);
+      this.logger.warn(
+        `Notifications WS: emitUnreadCountToUser failed for ${userId}`,
+        e,
+      );
     }
   }
 
@@ -114,8 +122,18 @@ export class NotificationsGateway
           type: 'level_up';
           oldLevel: number;
           newLevel: number;
-          oldRank: { rank: number; stars: number; name: string; minLevel: number };
-          newRank: { rank: number; stars: number; name: string; minLevel: number };
+          oldRank: {
+            rank: number;
+            stars: number;
+            name: string;
+            minLevel: number;
+          };
+          newRank: {
+            rank: number;
+            stars: number;
+            name: string;
+            minLevel: number;
+          };
         }
       | { type: 'achievement'; achievement: Record<string, unknown> },
   ): void {
@@ -123,7 +141,10 @@ export class NotificationsGateway
       const room = `${USER_ROOM_PREFIX}${userId}`;
       this.server.to(room).emit('progress', event);
     } catch (e) {
-      this.logger.warn(`Notifications WS: emitProgressToUser failed for ${userId}`, e);
+      this.logger.warn(
+        `Notifications WS: emitProgressToUser failed for ${userId}`,
+        e,
+      );
     }
   }
 
@@ -146,7 +167,10 @@ export class NotificationsGateway
       const room = `${USER_ROOM_PREFIX}${userId}`;
       this.server.to(room).emit('notification', notification);
     } catch (e) {
-      this.logger.warn(`Notifications WS: emitNotificationToUser failed for ${userId}`, e);
+      this.logger.warn(
+        `Notifications WS: emitNotificationToUser failed for ${userId}`,
+        e,
+      );
     }
   }
 }

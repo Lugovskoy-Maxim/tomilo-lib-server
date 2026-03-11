@@ -73,7 +73,10 @@ export class VkIdStrategy extends PassportStrategy(Strategy, 'vk-id') {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
     } catch (err) {
-      const axiosErr = err as AxiosError<{ error?: string; error_description?: string }>;
+      const axiosErr = err as AxiosError<{
+        error?: string;
+        error_description?: string;
+      }>;
       const message =
         axiosErr.response?.data?.error_description ||
         axiosErr.response?.data?.error ||
@@ -93,7 +96,10 @@ export class VkIdStrategy extends PassportStrategy(Strategy, 'vk-id') {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
     } catch (err) {
-      const axiosErr = err as AxiosError<{ error?: string; error_description?: string }>;
+      const axiosErr = err as AxiosError<{
+        error?: string;
+        error_description?: string;
+      }>;
       const message =
         axiosErr.response?.data?.error_description ||
         axiosErr.response?.data?.error ||
@@ -116,7 +122,9 @@ export class VkIdStrategy extends PassportStrategy(Strategy, 'vk-id') {
       provider: 'vk_id',
       providerId: vkUser.user_id || user_id,
       email: vkUser.email,
-      username: [vkUser.first_name, vkUser.last_name].filter(Boolean).join(' ') || vkUser.user_id,
+      username:
+        [vkUser.first_name, vkUser.last_name].filter(Boolean).join(' ') ||
+        vkUser.user_id,
       firstName: vkUser.first_name,
       lastName: vkUser.last_name,
       birthDate,

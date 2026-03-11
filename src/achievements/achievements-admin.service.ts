@@ -21,7 +21,8 @@ const ACHIEVEMENT_RARITY_VALUES = ACHIEVEMENT_RARITIES as unknown as string[];
 @Injectable()
 export class AchievementsAdminService {
   constructor(
-    @InjectModel(Achievement.name) private achievementModel: Model<AchievementDocument>,
+    @InjectModel(Achievement.name)
+    private achievementModel: Model<AchievementDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
   ) {}
 
@@ -149,10 +150,14 @@ export class AchievementsAdminService {
     if (!id) throw new BadRequestException('id is required');
     if (!body.name?.trim()) throw new BadRequestException('name is required');
     if (!ACHIEVEMENT_TYPE_VALUES.includes(body.type)) {
-      throw new BadRequestException(`type must be one of: ${ACHIEVEMENT_TYPE_VALUES.join(', ')}`);
+      throw new BadRequestException(
+        `type must be one of: ${ACHIEVEMENT_TYPE_VALUES.join(', ')}`,
+      );
     }
     if (!ACHIEVEMENT_RARITY_VALUES.includes(body.rarity)) {
-      throw new BadRequestException(`rarity must be one of: ${ACHIEVEMENT_RARITY_VALUES.join(', ')}`);
+      throw new BadRequestException(
+        `rarity must be one of: ${ACHIEVEMENT_RARITY_VALUES.join(', ')}`,
+      );
     }
     const existing = await this.achievementModel.findOne({ id });
     if (existing) {
@@ -194,21 +199,27 @@ export class AchievementsAdminService {
       throw new NotFoundException('Achievement not found');
     }
     if (body.name !== undefined) achievement.name = body.name.trim();
-    if (body.description !== undefined) achievement.description = body.description.trim();
+    if (body.description !== undefined)
+      achievement.description = body.description.trim();
     if (body.icon !== undefined) achievement.icon = body.icon.trim();
     if (body.type !== undefined) {
       if (!ACHIEVEMENT_TYPE_VALUES.includes(body.type)) {
-        throw new BadRequestException(`type must be one of: ${ACHIEVEMENT_TYPE_VALUES.join(', ')}`);
+        throw new BadRequestException(
+          `type must be one of: ${ACHIEVEMENT_TYPE_VALUES.join(', ')}`,
+        );
       }
       achievement.type = body.type;
     }
     if (body.rarity !== undefined) {
       if (!ACHIEVEMENT_RARITY_VALUES.includes(body.rarity)) {
-        throw new BadRequestException(`rarity must be one of: ${ACHIEVEMENT_RARITY_VALUES.join(', ')}`);
+        throw new BadRequestException(
+          `rarity must be one of: ${ACHIEVEMENT_RARITY_VALUES.join(', ')}`,
+        );
       }
       achievement.rarity = body.rarity;
     }
-    if (body.maxProgress !== undefined) achievement.maxProgress = body.maxProgress;
+    if (body.maxProgress !== undefined)
+      achievement.maxProgress = body.maxProgress;
     if (body.isHidden !== undefined) achievement.isHidden = body.isHidden;
     await achievement.save();
     return achievement;
@@ -228,7 +239,11 @@ export class AchievementsAdminService {
     return { message: 'Achievement deleted successfully' };
   }
 
-  async grant(body: { achievementId: string; userId: string; progress?: number }) {
+  async grant(body: {
+    achievementId: string;
+    userId: string;
+    progress?: number;
+  }) {
     const { achievementId, userId, progress = 0 } = body;
     if (!achievementId || !userId) {
       throw new BadRequestException('achievementId and userId are required');
@@ -247,7 +262,9 @@ export class AchievementsAdminService {
 
     const idStr = achievement.id;
     const existing = (user.achievements || []).find(
-      (a) => a.achievementId === idStr || a.achievementId === achievement._id.toString(),
+      (a) =>
+        a.achievementId === idStr ||
+        a.achievementId === achievement._id.toString(),
     );
     const entry = {
       achievementId: idStr,

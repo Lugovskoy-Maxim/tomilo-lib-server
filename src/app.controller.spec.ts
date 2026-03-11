@@ -171,7 +171,12 @@ describe('AppController', () => {
       const dailyData = [{ date: new Date(), newUsers: 1 }];
       (appService.getRecentStats as jest.Mock).mockResolvedValue(dailyData);
 
-      const result = await appController.getStatsHistory('daily', undefined, undefined, '14');
+      const result = await appController.getStatsHistory(
+        'daily',
+        undefined,
+        undefined,
+        '14',
+      );
       expect(result.success).toBe(true);
       expect(result.data).toEqual(dailyData);
       expect(appService.getRecentStats).toHaveBeenCalledWith(14);

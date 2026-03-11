@@ -8,7 +8,10 @@ import {
   IsNotEmpty,
   MaxLength,
 } from 'class-validator';
-import { AnnouncementLayout, ContentBlockType } from '../../schemas/announcement.schema';
+import {
+  AnnouncementLayout,
+  ContentBlockType,
+} from '../../schemas/announcement.schema';
 
 export class ContentBlockDto {
   @IsEnum(ContentBlockType)

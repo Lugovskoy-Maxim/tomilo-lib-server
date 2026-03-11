@@ -100,8 +100,7 @@ export class AppController {
     @Query('days') daysString?: string,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const year =
-        parseInt(yearString || '', 10) || new Date().getFullYear();
+      const year = parseInt(yearString || '', 10) || new Date().getFullYear();
       const month =
         parseInt(monthString || '', 10) || new Date().getMonth() + 1;
       const days = parseInt(daysString || '', 10) || 30;

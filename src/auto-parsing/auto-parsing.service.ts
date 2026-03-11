@@ -59,7 +59,9 @@ export class AutoParsingService implements OnModuleInit {
       return {
         updateOne: {
           filter: { _id: job._id },
-          update: { $set: { scheduleHour: this.getDeterministicScheduleHour(seed) } },
+          update: {
+            $set: { scheduleHour: this.getDeterministicScheduleHour(seed) },
+          },
         },
       };
     });
@@ -401,18 +403,17 @@ export class AutoParsingService implements OnModuleInit {
           `Importing ${numbersFromThisSource.length} chapter(s) from source: ${url}`,
         );
 
-        const imported =
-          await this.mangaParserService.parseAndImportChapters({
-            url,
-            titleId,
-            chapterNumbers: numbersFromThisSource.map(String),
-          });
+        const imported = await this.mangaParserService.parseAndImportChapters({
+          url,
+          titleId,
+          chapterNumbers: numbersFromThisSource.map(String),
+        });
 
         for (const c of imported) {
           const num =
-            typeof (c as any).chapterNumber === 'number'
-              ? (c as any).chapterNumber
-              : parseFloat((c as any).chapterNumber);
+            typeof c.chapterNumber === 'number'
+              ? c.chapterNumber
+              : parseFloat(c.chapterNumber);
           if (!isNaN(num)) remainingToImport.delete(num);
           allImported.push(c);
         }
@@ -544,7 +545,13 @@ export class AutoParsingService implements OnModuleInit {
   async handleScheduledByHourAndMinuteJobs() {
     const now = new Date();
     const hour = now.getUTCHours();
-    const minuteSlot = Math.floor(now.getUTCMinutes() / 10) * 10 as 0 | 10 | 20 | 30 | 40 | 50;
+    const minuteSlot = (Math.floor(now.getUTCMinutes() / 10) * 10) as
+      | 0
+      | 10
+      | 20
+      | 30
+      | 40
+      | 50;
     const dayOfWeek = now.getUTCDay(); // 0 = Sunday
     const dayOfMonth = now.getUTCDate();
 

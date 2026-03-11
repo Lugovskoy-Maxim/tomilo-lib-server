@@ -93,12 +93,11 @@ export class MangaParserController {
       this.logger.log(
         `Starting chapters sync for title ${dto.titleId} from: ${dto.sourceUrl}`,
       );
-      const result =
-        await this.mangaParserService.syncChaptersFromSource(
-          dto.titleId,
-          dto.sourceUrl,
-          dto.chapterNumbers,
-        );
+      const result = await this.mangaParserService.syncChaptersFromSource(
+        dto.titleId,
+        dto.sourceUrl,
+        dto.chapterNumbers,
+      );
       this.logger.log(
         `Sync completed: ${result.synced.length} synced, ${result.skipped.length} skipped, ${result.errors.length} errors`,
       );

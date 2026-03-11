@@ -90,11 +90,13 @@ describe('CollectionsController', () => {
       const created = { _id: new Types.ObjectId(), ...dto };
       mockCollectionsService.create.mockResolvedValue(created);
 
-      const req = { user: { userId: 'u1', email: 'a@b.com', roles: ['admin'] } };
+      const req = {
+        user: { userId: 'u1', email: 'a@b.com', roles: ['admin'] },
+      };
       const result = await controller.create(req as any, dto);
       expect(result.success).toBe(true);
       expect(result.data).toEqual(created);
-      expect(mockCollectionsService.create).toHaveBeenCalledWith(dto);
+      expect(mockCollectionsService.create).toHaveBeenCalledWith(dto, undefined);
     });
 
     it('should set cover from file when provided', async () => {
@@ -107,22 +109,21 @@ describe('CollectionsController', () => {
       mockCollectionsService.create.mockResolvedValue({});
 
       await controller.create({} as any, dto, file);
-      expect(mockCollectionsService.create).toHaveBeenCalledWith({
-        ...dto,
-        cover: '/uploads/collections/cover.jpg',
-      });
+      expect(mockCollectionsService.create).toHaveBeenCalledWith(dto, file);
     });
   });
 
   describe('update', () => {
     it('should update collection', async () => {
       const id = new Types.ObjectId().toString();
-      const dto: UpdateCollectionDto = { name: 'Updated' } as UpdateCollectionDto;
+      const dto: UpdateCollectionDto = {
+        name: 'Updated',
+      } as UpdateCollectionDto;
       mockCollectionsService.update.mockResolvedValue({});
 
       const result = await controller.update(id, dto);
       expect(result.success).toBe(true);
-      expect(mockCollectionsService.update).toHaveBeenCalledWith(id, dto);
+      expect(mockCollectionsService.update).toHaveBeenCalledWith(id, dto, undefined);
     });
   });
 

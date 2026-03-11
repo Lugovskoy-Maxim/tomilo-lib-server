@@ -87,8 +87,12 @@ export class StatsService {
         },
         { $group: { _id: null, total: { $sum: '$views' } } },
       ]),
-      this.userModel.countDocuments({ createdAt: { $gte: startOfDay, $lt: endOfDay } }),
-      this.titleModel.countDocuments({ createdAt: { $gte: startOfDay, $lt: endOfDay } }),
+      this.userModel.countDocuments({
+        createdAt: { $gte: startOfDay, $lt: endOfDay },
+      }),
+      this.titleModel.countDocuments({
+        createdAt: { $gte: startOfDay, $lt: endOfDay },
+      }),
       this.chapterModel.countDocuments({
         createdAt: { $gte: startOfDay, $lt: endOfDay },
       }),
@@ -576,7 +580,10 @@ export class StatsService {
   /**
    * Обзорная статистика для главной админки
    */
-  async getStats(options?: { includeHistory?: boolean; historyDays?: number }): Promise<any> {
+  async getStats(options?: {
+    includeHistory?: boolean;
+    historyDays?: number;
+  }): Promise<any> {
     const now = new Date();
     const today = getStartOfDay(now);
     const weekAgo = new Date(today);
@@ -622,7 +629,9 @@ export class StatsService {
 
     const daily = dailyStatsToday
       ? {
-          views: (dailyStatsToday.titleViews || 0) + (dailyStatsToday.chapterViews || 0),
+          views:
+            (dailyStatsToday.titleViews || 0) +
+            (dailyStatsToday.chapterViews || 0),
           newUsers: dailyStatsToday.newUsers || 0,
           newTitles: dailyStatsToday.newTitles || 0,
           newChapters: dailyStatsToday.newChapters || 0,
@@ -652,7 +661,9 @@ export class StatsService {
       chaptersRead: sum(dailyStatsMonth, 'chaptersRead'),
     };
 
-    const totalViews = await this.titleModel.aggregate([{ $group: { _id: null, total: { $sum: '$dayViews' } } }]).then((r) => r[0]?.total ?? 0);
+    const totalViews = await this.titleModel
+      .aggregate([{ $group: { _id: null, total: { $sum: '$dayViews' } } }])
+      .then((r) => r[0]?.total ?? 0);
     const bookmarksAgg = await this.userModel
       .aggregate([
         { $project: { c: { $size: { $ifNull: ['$bookmarks', []] } } } },
@@ -688,7 +699,8 @@ export class StatsService {
       monthly,
       popularTitles: dailyStatsToday?.popularTitles?.slice(0, 10) ?? [],
       popularChapters: dailyStatsToday?.popularChapters?.slice(0, 10) ?? [],
-      activeUsersToday: dailyStatsToday?.activeUsers ?? liveTodaySnapshot?.activeUsers ?? 0,
+      activeUsersToday:
+        dailyStatsToday?.activeUsers ?? liveTodaySnapshot?.activeUsers ?? 0,
       newUsersThisMonth: monthly.newUsers,
       totalRatings: 0,
       averageRating: 0,
@@ -758,7 +770,13 @@ export class StatsService {
           newChapters: acc.newChapters + d.newChapters,
           chaptersRead: acc.chaptersRead + d.chaptersRead,
         }),
-        { views: 0, newUsers: 0, newTitles: 0, newChapters: 0, chaptersRead: 0 },
+        {
+          views: 0,
+          newUsers: 0,
+          newTitles: 0,
+          newChapters: 0,
+          chaptersRead: 0,
+        },
       );
       const data = [{ year, month, ...totals }];
       return { type: 'monthly', data, total: 1 };
@@ -769,7 +787,9 @@ export class StatsService {
       const data = [
         {
           year,
-          views: (yrStats.yearlyTotals.totalTitleViews || 0) + (yrStats.yearlyTotals.totalChapterViews || 0),
+          views:
+            (yrStats.yearlyTotals.totalTitleViews || 0) +
+            (yrStats.yearlyTotals.totalChapterViews || 0),
           newUsers: yrStats.yearlyTotals.totalNewUsers,
           newTitles: yrStats.yearlyTotals.totalNewTitles,
           newChapters: yrStats.yearlyTotals.totalNewChapters,

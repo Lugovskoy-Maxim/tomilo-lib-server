@@ -19,7 +19,9 @@ export class AnnouncementsController {
   @Get()
   async findAll(
     @Query() query: QueryAnnouncementDto,
-  ): Promise<ApiResponseDto<{ announcements: unknown[]; pagination: unknown }>> {
+  ): Promise<
+    ApiResponseDto<{ announcements: unknown[]; pagination: unknown }>
+  > {
     const data = await this.announcementsService.findAll(query, {
       forPublic: true,
     });
@@ -32,7 +34,9 @@ export class AnnouncementsController {
   }
 
   @Get('by-slug/:slug')
-  async findBySlug(@Param('slug') slug: string): Promise<ApiResponseDto<unknown>> {
+  async findBySlug(
+    @Param('slug') slug: string,
+  ): Promise<ApiResponseDto<unknown>> {
     const data = await this.announcementsService.findBySlug(slug, {
       forPublic: true,
     });

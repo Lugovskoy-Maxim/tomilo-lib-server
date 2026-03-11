@@ -15,7 +15,11 @@ describe('UsersController', () => {
     getCanViewAdult: jest.fn(),
   };
 
-  const mockUser = { userId: 'user-123', email: 'u@example.com', roles: ['user'] };
+  const mockUser = {
+    userId: 'user-123',
+    email: 'u@example.com',
+    roles: ['user'],
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -77,7 +81,11 @@ describe('UsersController', () => {
 
   describe('getProfile', () => {
     it('should return current user profile', async () => {
-      const profile = { userId: 'user-123', email: 'u@example.com', username: 'user' };
+      const profile = {
+        userId: 'user-123',
+        email: 'u@example.com',
+        username: 'user',
+      };
       mockUsersService.findProfileById.mockResolvedValue(profile);
 
       const req = { user: mockUser };
@@ -114,13 +122,19 @@ describe('UsersController', () => {
       expect(safeUpdate).not.toHaveProperty('balance');
       expect(safeUpdate).not.toHaveProperty('ownedDecorations');
       expect(safeUpdate).not.toHaveProperty('equippedDecorations');
-      expect(mockUsersService.update).toHaveBeenCalledWith('user-123', expect.any(Object));
+      expect(mockUsersService.update).toHaveBeenCalledWith(
+        'user-123',
+        expect.any(Object),
+      );
     });
 
     it('should return error on service throw', async () => {
       mockUsersService.update.mockRejectedValue(new Error('err'));
       const req = { user: mockUser };
-      const result = await controller.updateProfile(req as any, {} as UpdateUserDto);
+      const result = await controller.updateProfile(
+        req as any,
+        {} as UpdateUserDto,
+      );
       expect(result.success).toBe(false);
       expect(result.message).toBe('Failed to update profile');
     });

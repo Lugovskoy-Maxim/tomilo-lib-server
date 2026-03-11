@@ -8,7 +8,9 @@ import { FilesModule } from '../files/files.module';
 
 @Module({
   imports: [
-    MongooseModule.forFeature([{ name: Character.name, schema: CharacterSchema }]),
+    MongooseModule.forFeature([
+      { name: Character.name, schema: CharacterSchema },
+    ]),
     TitlesModule,
     FilesModule,
   ],

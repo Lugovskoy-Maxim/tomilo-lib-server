@@ -1,6 +1,13 @@
 import { IsString, IsOptional, IsEnum } from 'class-validator';
 
-const ROLES = ['translator', 'editor', 'proofreader', 'cleaner', 'typesetter', 'leader'] as const;
+const ROLES = [
+  'translator',
+  'editor',
+  'proofreader',
+  'cleaner',
+  'typesetter',
+  'leader',
+] as const;
 
 export class AddMemberDto {
   @IsOptional()

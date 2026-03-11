@@ -52,17 +52,18 @@ describe('CommentsController', () => {
       const result = await controller.create(dto, req as any);
       expect(result.success).toBe(true);
       expect(result.data).toEqual(created);
-      expect(mockCommentsService.create).toHaveBeenCalledWith(
-        dto,
-        'user-123',
-      );
+      expect(mockCommentsService.create).toHaveBeenCalledWith(dto, 'user-123');
     });
 
     it('should return error on service throw', async () => {
       mockCommentsService.create.mockRejectedValue(new Error('err'));
       const req = { user: mockUser };
       const result = await controller.create(
-        { entityType: CommentEntityType.TITLE, entityId: new Types.ObjectId().toString(), content: 'x' } as CreateCommentDto,
+        {
+          entityType: CommentEntityType.TITLE,
+          entityId: new Types.ObjectId().toString(),
+          content: 'x',
+        } as CreateCommentDto,
         req as any,
       );
       expect(result.success).toBe(false);
@@ -91,6 +92,7 @@ describe('CommentsController', () => {
         1,
         20,
         false,
+        'newest',
       );
     });
 
@@ -110,6 +112,7 @@ describe('CommentsController', () => {
         1,
         10,
         true,
+        'newest',
       );
     });
 

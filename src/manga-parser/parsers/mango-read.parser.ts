@@ -14,7 +14,11 @@ interface MangoReadProject {
   translation_status?: string;
   release_year?: number;
   age_rating?: number;
-  cover_image?: { id: number; core_url: string | null; selectel_url: string | null };
+  cover_image?: {
+    id: number;
+    core_url: string | null;
+    selectel_url: string | null;
+  };
   cover_url?: string;
   alternative_titles?: string[];
   genres?: string[];
@@ -76,9 +80,7 @@ export class MangoReadParser implements MangaParser {
     const chapters = await this.fetchChaptersList(project.id);
 
     const coverUrl =
-      project.cover_url ||
-      project.cover_image?.core_url ||
-      undefined;
+      project.cover_url || project.cover_image?.core_url || undefined;
 
     return {
       title: project.title,
@@ -88,7 +90,10 @@ export class MangoReadParser implements MangaParser {
           : undefined,
       description: project.description ?? undefined,
       coverUrl: coverUrl ?? undefined,
-      genres: project.genres && project.genres.length > 0 ? project.genres : undefined,
+      genres:
+        project.genres && project.genres.length > 0
+          ? project.genres
+          : undefined,
       author:
         project.authors && project.authors.length > 0
           ? project.authors.join(', ')
@@ -100,7 +105,8 @@ export class MangoReadParser implements MangaParser {
       releaseYear: project.release_year ?? undefined,
       type: project.type ?? undefined,
       chapters: chapters.map((ch) => ({
-        name: ch.title && ch.title.trim() ? ch.title : `Глава ${ch.chapter_number}`,
+        name:
+          ch.title && ch.title.trim() ? ch.title : `Глава ${ch.chapter_number}`,
         number: ch.chapter_number,
         pageCount: ch.page_count,
         /** "volume_number/chapter_number" for API: GET /chapters/{slug}/{volume}/{chapter} */
@@ -114,7 +120,9 @@ export class MangoReadParser implements MangaParser {
     return match ? decodeURIComponent(match[1]) : null;
   }
 
-  private async fetchProject(transliteratedName: string): Promise<MangoReadProject> {
+  private async fetchProject(
+    transliteratedName: string,
+  ): Promise<MangoReadProject> {
     const res = await this.session.get<MangoReadProject>(
       `${API_BASE}/projects/${encodeURIComponent(transliteratedName)}`,
     );
@@ -126,7 +134,9 @@ export class MangoReadParser implements MangaParser {
     return res.data;
   }
 
-  private async fetchChaptersList(projectId: number): Promise<MangoReadChapterListItem[]> {
+  private async fetchChaptersList(
+    projectId: number,
+  ): Promise<MangoReadChapterListItem[]> {
     const res = await this.session.get<MangoReadChapterListItem[]>(
       `${API_BASE}/chapters/project/${projectId}`,
     );

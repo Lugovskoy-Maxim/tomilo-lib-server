@@ -130,7 +130,9 @@ export class FilesService {
         this.logger.log(`[S3 async] Папка удалена: ${s3Prefix}`);
       })
       .catch((error) => {
-        this.logger.error(`[S3 async] Ошибка удаления папки ${s3Prefix}: ${error}`);
+        this.logger.error(
+          `[S3 async] Ошибка удаления папки ${s3Prefix}: ${error}`,
+        );
       });
   }
 
@@ -526,7 +528,10 @@ export class FilesService {
     }
   }
 
-  async deleteCharacterAvatar(titleId: string, characterId: string): Promise<void> {
+  async deleteCharacterAvatar(
+    titleId: string,
+    characterId: string,
+  ): Promise<void> {
     await this.deleteFolderWithBackup(
       `characters/${titleId}/${characterId}`,
       `characters/${titleId}/${characterId}`,

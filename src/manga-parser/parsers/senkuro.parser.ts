@@ -294,7 +294,8 @@ export class SenkuroParser implements MangaParser {
       const name = s.person?.name?.trim();
       if (!name) continue;
       const roles = (s.roles || []) as string[];
-      if (roles.includes('STORY') && !authors.includes(name)) authors.push(name);
+      if (roles.includes('STORY') && !authors.includes(name))
+        authors.push(name);
       if (roles.includes('ART') && !artists.includes(name)) artists.push(name);
     }
 

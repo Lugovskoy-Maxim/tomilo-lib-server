@@ -1,4 +1,9 @@
-import { Injectable, Inject, BadRequestException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import axios, { AxiosInstance } from 'axios';
 import * as cheerio from 'cheerio';
@@ -56,7 +61,10 @@ export class MangaParserService {
     private chaptersService: ChaptersService,
     private filesService: FilesService,
     @Inject(CACHE_MANAGER)
-    private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown) => Promise<void> },
+    private cacheManager: {
+      get: (k: string) => Promise<unknown>;
+      set: (k: string, v: unknown) => Promise<void>;
+    },
   ) {
     this.session = axios.create({
       timeout: 20000,
@@ -430,8 +438,9 @@ export class MangaParserService {
         if (src) {
           const normalized = this.normalizeImageUrl(src);
           if (normalized) {
-            const absoluteUrl =
-              normalized.startsWith('http') ? normalized : `${baseUrl}${normalized.startsWith('/') ? '' : '/'}${normalized}`;
+            const absoluteUrl = normalized.startsWith('http')
+              ? normalized
+              : `${baseUrl}${normalized.startsWith('/') ? '' : '/'}${normalized}`;
             imageUrls.push(absoluteUrl);
           }
         }
@@ -691,7 +700,9 @@ export class MangaParserService {
     };
 
     try {
-      const urlMatch = chapter.url.match(/ab\.728\.team\/comic\/([^/]+)\/([^/?#]+)/);
+      const urlMatch = chapter.url.match(
+        /ab\.728\.team\/comic\/([^/]+)\/([^/?#]+)/,
+      );
       const comicSlug = urlMatch?.[1];
       const ordinal = urlMatch?.[2];
       const apiHeaders = {
@@ -720,7 +731,9 @@ export class MangaParserService {
               imageUrls = pages
                 .map((p) => {
                   const u = typeof p === 'string' ? p : '';
-                  const full = u.startsWith('http') ? u : `${baseUrl}/storage/${u.replace(/^\//, '')}`;
+                  const full = u.startsWith('http')
+                    ? u
+                    : `${baseUrl}/storage/${u.replace(/^\//, '')}`;
                   return this.normalizeImageUrl(full);
                 })
                 .filter(Boolean);
@@ -741,23 +754,24 @@ export class MangaParserService {
         const pushSrc = (src: string | undefined): void => {
           const normalized = src ? this.normalizeImageUrl(src) : '';
           if (!normalized) return;
-          const absolute =
-            normalized.startsWith('http') ? normalized : new URL(normalized, chapter.url).href;
+          const absolute = normalized.startsWith('http')
+            ? normalized
+            : new URL(normalized, chapter.url).href;
           if (!imageUrls.includes(absolute)) imageUrls.push(absolute);
         };
         $('img[data-src]').each((_, el) => pushSrc($(el).attr('data-src')));
-        $('.reader img, .reader-page img, .chapter-reader img, [class*="reader"] img').each(
-          (_, el) => {
-            const img = $(el);
-            pushSrc(img.attr('data-src') || img.attr('src'));
-          },
-        );
-        $('img[src*="storage"], img[src*="upload"], img[data-src*="storage"]').each(
-          (_, el) => {
-            const img = $(el);
-            pushSrc(img.attr('data-src') || img.attr('src'));
-          },
-        );
+        $(
+          '.reader img, .reader-page img, .chapter-reader img, [class*="reader"] img',
+        ).each((_, el) => {
+          const img = $(el);
+          pushSrc(img.attr('data-src') || img.attr('src'));
+        });
+        $(
+          'img[src*="storage"], img[src*="upload"], img[data-src*="storage"]',
+        ).each((_, el) => {
+          const img = $(el);
+          pushSrc(img.attr('data-src') || img.attr('src'));
+        });
         if (imageUrls.length === 0) {
           $('img').each((_, el) => {
             const img = $(el);
@@ -769,7 +783,9 @@ export class MangaParserService {
           .toArray()
           .map((el) => $(el).html())
           .join('\n');
-        const nuxtMatch = scriptJson.match(/__NUXT__(?:_DATA__)?\s*=\s*(\{[\s\S]*?\});?\s*(?:<\/script>|$)/m);
+        const nuxtMatch = scriptJson.match(
+          /__NUXT__(?:_DATA__)?\s*=\s*(\{[\s\S]*?\});?\s*(?:<\/script>|$)/m,
+        );
         if (nuxtMatch && imageUrls.length === 0) {
           try {
             const data = JSON.parse(nuxtMatch[1]);
@@ -780,9 +796,15 @@ export class MangaParserService {
               data?.chapter?.pages;
             if (Array.isArray(pages)) {
               for (const p of pages) {
-                const raw = typeof p === 'string' ? p : p?.url ?? p?.src ?? p?.image;
+                const raw =
+                  typeof p === 'string' ? p : (p?.url ?? p?.src ?? p?.image);
                 const url = raw ? this.normalizeImageUrl(String(raw)) : '';
-                if (url) imageUrls.push(url.startsWith('http') ? url : new URL(url, chapter.url).href);
+                if (url)
+                  imageUrls.push(
+                    url.startsWith('http')
+                      ? url
+                      : new URL(url, chapter.url).href,
+                  );
               }
             }
           } catch {
@@ -796,7 +818,9 @@ export class MangaParserService {
       }
 
       const pagePaths: string[] = [];
-      const referer = chapter.url?.startsWith('http') ? chapter.url : `${baseUrl}/`;
+      const referer = chapter.url?.startsWith('http')
+        ? chapter.url
+        : `${baseUrl}/`;
       for (let i = 0; i < imageUrls.length; i++) {
         try {
           const pagePath = await this.filesService.downloadImageFromUrl(
@@ -1004,7 +1028,10 @@ export class MangaParserService {
                 pages: pagePaths,
                 sourceChapterUrl: chapter.url ?? null,
               });
-              if (chapter.pageCount != null && pagePaths.length !== chapter.pageCount) {
+              if (
+                chapter.pageCount != null &&
+                pagePaths.length !== chapter.pageCount
+              ) {
                 this.logger.warn(
                   `Chapter ${chapterNumber}: expected ${chapter.pageCount} pages from source, got ${pagePaths.length}`,
                 );
@@ -1107,7 +1134,10 @@ export class MangaParserService {
                 pages: pagePaths,
                 sourceChapterUrl: chapter.url ?? null,
               });
-              if (chapter.pageCount != null && pagePaths.length !== chapter.pageCount) {
+              if (
+                chapter.pageCount != null &&
+                pagePaths.length !== chapter.pageCount
+              ) {
                 this.logger.warn(
                   `Chapter ${chapterNumber}: expected ${chapter.pageCount} pages from source, got ${pagePaths.length}`,
                 );
@@ -1176,7 +1206,11 @@ export class MangaParserService {
     domain: string,
     mangaSlug: string | null,
   ): Promise<string[]> {
-    if (domain.includes('telemanga.me') && mangaSlug && chapterInfo.number != null) {
+    if (
+      domain.includes('telemanga.me') &&
+      mangaSlug &&
+      chapterInfo.number != null
+    ) {
       const chapterPagesUrl = `${this.baseUrl}/api/manga/${encodeURIComponent(mangaSlug)}/chapter/${chapterInfo.number}`;
       const response = await this.session.get(chapterPagesUrl);
       if (response.status !== 200) return [];
@@ -1227,7 +1261,8 @@ export class MangaParserService {
         });
       }
       return urls.filter(
-        (u) => !u.includes('yandex.ru') && !u.includes('ads') && !u.includes('rek'),
+        (u) =>
+          !u.includes('yandex.ru') && !u.includes('ads') && !u.includes('rek'),
       );
     }
     if (domain.includes('manga-shi.org') && chapterInfo.url) {
@@ -1244,10 +1279,17 @@ export class MangaParserService {
       const baseUrl = new URL(chapterInfo.url).origin;
       const urls: string[] = [];
       $('.reader-page').each((_, pageEl) => {
-        const src = $(pageEl).find('.reader-image img, img').first().attr('data-src') || $(pageEl).find('img').first().attr('src');
+        const src =
+          $(pageEl).find('.reader-image img, img').first().attr('data-src') ||
+          $(pageEl).find('img').first().attr('src');
         if (src) {
           const normalized = this.normalizeImageUrl(src);
-          if (normalized) urls.push(normalized.startsWith('http') ? normalized : `${baseUrl}${normalized.startsWith('/') ? '' : '/'}${normalized}`);
+          if (normalized)
+            urls.push(
+              normalized.startsWith('http')
+                ? normalized
+                : `${baseUrl}${normalized.startsWith('/') ? '' : '/'}${normalized}`,
+            );
         }
       });
       if (urls.length === 0) {
@@ -1255,7 +1297,8 @@ export class MangaParserService {
           const src = $(el).attr('data-src') || $(el).attr('src');
           if (src) {
             const normalized = this.normalizeImageUrl(src);
-            if (normalized) urls.push(new URL(normalized, chapterInfo.url).href);
+            if (normalized)
+              urls.push(new URL(normalized, chapterInfo.url).href);
           }
         });
       }
@@ -1270,7 +1313,9 @@ export class MangaParserService {
       const pushSrc = (src: string | undefined) => {
         const normalized = src ? this.normalizeImageUrl(src) : '';
         if (!normalized) return;
-        const absolute = normalized.startsWith('http') ? normalized : new URL(normalized, chapterInfo.url).href;
+        const absolute = normalized.startsWith('http')
+          ? normalized
+          : new URL(normalized, chapterInfo.url).href;
         if (!urls.includes(absolute)) urls.push(absolute);
       };
       $('img[data-src]').each((_, el) => pushSrc($(el).attr('data-src')));
@@ -1311,7 +1356,11 @@ export class MangaParserService {
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141 Safari/537.36',
       ...headers,
     };
-    const normalize = (u: string) => u.replace(/\s*;\s*$/, '').trim().replace(/ /g, '%20');
+    const normalize = (u: string) =>
+      u
+        .replace(/\s*;\s*$/, '')
+        .trim()
+        .replace(/ /g, '%20');
     for (const url of urls) {
       try {
         const normalized = normalize(String(url));
@@ -1321,7 +1370,10 @@ export class MangaParserService {
           validateStatus: () => true,
         });
         if (res.status !== 200) {
-          return { allOk: false, failed: { url: normalized, status: res.status } };
+          return {
+            allOk: false,
+            failed: { url: normalized, status: res.status },
+          };
         }
       } catch {
         try {
@@ -1334,11 +1386,17 @@ export class MangaParserService {
             validateStatus: () => true,
           });
           if (res.status !== 200) {
-            return { allOk: false, failed: { url: normalized, status: res.status } };
+            return {
+              allOk: false,
+              failed: { url: normalized, status: res.status },
+            };
           }
         } catch (e) {
-          const status = (e as any)?.response?.status ?? 0;
-          return { allOk: false, failed: { url: String(url), status: status || 500 } };
+          const status = e?.response?.status ?? 0;
+          return {
+            allOk: false,
+            failed: { url: String(url), status: status || 500 },
+          };
         }
       }
     }
@@ -1368,10 +1426,20 @@ export class MangaParserService {
       );
     }
     if (domain.includes('manga-shi.org')) {
-      return this.downloadMangaShiChapterImages(chapterInfo, chapterId, titleId, downloadOpts);
+      return this.downloadMangaShiChapterImages(
+        chapterInfo,
+        chapterId,
+        titleId,
+        downloadOpts,
+      );
     }
     if (domain.includes('mangabuff.ru')) {
-      return this.downloadMangabuffChapterImages(chapterInfo, chapterId, titleId, downloadOpts);
+      return this.downloadMangabuffChapterImages(
+        chapterInfo,
+        chapterId,
+        titleId,
+        downloadOpts,
+      );
     }
     if (domain.includes('mangahub.one')) {
       throw new BadRequestException(
@@ -1443,17 +1511,20 @@ export class MangaParserService {
         : null;
     const dbChapters =
       requestedSet != null
-        ? allChapters.filter((ch) =>
-            requestedSet.has(Number(ch.chapterNumber)),
-          )
+        ? allChapters.filter((ch) => requestedSet.has(Number(ch.chapterNumber)))
         : allChapters;
 
-    const synced: { chapterId: string; chapterNumber: number; pagesCount: number }[] = [];
+    const synced: {
+      chapterId: string;
+      chapterNumber: number;
+      pagesCount: number;
+    }[] = [];
     const skipped: { chapterNumber: number; reason: string }[] = [];
     const errors: { chapterNumber: number; error: string }[] = [];
 
-    const normalizeSourceNumber = (n: number | string | undefined): number | null =>
-      n == null ? null : Number(n);
+    const normalizeSourceNumber = (
+      n: number | string | undefined,
+    ): number | null => (n == null ? null : Number(n));
     const findSourceChapter = (num: number) =>
       sourceChapters.find((ch) => {
         const sourceNum = normalizeSourceNumber(ch.number);

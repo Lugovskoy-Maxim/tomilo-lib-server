@@ -60,7 +60,8 @@ export class ShopService {
   async getAllDecorations() {
     const cacheKey = 'shop:decorations:all';
     const cached = await this.cacheManager.get(cacheKey);
-    if (cached) return cached as Awaited<ReturnType<ShopService['getAllDecorations']>>;
+    if (cached)
+      return cached as Awaited<ReturnType<ShopService['getAllDecorations']>>;
 
     this.logger.log('Fetching all available decorations');
 
@@ -73,10 +74,22 @@ export class ShopService {
       ],
     };
     const [avatars, frames, backgrounds, cards] = await Promise.all([
-      this.avatarDecorationModel.find(inStockFilter).populate('authorId', 'username level').lean(),
-      this.avatarFrameDecorationModel.find(inStockFilter).populate('authorId', 'username level').lean(),
-      this.backgroundDecorationModel.find(inStockFilter).populate('authorId', 'username level').lean(),
-      this.cardDecorationModel.find(inStockFilter).populate('authorId', 'username level').lean(),
+      this.avatarDecorationModel
+        .find(inStockFilter)
+        .populate('authorId', 'username level')
+        .lean(),
+      this.avatarFrameDecorationModel
+        .find(inStockFilter)
+        .populate('authorId', 'username level')
+        .lean(),
+      this.backgroundDecorationModel
+        .find(inStockFilter)
+        .populate('authorId', 'username level')
+        .lean(),
+      this.cardDecorationModel
+        .find(inStockFilter)
+        .populate('authorId', 'username level')
+        .lean(),
     ]);
 
     const result = {
@@ -102,12 +115,11 @@ export class ShopService {
   }
 
   // Get decorations by type
-  async getDecorationsByType(
-    type: 'avatar' | 'frame' | 'background' | 'card',
-  ) {
+  async getDecorationsByType(type: 'avatar' | 'frame' | 'background' | 'card') {
     const cacheKey = `shop:decorations:${type}`;
     const cached = await this.cacheManager.get(cacheKey);
-    if (cached) return cached as Awaited<ReturnType<ShopService['getDecorationsByType']>>;
+    if (cached)
+      return cached as Awaited<ReturnType<ShopService['getDecorationsByType']>>;
 
     this.logger.log(`Fetching ${type} decorations`);
 
@@ -246,10 +258,7 @@ export class ShopService {
     }
 
     // Атомарно уменьшаем остаток, если задано ограничение по количеству
-    if (
-      decoration.quantity !== undefined &&
-      decoration.quantity !== null
-    ) {
+    if (decoration.quantity !== undefined && decoration.quantity !== null) {
       const oid = new Types.ObjectId(decorationId);
       let decremented = false;
       switch (decorationType) {
@@ -288,7 +297,8 @@ export class ShopService {
     }
 
     // Deduct balance (free if price 0) and add decoration to owned list
-    const newBalance = requiredPrice > 0 ? userBalance - requiredPrice : userBalance;
+    const newBalance =
+      requiredPrice > 0 ? userBalance - requiredPrice : userBalance;
     const updatedOwnedDecorations = [
       ...(user.ownedDecorations || []),
       {
@@ -317,7 +327,9 @@ export class ShopService {
             `Author ${authorId} received ${royalty} coins (10%) for decoration ${decorationId} sale`,
           );
         } catch (err) {
-          this.logger.warn(`Failed to pay author royalty: ${(err as Error).message}`);
+          this.logger.warn(
+            `Failed to pay author royalty: ${(err as Error).message}`,
+          );
         }
       }
     }
@@ -464,7 +476,10 @@ export class ShopService {
     }
 
     await this.cacheManager.set('shop:decorations:all', undefined as unknown);
-    await this.cacheManager.set(`shop:decorations:${type}`, undefined as unknown);
+    await this.cacheManager.set(
+      `shop:decorations:${type}`,
+      undefined as unknown,
+    );
     if (typeof this.cacheManager.del === 'function') {
       await this.cacheManager.del('shop:decorations:all');
       await this.cacheManager.del(`shop:decorations:${type}`);
@@ -545,7 +560,9 @@ export class ShopService {
       [this.backgroundDecorationModel, 'background'],
       [this.cardDecorationModel, 'card'],
     ] as const) {
-      const res = await (model as Model<{ _id: Types.ObjectId }>).findByIdAndDelete(oid);
+      const res = await (
+        model as Model<{ _id: Types.ObjectId }>
+      ).findByIdAndDelete(oid);
       if (res) {
         deleted = true;
         type = name;
@@ -557,7 +574,10 @@ export class ShopService {
     }
     await this.cacheManager.set('shop:decorations:all', undefined as unknown);
     if (type) {
-      await this.cacheManager.set(`shop:decorations:${type}`, undefined as unknown);
+      await this.cacheManager.set(
+        `shop:decorations:${type}`,
+        undefined as unknown,
+      );
       if (typeof this.cacheManager.del === 'function') {
         await this.cacheManager.del('shop:decorations:all');
         await this.cacheManager.del(`shop:decorations:${type}`);
@@ -580,8 +600,13 @@ export class ShopService {
       quantity: number | null;
     }>,
   ) {
-    const imageUrl = file?.filename ? `/uploads/decorations/${file.filename}` : undefined;
-    return this.updateDecoration(id, { ...updates, ...(imageUrl && { imageUrl }) });
+    const imageUrl = file?.filename
+      ? `/uploads/decorations/${file.filename}`
+      : undefined;
+    return this.updateDecoration(id, {
+      ...updates,
+      ...(imageUrl && { imageUrl }),
+    });
   }
 
   // Admin: update decoration by id (searches avatar, frame, background, card)
@@ -642,9 +667,7 @@ export class ShopService {
       await this.cacheManager.del('shop:decorations:all');
       await this.cacheManager.del(`shop:decorations:${type}`);
     }
-    this.logger.log(
-      `Admin updated ${type} decoration: ${decoration._id}`,
-    );
+    this.logger.log(`Admin updated ${type} decoration: ${decoration._id}`);
     return decoration;
   }
 
@@ -683,10 +706,7 @@ export class ShopService {
     ]);
 
     const avatarMap = new Map<string, AvatarDecorationDocument>(
-      (avatars as AvatarDecorationDocument[]).map((a) => [
-        a._id.toString(),
-        a,
-      ]),
+      (avatars as AvatarDecorationDocument[]).map((a) => [a._id.toString(), a]),
     );
     const frameMap = new Map<string, AvatarFrameDecorationDocument>(
       (frames as AvatarFrameDecorationDocument[]).map((f) => [
@@ -745,7 +765,8 @@ export class ShopService {
       .filter(Boolean);
 
     const equippedFrameId = user.equippedDecorations?.frame?.toString() ?? null;
-    const equippedAvatarId = user.equippedDecorations?.avatar?.toString() ?? null;
+    const equippedAvatarId =
+      user.equippedDecorations?.avatar?.toString() ?? null;
     const equippedBackgroundId =
       user.equippedDecorations?.background?.toString() ?? null;
     const equippedCardId = user.equippedDecorations?.card?.toString() ?? null;
@@ -769,16 +790,18 @@ export class ShopService {
     };
 
     const decorations = [
-      ...(ownedAvatars as Array<{ _id: Types.ObjectId; imageUrl?: string }>).map(
-        (d) => toDecorationItem('avatar', d),
-      ),
+      ...(
+        ownedAvatars as Array<{ _id: Types.ObjectId; imageUrl?: string }>
+      ).map((d) => toDecorationItem('avatar', d)),
       ...(ownedFrames as Array<{ _id: Types.ObjectId; imageUrl?: string }>).map(
         (d) => toDecorationItem('frame', d),
       ),
-      ...(ownedBackgrounds as Array<{
-        _id: Types.ObjectId;
-        imageUrl?: string;
-      }>).map((d) => toDecorationItem('background', d)),
+      ...(
+        ownedBackgrounds as Array<{
+          _id: Types.ObjectId;
+          imageUrl?: string;
+        }>
+      ).map((d) => toDecorationItem('background', d)),
       ...(ownedCards as Array<{ _id: Types.ObjectId; imageUrl?: string }>).map(
         (d) => toDecorationItem('card', d),
       ),
@@ -802,7 +825,9 @@ export class ShopService {
     return Math.min(500, 50 + votesCount * 15);
   }
 
-  async getSuggestedDecorations(status: 'pending' | 'accepted' | 'rejected' = 'pending') {
+  async getSuggestedDecorations(
+    status: 'pending' | 'accepted' | 'rejected' = 'pending',
+  ) {
     const list = await this.suggestedDecorationModel
       .aggregate([
         { $match: { status } },
@@ -823,7 +848,8 @@ export class ShopService {
       ])
       .exec();
     return list.map((s: any) => {
-      const author = Array.isArray(s.authorDoc) && s.authorDoc[0] ? s.authorDoc[0] : null;
+      const author =
+        Array.isArray(s.authorDoc) && s.authorDoc[0] ? s.authorDoc[0] : null;
       return {
         id: s._id.toString(),
         type: s.type,
@@ -914,7 +940,8 @@ export class ShopService {
 
   async deleteSuggestion(suggestionId: string) {
     const oid = new Types.ObjectId(suggestionId);
-    const suggestion = await this.suggestedDecorationModel.findByIdAndDelete(oid);
+    const suggestion =
+      await this.suggestedDecorationModel.findByIdAndDelete(oid);
     if (!suggestion) {
       throw new NotFoundException('Suggested decoration not found');
     }
@@ -929,12 +956,16 @@ export class ShopService {
       throw new NotFoundException('Suggested decoration not found');
     }
     if (suggestion.status !== 'pending') {
-      throw new BadRequestException('This suggestion is no longer accepting votes');
+      throw new BadRequestException(
+        'This suggestion is no longer accepting votes',
+      );
     }
     const userOid = new Types.ObjectId(userId);
     const hasVoted = suggestion.votedUserIds.some((id) => id.equals(userOid));
     if (hasVoted) {
-      throw new BadRequestException('You have already voted for this suggestion');
+      throw new BadRequestException(
+        'You have already voted for this suggestion',
+      );
     }
     suggestion.votedUserIds.push(userOid);
     await suggestion.save();
@@ -957,21 +988,29 @@ export class ShopService {
       throw new NotFoundException('Suggested decoration not found');
     }
     if (suggestion.status !== 'pending') {
-      throw new BadRequestException('Это предложение больше нельзя редактировать');
+      throw new BadRequestException(
+        'Это предложение больше нельзя редактировать',
+      );
     }
     const userOid = new Types.ObjectId(userId);
     if (!suggestion.authorId.equals(userOid)) {
-      throw new BadRequestException('Редактировать может только автор предложения');
+      throw new BadRequestException(
+        'Редактировать может только автор предложения',
+      );
     }
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-    const createdAt = suggestion.createdAt instanceof Date ? suggestion.createdAt : new Date(suggestion.createdAt);
+    const createdAt =
+      suggestion.createdAt instanceof Date
+        ? suggestion.createdAt
+        : new Date(suggestion.createdAt);
     if (createdAt < oneHourAgo) {
       throw new BadRequestException(
         'Редактировать предложение можно только в течение 1 часа после отправки. Время вышло.',
       );
     }
     if (payload.name !== undefined) suggestion.name = payload.name.trim();
-    if (payload.description !== undefined) suggestion.description = payload.description?.trim() ?? '';
+    if (payload.description !== undefined)
+      suggestion.description = payload.description?.trim() ?? '';
     if (payload.imageUrl !== undefined) suggestion.imageUrl = payload.imageUrl;
     await suggestion.save();
     this.logger.log(`User ${userId} updated suggestion ${suggestionId}`);
@@ -993,7 +1032,11 @@ export class ShopService {
     const pending = await this.suggestedDecorationModel
       .aggregate([
         { $match: { status: 'pending' } },
-        { $addFields: { votesCount: { $size: { $ifNull: ['$votedUserIds', []] } } } },
+        {
+          $addFields: {
+            votesCount: { $size: { $ifNull: ['$votedUserIds', []] } },
+          },
+        },
         { $sort: { votesCount: -1, createdAt: -1 } },
         { $limit: 1 },
       ])
@@ -1002,9 +1045,11 @@ export class ShopService {
       this.logger.log('Accept weekly winner: no pending suggestions');
       return null;
     }
-    const winner = pending[0] as any;
+    const winner = pending[0];
     const suggestionId = winner._id.toString();
-    const votesCount = Array.isArray(winner.votedUserIds) ? winner.votedUserIds.length : 0;
+    const votesCount = Array.isArray(winner.votedUserIds)
+      ? winner.votedUserIds.length
+      : 0;
     const price = this.priceByVotes(votesCount);
     const authorId = winner.authorId;
 

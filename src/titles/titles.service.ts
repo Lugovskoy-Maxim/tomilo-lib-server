@@ -1,4 +1,10 @@
-import { Inject, Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  ConflictException,
+  BadRequestException,
+} from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -35,7 +41,11 @@ export class TitlesService {
     private collectionModel: Model<CollectionDocument>,
     private readonly filesService: FilesService,
     private readonly usersService: UsersService,
-    @Inject(CACHE_MANAGER) private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown) => Promise<void> },
+    @Inject(CACHE_MANAGER)
+    private cacheManager: {
+      get: (k: string) => Promise<unknown>;
+      set: (k: string, v: unknown) => Promise<void>;
+    },
   ) {
     this.logger.setContext(TitlesService.name);
   }
@@ -198,7 +208,8 @@ export class TitlesService {
 
   async getFilterOptions() {
     const cached = await this.cacheManager.get(CACHE_FILTER_OPTIONS);
-    if (cached) return cached as Awaited<ReturnType<typeof this.getFilterOptions>>;
+    if (cached)
+      return cached as Awaited<ReturnType<typeof this.getFilterOptions>>;
 
     // Агрегации без загрузки полных документов — только уникальные значения
     const [genresRes, tagsRes, metaRes] = await Promise.all([
@@ -212,7 +223,12 @@ export class TitlesService {
         { $group: { _id: null, tags: { $addToSet: '$tags' } } },
         { $project: { _id: 0, tags: 1 } },
       ]),
-      this.titleModel.aggregate<{ types: (string | null)[]; status: (string | null)[]; releaseYears: (number | null)[]; ageLimits: (number | null)[] }>([
+      this.titleModel.aggregate<{
+        types: (string | null)[];
+        status: (string | null)[];
+        releaseYears: (number | null)[];
+        ageLimits: (number | null)[];
+      }>([
         {
           $group: {
             _id: null,
@@ -222,13 +238,26 @@ export class TitlesService {
             ageLimits: { $addToSet: '$ageLimit' },
           },
         },
-        { $project: { _id: 0, types: 1, status: 1, releaseYears: 1, ageLimits: 1 } },
+        {
+          $project: {
+            _id: 0,
+            types: 1,
+            status: 1,
+            releaseYears: 1,
+            ageLimits: 1,
+          },
+        },
       ]),
     ]);
 
     const filterNull = <T>(arr: (T | null | undefined)[]): T[] =>
       arr.filter((x): x is T => x != null);
-    const meta = metaRes[0] || { types: [], status: [], releaseYears: [], ageLimits: [] };
+    const meta = metaRes[0] || {
+      types: [],
+      status: [],
+      releaseYears: [],
+      ageLimits: [],
+    };
 
     const result = {
       genres: (genresRes[0]?.genres || []).sort(),
@@ -288,7 +317,8 @@ export class TitlesService {
 
     findQuery = findQuery.populate({
       path: 'relatedTitles.titleId',
-      select: '_id name slug coverImage status type releaseYear averageRating isPublished ageLimit',
+      select:
+        '_id name slug coverImage status type releaseYear averageRating isPublished ageLimit',
     });
 
     const title = await findQuery.exec();
@@ -331,7 +361,8 @@ export class TitlesService {
 
     findQuery = findQuery.populate({
       path: 'relatedTitles.titleId',
-      select: '_id name slug coverImage status type releaseYear averageRating isPublished ageLimit',
+      select:
+        '_id name slug coverImage status type releaseYear averageRating isPublished ageLimit',
     });
 
     const title = await findQuery.exec();
@@ -419,10 +450,7 @@ export class TitlesService {
     // Delete chapter pages for each chapter (новая и старая структура папок)
     if (title.chapters && title.chapters.length > 0) {
       for (const chapter of title.chapters) {
-        await this.filesService.deleteChapterPages(
-          chapter._id.toString(),
-          id,
-        );
+        await this.filesService.deleteChapterPages(chapter._id.toString(), id);
       }
     }
 
@@ -494,17 +522,50 @@ export class TitlesService {
         $set: {
           views: { $add: ['$views', 1] },
           // dayViews сбрасывается если сбросился месяц, неделя или день
-          dayViews: { $cond: ['$dayReset', 1, { $add: [{ $ifNull: ['$dayViews', 0] }, 1] }] },
-          lastDayReset: { $cond: ['$dayReset', '$startOfToday', '$lastDayReset'] },
+          dayViews: {
+            $cond: [
+              '$dayReset',
+              1,
+              { $add: [{ $ifNull: ['$dayViews', 0] }, 1] },
+            ],
+          },
+          lastDayReset: {
+            $cond: ['$dayReset', '$startOfToday', '$lastDayReset'],
+          },
           // weekViews сбрасывается если сбросился месяц или неделя
-          weekViews: { $cond: ['$weekReset', 1, { $add: [{ $ifNull: ['$weekViews', 0] }, 1] }] },
+          weekViews: {
+            $cond: [
+              '$weekReset',
+              1,
+              { $add: [{ $ifNull: ['$weekViews', 0] }, 1] },
+            ],
+          },
           lastWeekReset: { $cond: ['$weekReset', '$$NOW', '$lastWeekReset'] },
           // monthViews сбрасывается только если сбросился месяц
-          monthViews: { $cond: ['$monthReset', 1, { $add: [{ $ifNull: ['$monthViews', 0] }, 1] }] },
-          lastMonthReset: { $cond: ['$monthReset', '$startOfMonth', '$lastMonthReset'] },
+          monthViews: {
+            $cond: [
+              '$monthReset',
+              1,
+              { $add: [{ $ifNull: ['$monthViews', 0] }, 1] },
+            ],
+          },
+          lastMonthReset: {
+            $cond: ['$monthReset', '$startOfMonth', '$lastMonthReset'],
+          },
         },
       },
-      { $unset: ['startOfToday', 'oneWeekAgo', 'startOfMonth', 'dayReset', 'weekReset', 'monthReset', 'weekResetBase', 'dayResetBase'] },
+      {
+        $unset: [
+          'startOfToday',
+          'oneWeekAgo',
+          'startOfMonth',
+          'dayReset',
+          'weekReset',
+          'monthReset',
+          'weekResetBase',
+          'dayResetBase',
+        ],
+      },
     ];
 
     const updatedTitle = await this.titleModel
@@ -518,7 +579,11 @@ export class TitlesService {
     return updatedTitle;
   }
 
-  async updateRating(id: string, userId: string, newRating: number): Promise<TitleDocument> {
+  async updateRating(
+    id: string,
+    userId: string,
+    newRating: number,
+  ): Promise<TitleDocument> {
     const title = await this.titleModel.findById(id).exec();
 
     if (!title) {
@@ -528,16 +593,26 @@ export class TitlesService {
     const userObjectId = new Types.ObjectId(userId);
     type RatingEntry = { userId: Types.ObjectId; rating: number } | number;
     const rawRatings: RatingEntry[] = (title.ratings || []) as RatingEntry[];
-    const ratings: { userId: Types.ObjectId; rating: number }[] = rawRatings.filter(
-      (r): r is { userId: Types.ObjectId; rating: number } =>
-        typeof r === 'object' && r !== null && 'userId' in r && 'rating' in r && r.userId != null && typeof r.rating === 'number',
-    );
+    const ratings: { userId: Types.ObjectId; rating: number }[] =
+      rawRatings.filter(
+        (r): r is { userId: Types.ObjectId; rating: number } =>
+          typeof r === 'object' &&
+          r !== null &&
+          'userId' in r &&
+          'rating' in r &&
+          r.userId != null &&
+          typeof r.rating === 'number',
+      );
 
     // Миграция: старый формат (массив чисел) — переносим в legacy, чтобы рейтинг не обнулялся
-    const legacyNumbers = rawRatings.filter((r): r is number => typeof r === 'number');
+    const legacyNumbers = rawRatings.filter(
+      (r): r is number => typeof r === 'number',
+    );
     if (legacyNumbers.length > 0) {
-      title.legacyRatingCount = (title.legacyRatingCount || 0) + legacyNumbers.length;
-      title.legacyRatingSum = (title.legacyRatingSum || 0) + legacyNumbers.reduce((s, n) => s + n, 0);
+      title.legacyRatingCount =
+        (title.legacyRatingCount || 0) + legacyNumbers.length;
+      title.legacyRatingSum =
+        (title.legacyRatingSum || 0) + legacyNumbers.reduce((s, n) => s + n, 0);
     }
 
     const existingIndex = ratings.findIndex(
@@ -559,7 +634,8 @@ export class TitlesService {
 
     title.ratings = ratings;
     title.totalRatings = totalCount;
-    title.averageRating = totalCount > 0 ? (legacySum + newSum) / totalCount : 0;
+    title.averageRating =
+      totalCount > 0 ? (legacySum + newSum) / totalCount : 0;
 
     await title.save();
 
@@ -568,7 +644,9 @@ export class TitlesService {
       try {
         await this.usersService.incrementRatingsCount(userId);
       } catch (error) {
-        this.logger.warn(`Failed to increment ratingsCount for user ${userId}: ${error.message}`);
+        this.logger.warn(
+          `Failed to increment ratingsCount for user ${userId}: ${error.message}`,
+        );
       }
     }
 
@@ -708,16 +786,19 @@ export class TitlesService {
       .lean()
       .exec();
 
-
     // Группируем главы по тайтлам и сохраняем информацию о диапазонах глав
     const titleMap = new Map();
-    
+
     for (const chapter of recentChapters) {
       // Проверяем, что titleId был успешно популирован как объект
-      if (!chapter.titleId || typeof chapter.titleId !== 'object' || !('_id' in (chapter.titleId as any))) {
+      if (
+        !chapter.titleId ||
+        typeof chapter.titleId !== 'object' ||
+        !('_id' in (chapter.titleId as any))
+      ) {
         continue;
       }
-      
+
       const title = chapter.titleId as any;
       const ageLimit = title.ageLimit;
 
@@ -759,7 +840,6 @@ export class TitlesService {
       }
     }
 
-
     // Преобразуем Map в массив и сортируем по дате последней главы
     const titlesWithChapters = Array.from(titleMap.values())
       .sort(
@@ -775,17 +855,19 @@ export class TitlesService {
     const now = Date.now();
     const newTitleIds: string[] = [];
     for (const item of titlesWithChapters) {
-      const title = item.title as any;
+      const title = item.title;
       if (title.chaptersRemovedByCopyrightHolder) continue;
       const totalChapters = Number(title.totalChapters) || 0;
-      const createdAt = title.createdAt ? new Date(title.createdAt).getTime() : 0;
+      const createdAt = title.createdAt
+        ? new Date(title.createdAt).getTime()
+        : 0;
       const isNew =
         totalChapters <= NEW_TITLE_MAX_CHAPTERS ||
         (createdAt && now - createdAt <= NEW_TITLE_DAYS * 24 * 60 * 60 * 1000);
       if (isNew && title._id) newTitleIds.push(title._id.toString());
     }
 
-    let allChaptersByTitleId: Map<string, number[]> = new Map();
+    const allChaptersByTitleId: Map<string, number[]> = new Map();
     if (newTitleIds.length > 0) {
       const allChapters = await this.chapterModel
         .find({
@@ -805,7 +887,10 @@ export class TitlesService {
         }
       }
       for (const [tid, nums] of allChaptersByTitleId) {
-        allChaptersByTitleId.set(tid, [...nums].sort((a, b) => b - a));
+        allChaptersByTitleId.set(
+          tid,
+          [...nums].sort((a, b) => b - a),
+        );
       }
     }
 
@@ -814,19 +899,19 @@ export class TitlesService {
       const recentChaptersList = hideChapters ? [] : item.chapters;
       let chapterNumbers =
         recentChaptersList.length > 0
-          ? [...new Set(recentChaptersList.map((c: any) => c.chapterNumber))].sort(
-              (a: number, b: number) => b - a,
-            )
+          ? [
+              ...new Set(recentChaptersList.map((c: any) => c.chapterNumber)),
+            ].sort((a: number, b: number) => b - a)
           : [];
 
-      const titleId = (item.title as any)._id?.toString();
+      const titleId = item.title._id?.toString();
       if (titleId && allChaptersByTitleId.has(titleId)) {
         chapterNumbers = allChaptersByTitleId.get(titleId)!;
       }
 
       const lastUpdate =
         recentChaptersList.length > 0
-          ? (recentChaptersList[0] as any).releaseDate
+          ? recentChaptersList[0].releaseDate
           : null;
 
       return {
@@ -846,7 +931,8 @@ export class TitlesService {
         averageRating: item.title.averageRating ?? item.title.rating ?? 0,
         releaseYear: item.title.releaseYear,
         ageLimit: item.title.ageLimit,
-        chaptersRemovedByCopyrightHolder: item.title.chaptersRemovedByCopyrightHolder,
+        chaptersRemovedByCopyrightHolder:
+          item.title.chaptersRemovedByCopyrightHolder,
         chapters: hideChapters ? [] : item.title.chapters,
         isPublished: item.title.isPublished,
         type: item.title.type,
@@ -890,7 +976,9 @@ export class TitlesService {
       return { count: 0 };
     }
     const cacheKey = `${CACHE_CHAPTERS_COUNT_PREFIX}:${titleId}`;
-    const cached = (await this.cacheManager.get(cacheKey)) as { count: number } | undefined;
+    const cached = (await this.cacheManager.get(cacheKey)) as
+      | { count: number }
+      | undefined;
     if (cached) return cached;
     const count = await this.chapterModel.countDocuments({ titleId });
     const result = { count };
@@ -964,13 +1052,13 @@ export class TitlesService {
     const select =
       'name slug coverImage averageRating type releaseYear description ageLimit dayViews weekViews monthViews';
     const fetchLimit = limit * 2;
-    const titles = await this.titleModel
+    const titles = (await this.titleModel
       .find(query)
       .select(select)
       .sort({ [sortField]: -1 })
       .limit(fetchLimit)
       .lean()
-      .exec() as TitleDocument[];
+      .exec()) as TitleDocument[];
 
     // Разделяем тайтлы на взрослые (18+) и обычные
     const adultTitles: TitleDocument[] = [];
@@ -1025,7 +1113,9 @@ export class TitlesService {
 
   async getCollections(limit = 10): Promise<CollectionDocument[]> {
     const cacheKey = `${CACHE_COLLECTIONS_PREFIX}:${limit}`;
-    const cached = (await this.cacheManager.get(cacheKey)) as CollectionDocument[] | undefined;
+    const cached = (await this.cacheManager.get(cacheKey)) as
+      | CollectionDocument[]
+      | undefined;
     if (cached !== undefined && Array.isArray(cached)) return cached;
     const collections = await this.collectionModel.find().limit(limit).exec();
     await this.cacheManager.set(cacheKey, collections);
@@ -1108,14 +1198,17 @@ export class TitlesService {
 
     const title = await this.titleModel
       .findById(titleId)
-      .select('views dayViews weekViews monthViews totalChapters averageRating totalRatings')
+      .select(
+        'views dayViews weekViews monthViews totalChapters averageRating totalRatings',
+      )
       .exec();
 
     if (!title) {
       throw new NotFoundException('Title not found');
     }
 
-    const bookmarksCount = await this.usersService.countBookmarksForTitle(titleId);
+    const bookmarksCount =
+      await this.usersService.countBookmarksForTitle(titleId);
 
     return {
       views: title.views || 0,

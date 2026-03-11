@@ -152,7 +152,7 @@ export class WatermarkUtil {
 
       const {
         position = 'center-right',
-        scale = 0.30,
+        scale = 0.3,
         minHeight = 2000,
       } = options;
 
@@ -190,7 +190,9 @@ export class WatermarkUtil {
 
       // Ресайз + прозрачность через recomb (без raw-буфера: устраняет артефакты и чёрные полосы по краям)
       const opacity = this.watermarkOpacity;
-      const watermarkWithOpacity = await sharp(Buffer.from(this.watermarkBuffer))
+      const watermarkWithOpacity = await sharp(
+        Buffer.from(this.watermarkBuffer),
+      )
         .resize(watermarkWidth, watermarkHeight, {
           fit: 'contain',
           withoutEnlargement: true,
@@ -334,7 +336,7 @@ export class WatermarkUtil {
     this.logger.log(`Опции: ${JSON.stringify(options)}`);
     this.logger.log(`Водяной знак загружен: ${this.isWatermarkLoaded()}`);
 
-    const { scale = 0.30, minHeight = 4000 } = options;
+    const { scale = 0.3, minHeight = 4000 } = options;
     const results: Buffer[] = [];
 
     for (let i = 0; i < imageBuffers.length; i++) {
@@ -345,13 +347,13 @@ export class WatermarkUtil {
       try {
         // Страница 1 — только верхний водяной знак (отдельная ватермарка для верхней позиции)
         if (i === 0) {
-          this.logger.log(
-            `Страница 1 - добавляем только верхний водяной знак`,
-          );
+          this.logger.log(`Страница 1 - добавляем только верхний водяной знак`);
 
           const watermarkedImage = await this.addTopWatermark(imageBuffers[i]);
           results.push(watermarkedImage);
-          this.logger.log(`Страница 1 успешно обработана (только верхний знак)`);
+          this.logger.log(
+            `Страница 1 успешно обработана (только верхний знак)`,
+          );
           continue;
         }
 
@@ -399,7 +401,9 @@ export class WatermarkUtil {
    * Возвращает позицию обычного водяного знака для данной страницы.
    * Используется только для страниц 2, 4, 6, 8, … (страница 1 — только верхний знак).
    */
-  getWatermarkPositionForPage(pageNumber: number): (typeof WatermarkUtil.WATERMARK_POSITIONS)[number] {
+  getWatermarkPositionForPage(
+    pageNumber: number,
+  ): (typeof WatermarkUtil.WATERMARK_POSITIONS)[number] {
     const positions = WatermarkUtil.WATERMARK_POSITIONS;
     const index = Math.floor((pageNumber - 2) / 2) % positions.length;
     return positions[index >= 0 ? index : 0];

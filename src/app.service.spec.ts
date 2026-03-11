@@ -102,9 +102,27 @@ describe('AppService', () => {
         totalCollections: 2,
         totalViews: 1000,
         totalBookmarks: 20,
-        daily: { views: 0, newUsers: 0, newTitles: 0, newChapters: 0, chaptersRead: 0 },
-        weekly: { views: 0, newUsers: 0, newTitles: 0, newChapters: 0, chaptersRead: 0 },
-        monthly: { views: 0, newUsers: 0, newTitles: 0, newChapters: 0, chaptersRead: 0 },
+        daily: {
+          views: 0,
+          newUsers: 0,
+          newTitles: 0,
+          newChapters: 0,
+          chaptersRead: 0,
+        },
+        weekly: {
+          views: 0,
+          newUsers: 0,
+          newTitles: 0,
+          newChapters: 0,
+          chaptersRead: 0,
+        },
+        monthly: {
+          views: 0,
+          newUsers: 0,
+          newTitles: 0,
+          newChapters: 0,
+          chaptersRead: 0,
+        },
         popularTitles: [],
         popularChapters: [],
         activeUsersToday: 0,
@@ -203,7 +221,10 @@ describe('AppService', () => {
       const result = await service.getYearlyStats(2024);
       expect(result).toEqual(data);
       expect(mockStatsService.getYearlyStats).toHaveBeenCalledWith(2024);
-      expect(mockCacheManager.set).toHaveBeenCalledWith('stats:yearly:2024', data);
+      expect(mockCacheManager.set).toHaveBeenCalledWith(
+        'stats:yearly:2024',
+        data,
+      );
     });
   });
 });

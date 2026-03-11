@@ -285,7 +285,11 @@ export class AdminController {
   ): Promise<ApiResponseDto<any>> {
     try {
       const isPublishedFilter =
-        isPublished === 'true' ? true : isPublished === 'false' ? false : undefined;
+        isPublished === 'true'
+          ? true
+          : isPublished === 'false'
+            ? false
+            : undefined;
 
       const data = await this.adminService.getTitles({
         page: Number(page),
@@ -419,11 +423,7 @@ export class AdminController {
   ): Promise<ApiResponseDto<any>> {
     try {
       const isVisibleBool =
-        isVisible === 'true'
-          ? true
-          : isVisible === 'false'
-            ? false
-            : undefined;
+        isVisible === 'true' ? true : isVisible === 'false' ? false : undefined;
 
       const data = await this.adminService.getComments({
         page: Number(page),

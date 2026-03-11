@@ -24,13 +24,17 @@ export class PromocodesController {
   constructor(private readonly promocodesService: PromocodesService) {}
 
   @Get('check/:code')
-  async checkPromoCode(@Param('code') code: string): Promise<ApiResponseDto<unknown>> {
+  async checkPromoCode(
+    @Param('code') code: string,
+  ): Promise<ApiResponseDto<unknown>> {
     try {
       const result = await this.promocodesService.checkPromoCode(code);
       return {
         success: true,
         data: result,
-        message: result.valid ? 'Promo code is valid' : result.message ?? 'Invalid promo code',
+        message: result.valid
+          ? 'Promo code is valid'
+          : (result.message ?? 'Invalid promo code'),
         timestamp: new Date().toISOString(),
         path: `promocodes/check/${code}`,
         method: 'GET',

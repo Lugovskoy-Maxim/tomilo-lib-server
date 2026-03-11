@@ -41,49 +41,72 @@ export class MangaShiParser implements MangaParser {
         $main('.thumb img').attr('data-src') ||
         $main('.thumb img').attr('src');
       if (!coverUrl) {
-        const mainCover = $main('img.media-image[alt*="Обложка"], img.media-image[title]').first();
+        const mainCover = $main(
+          'img.media-image[alt*="Обложка"], img.media-image[title]',
+        ).first();
         if (mainCover.length) {
           coverUrl = mainCover.attr('src') || mainCover.attr('data-src');
         }
       }
       if (coverUrl && !coverUrl.startsWith('http')) {
-        coverUrl = coverUrl.startsWith('/') ? `${baseUrl}${coverUrl}` : `${baseUrl}/${coverUrl}`;
+        coverUrl = coverUrl.startsWith('/')
+          ? `${baseUrl}${coverUrl}`
+          : `${baseUrl}/${coverUrl}`;
       }
 
       // Description: full text from content block (new layout) or legacy selectors
       let description =
-        $main('div.text-zinc-400.leading-relaxed.max-w-3xl').first().text().trim() ||
-        $main('h1').nextAll('div').filter((_, el) => $main(el).text().length > 100).first().text().trim() ||
+        $main('div.text-zinc-400.leading-relaxed.max-w-3xl')
+          .first()
+          .text()
+          .trim() ||
+        $main('h1')
+          .nextAll('div')
+          .filter((_, el) => $main(el).text().length > 100)
+          .first()
+          .text()
+          .trim() ||
         $main('meta[property="og:description"]').attr('content')?.trim() ||
         $main('.summary__content .post-content').text().trim() ||
         $main('.summary .post-content').text().trim() ||
         $main('.description').text().trim() ||
         $main('.manga-summary').text().trim();
       if (description?.endsWith('…') || description?.endsWith('...')) {
-        const fromMeta = $main('meta[property="og:description"]').attr('content');
+        const fromMeta = $main('meta[property="og:description"]').attr(
+          'content',
+        );
         if (fromMeta && description === fromMeta) description = description; // keep as is or try JSON-LD full
       }
 
       // Genres: from JSON-LD (CreativeWorkSeries.genre) or from #-tags on page or legacy
-      let genres: string[] = this.extractGenresFromJsonLd($main);
+      const genres: string[] = this.extractGenresFromJsonLd($main);
       if (genres.length === 0) {
         $main('span').each((_, element) => {
           const t = $main(element).text().trim();
-          if (/^#[\wА-Яа-яёЁ]+$/.test(t)) genres.push(t.replace(/^#/, '').trim());
+          if (/^#[\wА-Яа-яёЁ]+$/.test(t))
+            genres.push(t.replace(/^#/, '').trim());
         });
       }
       if (genres.length === 0) {
-        $main('.genres-content a, .genre a, .mg_genres a').each((_, element) => {
-          const genre = $main(element).text().trim();
-          if (genre) genres.push(genre);
-        });
+        $main('.genres-content a, .genre a, .mg_genres a').each(
+          (_, element) => {
+            const genre = $main(element).text().trim();
+            if (genre) genres.push(genre);
+          },
+        );
       }
 
       // Author: links to /catalog/?author=
-      const author = this.extractListFromLinks($main, 'a[href*="/catalog/?author="]');
+      const author = this.extractListFromLinks(
+        $main,
+        'a[href*="/catalog/?author="]',
+      );
 
       // Artist: links to /catalog/?artist=
-      const artist = this.extractListFromLinks($main, 'a[href*="/catalog/?artist="]');
+      const artist = this.extractListFromLinks(
+        $main,
+        'a[href*="/catalog/?artist="]',
+      );
 
       // Year: row with label "Год:" and value in next span
       const releaseYear = this.extractYearFromLabel($main, 'Год:');
@@ -95,7 +118,10 @@ export class MangaShiParser implements MangaParser {
       const type = this.extractType($main);
 
       // New site: chapters on main page (a[href*="/glava-"] with .chapter-title) + pagination
-      let chapters: ChapterInfo[] = this.extractChaptersFromHtml($main, baseUrl);
+      let chapters: ChapterInfo[] = this.extractChaptersFromHtml(
+        $main,
+        baseUrl,
+      );
 
       // Fetch chapter list pages (page 1, 2, …) and merge — main page may lack last of first batch (HTMX "Load more")
       const slugMatch = url.match(/\/manga\/([^/]+)\/?/);
@@ -256,7 +282,10 @@ export class MangaShiParser implements MangaParser {
   }
 
   /** New site layout: a[href*="/glava-"] with .chapter-title, relative hrefs */
-  private extractChaptersFromHtml($: cheerio.Root, baseUrl: string): ChapterInfo[] {
+  private extractChaptersFromHtml(
+    $: cheerio.Root,
+    baseUrl: string,
+  ): ChapterInfo[] {
     const chapters: ChapterInfo[] = [];
     const seen = new Set<string>();
 
@@ -274,7 +303,8 @@ export class MangaShiParser implements MangaParser {
         $el.find('.chapter-title').text().trim() ||
         $el.find('span').first().text().trim() ||
         $el.text().trim();
-      const cleanName = name.replace(/\s*\d{2}\.\d{2}\.\d{4}\s*$/, '').trim() || name;
+      const cleanName =
+        name.replace(/\s*\d{2}\.\d{2}\.\d{4}\s*$/, '').trim() || name;
 
       let number: number | undefined;
       // glava-0-1 -> 0.1, glava-1174 -> 1174
@@ -289,7 +319,9 @@ export class MangaShiParser implements MangaParser {
         }
       }
       if (number === undefined && cleanName) {
-        const nameMatch = cleanName.match(/(?:Глава|Chapter)\s*(\d+(?:\.\d+)?)/i);
+        const nameMatch = cleanName.match(
+          /(?:Глава|Chapter)\s*(\d+(?:\.\d+)?)/i,
+        );
         if (nameMatch) {
           const n = parseFloat(nameMatch[1]);
           if (!isNaN(n)) number = n;
@@ -351,7 +383,9 @@ export class MangaShiParser implements MangaParser {
         if (
           name &&
           link &&
-          (link.includes('/glava/') || link.includes('/glava-') || link.includes('/chapter/'))
+          (link.includes('/glava/') ||
+            link.includes('/glava-') ||
+            link.includes('/chapter/'))
         ) {
           let number: number | undefined;
 
@@ -360,7 +394,9 @@ export class MangaShiParser implements MangaParser {
             const parsedNumber = parseFloat(nameMatch[1]);
             if (!isNaN(parsedNumber)) number = parsedNumber;
           } else {
-            const urlMatch = link.match(/\/(?:glava|chapter)-(\d+(?:\.\d+)?)\//i);
+            const urlMatch = link.match(
+              /\/(?:glava|chapter)-(\d+(?:\.\d+)?)\//i,
+            );
             if (urlMatch) {
               const parsedNumber = parseFloat(urlMatch[1]);
               if (!isNaN(parsedNumber)) number = parsedNumber;
@@ -386,17 +422,27 @@ export class MangaShiParser implements MangaParser {
     try {
       const script = $('script#json-ld').html();
       if (!script) return [];
-      const data = JSON.parse(script) as Array<{ '@type'?: string; genre?: string[] }>;
-      const creative = Array.isArray(data) ? data.find((o) => o['@type'] === 'CreativeWorkSeries') : null;
+      const data = JSON.parse(script) as Array<{
+        '@type'?: string;
+        genre?: string[];
+      }>;
+      const creative = Array.isArray(data)
+        ? data.find((o) => o['@type'] === 'CreativeWorkSeries')
+        : null;
       const genre = creative?.genre;
-      return Array.isArray(genre) ? genre.filter((g): g is string => typeof g === 'string') : [];
+      return Array.isArray(genre)
+        ? genre.filter((g): g is string => typeof g === 'string')
+        : [];
     } catch {
       return [];
     }
   }
 
   /** Collect unique text from links matching selector, join with ", " */
-  private extractListFromLinks($: cheerio.Root, selector: string): string | undefined {
+  private extractListFromLinks(
+    $: cheerio.Root,
+    selector: string,
+  ): string | undefined {
     const parts: string[] = [];
     $(selector).each((_, el) => {
       const t = $(el).text().trim();
@@ -406,7 +452,10 @@ export class MangaShiParser implements MangaParser {
   }
 
   /** Find row with label (e.g. "Год:") and return numeric value from same row */
-  private extractYearFromLabel($: cheerio.Root, label: string): number | undefined {
+  private extractYearFromLabel(
+    $: cheerio.Root,
+    label: string,
+  ): number | undefined {
     let year: number | undefined;
     $('div.flex').each((_, rowEl) => {
       const row = $(rowEl);
@@ -430,20 +479,35 @@ export class MangaShiParser implements MangaParser {
       if (spans.first().text().trim() !== 'Другие названия:') return;
       const text = spans.last().text().trim();
       if (!text) return;
-      text.split(',').map((s) => s.trim()).filter(Boolean).forEach((s) => result.push(s));
+      text
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .forEach((s) => result.push(s));
     });
     return [...new Set(result)];
   }
 
   /** Extract type: Manga / Manhwa / Manhua from page (e.g. "Manga • Ongoing") */
   private extractType($: cheerio.Root): string | undefined {
-    const candidates = ['Manga', 'Manhwa', 'Manhua', 'Comic', 'Комикс', 'Манхва', 'Маньхуа'];
+    const candidates = [
+      'Manga',
+      'Manhwa',
+      'Manhua',
+      'Comic',
+      'Комикс',
+      'Манхва',
+      'Маньхуа',
+    ];
     let found: string | undefined;
     $('span').each((_, el) => {
       if (found) return;
       const t = $(el).text().trim();
       for (const c of candidates) {
-        if (t.toLowerCase().startsWith(c.toLowerCase()) && (t.length <= c.length + 2 || /^\s*[•·]/.test(t.slice(c.length)))) {
+        if (
+          t.toLowerCase().startsWith(c.toLowerCase()) &&
+          (t.length <= c.length + 2 || /^\s*[•·]/.test(t.slice(c.length)))
+        ) {
           found = c;
           return;
         }

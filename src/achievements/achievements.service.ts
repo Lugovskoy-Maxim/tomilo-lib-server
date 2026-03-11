@@ -56,7 +56,10 @@ export interface UnlockedAchievement {
 @Injectable()
 export class AchievementsService {
   /** Опыт за получение достижения по редкости */
-  private static readonly RARITY_EXP_REWARDS: Record<AchievementRarity, number> = {
+  private static readonly RARITY_EXP_REWARDS: Record<
+    AchievementRarity,
+    number
+  > = {
     common: 10,
     uncommon: 25,
     rare: 50,
@@ -144,9 +147,19 @@ export class AchievementsService {
       levels: [
         { level: 1, threshold: 5, name: 'Первый отзыв', rarity: 'common' },
         { level: 2, threshold: 50, name: 'Голос сообщества', rarity: 'common' },
-        { level: 3, threshold: 250, name: 'Активный участник', rarity: 'uncommon' },
+        {
+          level: 3,
+          threshold: 250,
+          name: 'Активный участник',
+          rarity: 'uncommon',
+        },
         { level: 4, threshold: 500, name: 'Эксперт мнений', rarity: 'rare' },
-        { level: 5, threshold: 2500, name: 'Легенда обсуждений', rarity: 'epic' },
+        {
+          level: 5,
+          threshold: 2500,
+          name: 'Легенда обсуждений',
+          rarity: 'epic',
+        },
       ],
     },
     {
@@ -186,9 +199,19 @@ export class AchievementsService {
       levels: [
         { level: 1, threshold: 1, name: 'Первый финиш', rarity: 'common' },
         { level: 2, threshold: 5, name: 'Любитель концовок', rarity: 'common' },
-        { level: 3, threshold: 15, name: 'Собиратель завершений', rarity: 'uncommon' },
+        {
+          level: 3,
+          threshold: 15,
+          name: 'Собиратель завершений',
+          rarity: 'uncommon',
+        },
         { level: 4, threshold: 30, name: 'Мастер списка', rarity: 'rare' },
-        { level: 5, threshold: 100, name: 'Легенда завершений', rarity: 'epic' },
+        {
+          level: 5,
+          threshold: 100,
+          name: 'Легенда завершений',
+          rarity: 'epic',
+        },
       ],
     },
     {
@@ -203,7 +226,12 @@ export class AchievementsService {
         { level: 3, threshold: 600, name: 'Десять часов', rarity: 'uncommon' },
         { level: 4, threshold: 1800, name: '30 часов', rarity: 'rare' },
         { level: 5, threshold: 5000, name: 'Сто часов', rarity: 'epic' },
-        { level: 6, threshold: 10000, name: 'Мастер времени', rarity: 'legendary' },
+        {
+          level: 6,
+          threshold: 10000,
+          name: 'Мастер времени',
+          rarity: 'legendary',
+        },
       ],
     },
     {
@@ -218,7 +246,12 @@ export class AchievementsService {
         { level: 3, threshold: 1000, name: 'Бережливый', rarity: 'uncommon' },
         { level: 4, threshold: 2500, name: 'Накопитель', rarity: 'rare' },
         { level: 5, threshold: 5000, name: 'Казначей', rarity: 'epic' },
-        { level: 6, threshold: 10000, name: 'Владелец сундука', rarity: 'legendary' },
+        {
+          level: 6,
+          threshold: 10000,
+          name: 'Владелец сундука',
+          rarity: 'legendary',
+        },
       ],
     },
     {
@@ -231,7 +264,12 @@ export class AchievementsService {
         { level: 1, threshold: 1, name: 'Первый выбор', rarity: 'common' },
         { level: 2, threshold: 5, name: 'Клиент магазина', rarity: 'common' },
         { level: 3, threshold: 10, name: 'Покупатель', rarity: 'uncommon' },
-        { level: 4, threshold: 25, name: 'Коллекционер декора', rarity: 'rare' },
+        {
+          level: 4,
+          threshold: 25,
+          name: 'Коллекционер декора',
+          rarity: 'rare',
+        },
         { level: 5, threshold: 50, name: 'Меценат', rarity: 'epic' },
       ],
     },
@@ -245,7 +283,12 @@ export class AchievementsService {
         { level: 1, threshold: 1, name: 'Первый лайк', rarity: 'common' },
         { level: 2, threshold: 10, name: 'Заметный', rarity: 'common' },
         { level: 3, threshold: 50, name: 'Популярный', rarity: 'uncommon' },
-        { level: 4, threshold: 100, name: 'Любимец сообщества', rarity: 'rare' },
+        {
+          level: 4,
+          threshold: 100,
+          name: 'Любимец сообщества',
+          rarity: 'rare',
+        },
         { level: 5, threshold: 500, name: 'Звезда обсуждений', rarity: 'epic' },
       ],
     },
@@ -272,9 +315,19 @@ export class AchievementsService {
       levels: [
         { level: 1, threshold: 1, name: 'Первый сигнал', rarity: 'common' },
         { level: 2, threshold: 5, name: 'Бдительный', rarity: 'common' },
-        { level: 3, threshold: 10, name: 'Помощник модерации', rarity: 'uncommon' },
+        {
+          level: 3,
+          threshold: 10,
+          name: 'Помощник модерации',
+          rarity: 'uncommon',
+        },
         { level: 4, threshold: 25, name: 'Страж порядка', rarity: 'rare' },
-        { level: 5, threshold: 50, name: 'Защитник сообщества', rarity: 'epic' },
+        {
+          level: 5,
+          threshold: 50,
+          name: 'Защитник сообщества',
+          rarity: 'epic',
+        },
       ],
     },
   ];
@@ -374,7 +427,8 @@ export class AchievementsService {
         }
 
         if (newLevelData) {
-          const expReward = AchievementsService.RARITY_EXP_REWARDS[newLevelData.rarity] ?? 10;
+          const expReward =
+            AchievementsService.RARITY_EXP_REWARDS[newLevelData.rarity] ?? 10;
           totalExpReward += expReward;
 
           newUnlocked.push({
@@ -470,7 +524,8 @@ export class AchievementsService {
         unlockedAt: existingAch.unlockedAt.toISOString(),
         progress: statsMap[achDef.id] ?? existingAch.progress,
         maxProgress: nextLevelThreshold,
-        expReward: AchievementsService.RARITY_EXP_REWARDS[levelData.rarity] ?? 10,
+        expReward:
+          AchievementsService.RARITY_EXP_REWARDS[levelData.rarity] ?? 10,
       });
     }
 

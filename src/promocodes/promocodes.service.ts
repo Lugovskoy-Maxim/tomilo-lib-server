@@ -6,8 +6,15 @@ import {
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
-import { PromoCode, PromoCodeDocument, PromoCodeReward } from '../schemas/promo-code.schema';
-import { PromoCodeUsage, PromoCodeUsageDocument } from '../schemas/promo-code-usage.schema';
+import {
+  PromoCode,
+  PromoCodeDocument,
+  PromoCodeReward,
+} from '../schemas/promo-code.schema';
+import {
+  PromoCodeUsage,
+  PromoCodeUsageDocument,
+} from '../schemas/promo-code-usage.schema';
 import { User, UserDocument } from '../schemas/user.schema';
 import {
   AvatarDecoration,
@@ -25,7 +32,11 @@ import {
   CardDecoration,
   CardDecorationDocument,
 } from '../schemas/card-decoration.schema';
-import { CreatePromoCodeDto, UpdatePromoCodeDto, PromoCodeRewardDto } from './dto';
+import {
+  CreatePromoCodeDto,
+  UpdatePromoCodeDto,
+  PromoCodeRewardDto,
+} from './dto';
 import { LoggerService } from '../common/logger/logger.service';
 import { escapeRegex } from '../common/utils/regex.util';
 
@@ -36,8 +47,10 @@ export class PromocodesService {
   private readonly logger = new LoggerService();
 
   constructor(
-    @InjectModel(PromoCode.name) private promoCodeModel: Model<PromoCodeDocument>,
-    @InjectModel(PromoCodeUsage.name) private promoCodeUsageModel: Model<PromoCodeUsageDocument>,
+    @InjectModel(PromoCode.name)
+    private promoCodeModel: Model<PromoCodeDocument>,
+    @InjectModel(PromoCodeUsage.name)
+    private promoCodeUsageModel: Model<PromoCodeUsageDocument>,
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(AvatarDecoration.name)
     private avatarDecorationModel: Model<AvatarDecorationDocument>,
@@ -56,7 +69,12 @@ export class PromocodesService {
     limit?: number;
     status?: string;
     search?: string;
-  }): Promise<{ data: PromoCodeDocument[]; total: number; page: number; limit: number }> {
+  }): Promise<{
+    data: PromoCodeDocument[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     const { page = 1, limit = 20, status, search } = options;
     const skip = (page - 1) * limit;
 
@@ -93,15 +111,24 @@ export class PromocodesService {
   }
 
   async findByCode(code: string): Promise<PromoCodeDocument | null> {
-    return this.promoCodeModel.findOne({ code: code.toUpperCase().trim() }).exec();
+    return this.promoCodeModel
+      .findOne({ code: code.toUpperCase().trim() })
+      .exec();
   }
 
-  async create(dto: CreatePromoCodeDto, createdById?: string): Promise<PromoCodeDocument> {
+  async create(
+    dto: CreatePromoCodeDto,
+    createdById?: string,
+  ): Promise<PromoCodeDocument> {
     const normalizedCode = dto.code.toUpperCase().trim();
 
-    const existing = await this.promoCodeModel.findOne({ code: normalizedCode }).exec();
+    const existing = await this.promoCodeModel
+      .findOne({ code: normalizedCode })
+      .exec();
     if (existing) {
-      throw new BadRequestException(`Promo code "${normalizedCode}" already exists`);
+      throw new BadRequestException(
+        `Promo code "${normalizedCode}" already exists`,
+      );
     }
 
     const rewards = await this.validateAndPrepareRewards(dto.rewards);
@@ -125,15 +152,22 @@ export class PromocodesService {
     return promo;
   }
 
-  async update(id: string, dto: UpdatePromoCodeDto): Promise<PromoCodeDocument> {
+  async update(
+    id: string,
+    dto: UpdatePromoCodeDto,
+  ): Promise<PromoCodeDocument> {
     const promo = await this.findById(id);
 
     if (dto.code !== undefined) {
       const normalizedCode = dto.code.toUpperCase().trim();
       if (normalizedCode !== promo.code) {
-        const existing = await this.promoCodeModel.findOne({ code: normalizedCode }).exec();
+        const existing = await this.promoCodeModel
+          .findOne({ code: normalizedCode })
+          .exec();
         if (existing) {
-          throw new BadRequestException(`Promo code "${normalizedCode}" already exists`);
+          throw new BadRequestException(
+            `Promo code "${normalizedCode}" already exists`,
+          );
         }
         promo.code = normalizedCode;
       }
@@ -144,9 +178,12 @@ export class PromocodesService {
       promo.rewards = await this.validateAndPrepareRewards(dto.rewards);
     }
     if (dto.maxUses !== undefined) promo.maxUses = dto.maxUses;
-    if (dto.maxUsesPerUser !== undefined) promo.maxUsesPerUser = dto.maxUsesPerUser;
-    if (dto.startsAt !== undefined) promo.startsAt = dto.startsAt ? new Date(dto.startsAt) : undefined;
-    if (dto.expiresAt !== undefined) promo.expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : undefined;
+    if (dto.maxUsesPerUser !== undefined)
+      promo.maxUsesPerUser = dto.maxUsesPerUser;
+    if (dto.startsAt !== undefined)
+      promo.startsAt = dto.startsAt ? new Date(dto.startsAt) : undefined;
+    if (dto.expiresAt !== undefined)
+      promo.expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : undefined;
     if (dto.status !== undefined) promo.status = dto.status;
     if (dto.newUsersOnly !== undefined) promo.newUsersOnly = dto.newUsersOnly;
     if (dto.minLevel !== undefined) promo.minLevel = dto.minLevel;
@@ -165,7 +202,12 @@ export class PromocodesService {
   async getUsage(
     promoCodeId: string,
     options: { page?: number; limit?: number },
-  ): Promise<{ data: PromoCodeUsageDocument[]; total: number; page: number; limit: number }> {
+  ): Promise<{
+    data: PromoCodeUsageDocument[];
+    total: number;
+    page: number;
+    limit: number;
+  }> {
     if (!Types.ObjectId.isValid(promoCodeId)) {
       throw new BadRequestException('Invalid promo code ID');
     }
@@ -235,13 +277,17 @@ export class PromocodesService {
       daysAgo.setDate(daysAgo.getDate() - NEW_USER_DAYS_THRESHOLD);
       const createdAt = (user as unknown as { createdAt?: Date }).createdAt;
       if (createdAt && createdAt < daysAgo) {
-        throw new ForbiddenException('Промокод доступен только для новых пользователей');
+        throw new ForbiddenException(
+          'Промокод доступен только для новых пользователей',
+        );
       }
     }
 
     if (promo.minLevel !== undefined && promo.minLevel > 0) {
       if ((user.level ?? 1) < promo.minLevel) {
-        throw new ForbiddenException(`Необходим минимальный уровень: ${promo.minLevel}`);
+        throw new ForbiddenException(
+          `Необходим минимальный уровень: ${promo.minLevel}`,
+        );
       }
     }
 
@@ -250,13 +296,18 @@ export class PromocodesService {
       userId: new Types.ObjectId(userId),
     });
     if (userUsageCount >= promo.maxUsesPerUser) {
-      throw new BadRequestException('Вы уже использовали этот промокод максимальное число раз');
+      throw new BadRequestException(
+        'Вы уже использовали этот промокод максимальное число раз',
+      );
     }
 
     const grantedRewards = await this.grantRewards(user, promo.rewards);
 
     const updated = await this.promoCodeModel.findOneAndUpdate(
-      { _id: promo._id, $or: [{ maxUses: null }, { usedCount: { $lt: promo.maxUses } }] },
+      {
+        _id: promo._id,
+        $or: [{ maxUses: null }, { usedCount: { $lt: promo.maxUses } }],
+      },
       { $inc: { usedCount: 1 } },
       { new: true },
     );
@@ -266,7 +317,10 @@ export class PromocodesService {
     }
 
     if (updated.maxUses !== null && updated.usedCount >= updated.maxUses) {
-      await this.promoCodeModel.updateOne({ _id: promo._id }, { status: 'exhausted' });
+      await this.promoCodeModel.updateOne(
+        { _id: promo._id },
+        { status: 'exhausted' },
+      );
     }
 
     await this.promoCodeUsageModel.create({
@@ -291,7 +345,10 @@ export class PromocodesService {
     };
   }
 
-  async generateCode(options: { length?: number; prefix?: string }): Promise<string> {
+  async generateCode(options: {
+    length?: number;
+    prefix?: string;
+  }): Promise<string> {
     const { length = 8, prefix = '' } = options;
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
     let attempts = 0;
@@ -313,7 +370,10 @@ export class PromocodesService {
     throw new BadRequestException('Failed to generate unique code');
   }
 
-  private validatePromoCodeStatus(promo: PromoCodeDocument): { valid: boolean; message?: string } {
+  private validatePromoCodeStatus(promo: PromoCodeDocument): {
+    valid: boolean;
+    message?: string;
+  } {
     if (promo.status === 'inactive') {
       return { valid: false, message: 'Промокод неактивен' };
     }
@@ -349,17 +409,23 @@ export class PromocodesService {
 
       if (r.type === 'balance') {
         if (!r.amount || r.amount < 1) {
-          throw new BadRequestException('Balance reward requires positive amount');
+          throw new BadRequestException(
+            'Balance reward requires positive amount',
+          );
         }
         reward.amount = r.amount;
       } else if (r.type === 'premium') {
         if (!r.amount || r.amount < 1) {
-          throw new BadRequestException('Premium reward requires positive amount (days)');
+          throw new BadRequestException(
+            'Premium reward requires positive amount (days)',
+          );
         }
         reward.amount = r.amount;
       } else if (r.type === 'decoration') {
         if (!r.decorationId) {
-          throw new BadRequestException('Decoration reward requires decorationId');
+          throw new BadRequestException(
+            'Decoration reward requires decorationId',
+          );
         }
         if (!Types.ObjectId.isValid(r.decorationId)) {
           throw new BadRequestException('Invalid decorationId');
@@ -367,7 +433,9 @@ export class PromocodesService {
 
         const decorationInfo = await this.findDecorationById(r.decorationId);
         if (!decorationInfo) {
-          throw new BadRequestException(`Decoration not found: ${r.decorationId}`);
+          throw new BadRequestException(
+            `Decoration not found: ${r.decorationId}`,
+          );
         }
 
         reward.decorationId = new Types.ObjectId(r.decorationId);
@@ -381,9 +449,10 @@ export class PromocodesService {
     return prepared;
   }
 
-  private async findDecorationById(
-    id: string,
-  ): Promise<{ type: 'avatar' | 'frame' | 'background' | 'card'; name: string } | null> {
+  private async findDecorationById(id: string): Promise<{
+    type: 'avatar' | 'frame' | 'background' | 'card';
+    name: string;
+  } | null> {
     const oid = new Types.ObjectId(id);
 
     const avatar = await this.avatarDecorationModel.findById(oid).exec();
@@ -392,7 +461,9 @@ export class PromocodesService {
     const frame = await this.avatarFrameDecorationModel.findById(oid).exec();
     if (frame) return { type: 'frame', name: frame.name };
 
-    const background = await this.backgroundDecorationModel.findById(oid).exec();
+    const background = await this.backgroundDecorationModel
+      .findById(oid)
+      .exec();
     if (background) return { type: 'background', name: background.name };
 
     const card = await this.cardDecorationModel.findById(oid).exec();
@@ -413,7 +484,11 @@ export class PromocodesService {
         granted.push(reward);
       } else if (reward.type === 'premium' && reward.amount) {
         granted.push(reward);
-      } else if (reward.type === 'decoration' && reward.decorationId && reward.decorationType) {
+      } else if (
+        reward.type === 'decoration' &&
+        reward.decorationId &&
+        reward.decorationType
+      ) {
         const alreadyOwned = user.ownedDecorations?.some(
           (o) =>
             o.decorationType === reward.decorationType &&

@@ -62,13 +62,21 @@ export class AdminService {
 
   async getDashboardStats(): Promise<{
     users: { total: number; newToday: number; newThisWeek: number };
-    titles: { total: number; byType: Record<string, number>; byStatus: Record<string, number> };
+    titles: {
+      total: number;
+      byType: Record<string, number>;
+      byStatus: Record<string, number>;
+    };
     chapters: { total: number; newToday: number };
     comments: { total: number; newToday: number; pendingReports: number };
     activity: { activeUsersToday: number; activeUsersWeek: number };
   }> {
     const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const startOfDay = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
     const startOfWeek = new Date(startOfDay);
     startOfWeek.setDate(startOfWeek.getDate() - 7);
 
@@ -156,7 +164,11 @@ export class AdminService {
     for (let i = days - 1; i >= 0; i--) {
       const date = new Date(now);
       date.setDate(date.getDate() - i);
-      const startOfDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const startOfDay = new Date(
+        date.getFullYear(),
+        date.getMonth(),
+        date.getDate(),
+      );
       const endOfDay = new Date(startOfDay);
       endOfDay.setDate(endOfDay.getDate() + 1);
 
@@ -284,7 +296,13 @@ export class AdminService {
     user.role = 'banned';
     await user.save();
 
-    await this.logAction(adminId, 'ban_user', { reason, durationHours }, 'user', userId);
+    await this.logAction(
+      adminId,
+      'ban_user',
+      { reason, durationHours },
+      'user',
+      userId,
+    );
 
     return user;
   }
@@ -322,7 +340,9 @@ export class AdminService {
 
     const validRoles = ['user', 'moderator', 'admin'];
     if (!validRoles.includes(newRole)) {
-      throw new BadRequestException(`Invalid role. Valid roles: ${validRoles.join(', ')}`);
+      throw new BadRequestException(
+        `Invalid role. Valid roles: ${validRoles.join(', ')}`,
+      );
     }
 
     const user = await this.userModel.findById(userId);
@@ -369,7 +389,9 @@ export class AdminService {
     if (options.isPublished === false) query.isPublished = false;
 
     const skip = (page - 1) * limit;
-    const sort: Record<string, 1 | -1> = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+    const sort: Record<string, 1 | -1> = {
+      [sortBy]: sortOrder === 'desc' ? -1 : 1,
+    };
 
     const [titles, total] = await Promise.all([
       this.titleModel
@@ -377,7 +399,9 @@ export class AdminService {
         .sort(sort)
         .skip(skip)
         .limit(limit)
-        .select('name slug _id status type isPublished totalChapters createdAt updatedAt chaptersRemovedByCopyrightHolder')
+        .select(
+          'name slug _id status type isPublished totalChapters createdAt updatedAt chaptersRemovedByCopyrightHolder',
+        )
         .lean()
         .exec(),
       this.titleModel.countDocuments(query),
@@ -411,7 +435,9 @@ export class AdminService {
 
     await this.chapterModel.deleteMany({ titleId: { $in: objectIds } });
 
-    const result = await this.titleModel.deleteMany({ _id: { $in: objectIds } });
+    const result = await this.titleModel.deleteMany({
+      _id: { $in: objectIds },
+    });
 
     await this.logAction(adminId, 'bulk_delete_titles', {
       count: result.deletedCount,
@@ -435,7 +461,14 @@ export class AdminService {
       throw new BadRequestException('No valid title IDs provided');
     }
 
-    const allowedFields = ['status', 'type', 'genres', 'tags', 'ageLimit', 'isHidden'];
+    const allowedFields = [
+      'status',
+      'type',
+      'genres',
+      'tags',
+      'ageLimit',
+      'isHidden',
+    ];
     const sanitizedUpdate: Record<string, any> = {};
 
     for (const key of Object.keys(update)) {
@@ -470,34 +503,36 @@ export class AdminService {
     topCommenters: { userId: string; username: string; count: number }[];
     hiddenCount: number;
   }> {
-    const [total, byEntityType, topCommenters, hiddenCount] = await Promise.all([
-      this.commentModel.countDocuments(),
-      this.commentModel.aggregate([
-        { $group: { _id: '$entityType', count: { $sum: 1 } } },
-      ]),
-      this.commentModel.aggregate([
-        { $group: { _id: '$userId', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 10 },
-        {
-          $lookup: {
-            from: 'users',
-            localField: '_id',
-            foreignField: '_id',
-            as: 'user',
+    const [total, byEntityType, topCommenters, hiddenCount] = await Promise.all(
+      [
+        this.commentModel.countDocuments(),
+        this.commentModel.aggregate([
+          { $group: { _id: '$entityType', count: { $sum: 1 } } },
+        ]),
+        this.commentModel.aggregate([
+          { $group: { _id: '$userId', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 10 },
+          {
+            $lookup: {
+              from: 'users',
+              localField: '_id',
+              foreignField: '_id',
+              as: 'user',
+            },
           },
-        },
-        { $unwind: '$user' },
-        {
-          $project: {
-            userId: '$_id',
-            username: '$user.username',
-            count: 1,
+          { $unwind: '$user' },
+          {
+            $project: {
+              userId: '$_id',
+              username: '$user.username',
+              count: 1,
+            },
           },
-        },
-      ]),
-      this.commentModel.countDocuments({ isVisible: false }),
-    ]);
+        ]),
+        this.commentModel.countDocuments({ isVisible: false }),
+      ],
+    );
 
     const byType: Record<string, number> = {};
     for (const item of byEntityType) {
@@ -528,9 +563,15 @@ export class AdminService {
       userId: new Types.ObjectId(userId),
     });
 
-    await this.logAction(adminId, 'delete_user_comments', {
-      deletedCount: result.deletedCount,
-    }, 'user', userId);
+    await this.logAction(
+      adminId,
+      'delete_user_comments',
+      {
+        deletedCount: result.deletedCount,
+      },
+      'user',
+      userId,
+    );
 
     return { deletedCount: result.deletedCount };
   }
@@ -580,7 +621,9 @@ export class AdminService {
   async exportUsers(format: 'csv' | 'json'): Promise<any> {
     const users = await this.userModel
       .find()
-      .select('username email role level experience balance createdAt lastActivityAt')
+      .select(
+        'username email role level experience balance createdAt lastActivityAt',
+      )
       .lean();
 
     if (format === 'json') {
@@ -610,7 +653,9 @@ export class AdminService {
         user.level || 0,
         user.experience || 0,
         user.balance || 0,
-        (user as any).createdAt ? new Date((user as any).createdAt).toISOString() : '',
+        (user as any).createdAt
+          ? new Date((user as any).createdAt).toISOString()
+          : '',
         user.lastActivityAt ? new Date(user.lastActivityAt).toISOString() : '',
       ];
       csv += row.join(',') + '\n';
@@ -622,7 +667,9 @@ export class AdminService {
   async exportTitles(format: 'csv' | 'json'): Promise<any> {
     const titles = await this.titleModel
       .find()
-      .select('name slug type status genres totalChapters averageRating totalViews createdAt')
+      .select(
+        'name slug type status genres totalChapters averageRating totalViews createdAt',
+      )
       .lean();
 
     if (format === 'json') {
@@ -655,7 +702,9 @@ export class AdminService {
         title.totalChapters || 0,
         title.averageRating || 0,
         (title as any).totalViews || 0,
-        (title as any).createdAt ? new Date((title as any).createdAt).toISOString() : '',
+        (title as any).createdAt
+          ? new Date((title as any).createdAt).toISOString()
+          : '',
       ];
       csv += row.join(',') + '\n';
     }
@@ -743,7 +792,10 @@ export class AdminService {
     };
   }
 
-  async clearCache(keys?: string[], adminId?: string): Promise<{ cleared: boolean }> {
+  async clearCache(
+    keys?: string[],
+    adminId?: string,
+  ): Promise<{ cleared: boolean }> {
     if (keys && keys.length > 0) {
       for (const key of keys) {
         await this.cacheManager.del(key);

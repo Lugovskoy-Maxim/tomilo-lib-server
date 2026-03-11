@@ -21,7 +21,11 @@ export class PushService {
     private pushModel: Model<PushSubscriptionDocument>,
   ) {
     if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-      webpush.setVapidDetails(VAPID_MAILTO, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+      webpush.setVapidDetails(
+        VAPID_MAILTO,
+        VAPID_PUBLIC_KEY,
+        VAPID_PRIVATE_KEY,
+      );
       this.vapidConfigured = true;
     } else {
       this.logger.warn(
@@ -77,7 +81,11 @@ export class PushService {
     endpoint: string;
     keys: { p256dh: string; auth: string };
     expirationTime?: number | null;
-  }): { endpoint: string; keys: { p256dh: string; auth: string }; expirationTime?: number | null } {
+  }): {
+    endpoint: string;
+    keys: { p256dh: string; auth: string };
+    expirationTime?: number | null;
+  } {
     return {
       endpoint: doc.endpoint,
       keys: doc.keys,
@@ -85,9 +93,16 @@ export class PushService {
     };
   }
 
-  async getSubscriptionsByUserIds(
-    userIds: string[],
-  ): Promise<Map<string, Array<{ endpoint: string; keys: { p256dh: string; auth: string }; expirationTime?: number | null }>>> {
+  async getSubscriptionsByUserIds(userIds: string[]): Promise<
+    Map<
+      string,
+      Array<{
+        endpoint: string;
+        keys: { p256dh: string; auth: string };
+        expirationTime?: number | null;
+      }>
+    >
+  > {
     const validIds = userIds.filter((id) => Types.ObjectId.isValid(id));
     if (validIds.length === 0) return new Map();
     const list = await this.pushModel
@@ -96,9 +111,16 @@ export class PushService {
       })
       .lean()
       .exec();
-    const map = new Map<string, Array<{ endpoint: string; keys: { p256dh: string; auth: string }; expirationTime?: number | null }>>();
+    const map = new Map<
+      string,
+      Array<{
+        endpoint: string;
+        keys: { p256dh: string; auth: string };
+        expirationTime?: number | null;
+      }>
+    >();
     for (const doc of list) {
-      const uid = (doc.userId as Types.ObjectId).toString();
+      const uid = doc.userId.toString();
       if (!map.has(uid)) map.set(uid, []);
       map.get(uid)!.push(PushService.toSendShape(doc));
     }
@@ -110,7 +132,14 @@ export class PushService {
    * subscriptionMap: userId -> list of subscription objects for that user.
    */
   async sendToSubscriptions(
-    subscriptionMap: Map<string, Array<{ endpoint: string; keys: { p256dh: string; auth: string }; expirationTime?: number | null }>>,
+    subscriptionMap: Map<
+      string,
+      Array<{
+        endpoint: string;
+        keys: { p256dh: string; auth: string };
+        expirationTime?: number | null;
+      }>
+    >,
     payload: {
       title: string;
       body?: string;

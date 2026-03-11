@@ -122,7 +122,11 @@ export class Character {
   voiceActor: string;
 
   /** Статус модерации. По умолчанию approved (для обратной совместимости и админского создания). */
-  @Prop({ type: String, enum: CharacterModerationStatus, default: CharacterModerationStatus.APPROVED })
+  @Prop({
+    type: String,
+    enum: CharacterModerationStatus,
+    default: CharacterModerationStatus.APPROVED,
+  })
   status: CharacterModerationStatus;
 
   /** Кто предложил персонажа или правки (для pending). */

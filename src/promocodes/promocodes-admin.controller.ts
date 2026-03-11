@@ -206,7 +206,9 @@ export class PromocodesAdminController {
   }
 
   @Delete(':id')
-  async delete(@Param('id') id: string): Promise<ApiResponseDto<{ message: string }>> {
+  async delete(
+    @Param('id') id: string,
+  ): Promise<ApiResponseDto<{ message: string }>> {
     try {
       await this.promocodesService.delete(id);
       return {

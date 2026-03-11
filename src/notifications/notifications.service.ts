@@ -1,4 +1,10 @@
-import { Injectable, Inject, NotFoundException, Optional, forwardRef } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  NotFoundException,
+  Optional,
+  forwardRef,
+} from '@nestjs/common';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -15,7 +21,8 @@ import { NotificationsGateway } from './notifications.gateway';
 
 const UNREAD_COUNT_CACHE_PREFIX = 'notifications:unread:';
 const UNREAD_COUNT_CACHE_TTL_MS = 30 * 1000; // 30 sec
-const SITE_URL = process.env.SITE_URL || process.env.FRONTEND_URL || 'https://tomilo-lib.ru';
+const SITE_URL =
+  process.env.SITE_URL || process.env.FRONTEND_URL || 'https://tomilo-lib.ru';
 
 @Injectable()
 export class NotificationsService {
@@ -25,7 +32,10 @@ export class NotificationsService {
     @InjectModel(User.name)
     private userModel: Model<UserDocument>,
     @Inject(CACHE_MANAGER)
-    private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown, ttl?: number) => Promise<void> },
+    private cacheManager: {
+      get: (k: string) => Promise<unknown>;
+      set: (k: string, v: unknown, ttl?: number) => Promise<void>;
+    },
     private pushService: PushService,
     private subscriptionsService: SubscriptionsService,
     @Optional()
@@ -61,15 +71,18 @@ export class NotificationsService {
       const id = (saved as any)._id?.toString?.() ?? String((saved as any).id);
       const titleId = (saved as any).titleId?.toString?.();
       const chapterId = (saved as any).chapterId?.toString?.();
-      this.notificationsGateway.emitNotificationToUser(notificationData.userId, {
-        _id: id,
-        type: (saved as any).type ?? notificationData.type,
-        title: (saved as any).title ?? notificationData.title,
-        message: (saved as any).message ?? notificationData.message,
-        ...(titleId && { titleId }),
-        ...(chapterId && { chapterId }),
-        ...((saved as any).metadata && { metadata: (saved as any).metadata }),
-      });
+      this.notificationsGateway.emitNotificationToUser(
+        notificationData.userId,
+        {
+          _id: id,
+          type: (saved as any).type ?? notificationData.type,
+          title: (saved as any).title ?? notificationData.title,
+          message: (saved as any).message ?? notificationData.message,
+          ...(titleId && { titleId }),
+          ...(chapterId && { chapterId }),
+          ...((saved as any).metadata && { metadata: (saved as any).metadata }),
+        },
+      );
     }
     return saved;
   }
@@ -153,7 +166,9 @@ export class NotificationsService {
       throw new NotFoundException('Notification not found');
     }
 
-    await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, { ttl: 5 } as any);
+    await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, {
+      ttl: 5,
+    } as any);
     await this.notifyUnreadCount(userId);
     return notification;
   }
@@ -168,7 +183,9 @@ export class NotificationsService {
       { isRead: true },
     );
 
-    await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, { ttl: 5 } as any);
+    await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, {
+      ttl: 5,
+    } as any);
     await this.notifyUnreadCount(userId);
     return { modifiedCount: result.modifiedCount };
   }
@@ -191,7 +208,9 @@ export class NotificationsService {
     }
 
     if (!result.isRead) {
-      await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, { ttl: 5 } as any);
+      await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, {
+        ttl: 5,
+      } as any);
       await this.notifyUnreadCount(userId);
     }
   }
@@ -212,7 +231,9 @@ export class NotificationsService {
       isRead: false,
     });
 
-    await this.cacheManager.set(key, count, { ttl: UNREAD_COUNT_CACHE_TTL_MS } as any);
+    await this.cacheManager.set(key, count, {
+      ttl: UNREAD_COUNT_CACHE_TTL_MS,
+    } as any);
     return { count };
   }
 
@@ -224,7 +245,9 @@ export class NotificationsService {
     options?: { titleSlug?: string },
   ): Promise<void> {
     // Пользователи с тайтлом в закладках
-    const titleObjectId = Types.ObjectId.isValid(titleId) ? new Types.ObjectId(titleId) : null;
+    const titleObjectId = Types.ObjectId.isValid(titleId)
+      ? new Types.ObjectId(titleId)
+      : null;
     const usersWithBookmark = await this.notificationModel.db
       .collection('users')
       .find({
@@ -236,9 +259,15 @@ export class NotificationsService {
       .toArray();
 
     // Подписчики на тайтл (уведомления о новых главах)
-    const subscriberIds = await this.subscriptionsService.getSubscriberIdsForNewChapter(titleId);
-    const bookmarkUserIds = (usersWithBookmark as any[]).map((u: any) => u._id.toString());
-    const allUserIdsSet = new Set<string>([...bookmarkUserIds, ...subscriberIds]);
+    const subscriberIds =
+      await this.subscriptionsService.getSubscriberIdsForNewChapter(titleId);
+    const bookmarkUserIds = (usersWithBookmark as any[]).map((u: any) =>
+      u._id.toString(),
+    );
+    const allUserIdsSet = new Set<string>([
+      ...bookmarkUserIds,
+      ...subscriberIds,
+    ]);
     const allUserIds = Array.from(allUserIdsSet);
 
     const notifications = allUserIds.map((uid) => ({
@@ -271,7 +300,8 @@ export class NotificationsService {
       return true; // подписчики без закладки — по умолчанию шлём push
     });
     if (userIdsForPush.length > 0 && this.pushService.isConfigured()) {
-      const subscriptionMap = await this.pushService.getSubscriptionsByUserIds(userIdsForPush);
+      const subscriptionMap =
+        await this.pushService.getSubscriptionsByUserIds(userIdsForPush);
       if (subscriptionMap.size > 0) {
         const path = options?.titleSlug
           ? `/titles/${options.titleSlug}/chapter/${chapterId}`
@@ -310,12 +340,16 @@ export class NotificationsService {
     if (userIdStrings.length === 0 || !this.pushService.isConfigured()) {
       return { sent: 0, failed: 0 };
     }
-    const subscriptionMap = await this.pushService.getSubscriptionsByUserIds(userIdStrings);
+    const subscriptionMap =
+      await this.pushService.getSubscriptionsByUserIds(userIdStrings);
     if (subscriptionMap.size === 0) {
       return { sent: 0, failed: 0 };
     }
     const url = `${SITE_URL.replace(/\/$/, '')}/news/${encodeURIComponent(slug)}`;
-    const title = announcementTitle.length > 50 ? `${announcementTitle.slice(0, 47)}…` : announcementTitle;
+    const title =
+      announcementTitle.length > 50
+        ? `${announcementTitle.slice(0, 47)}…`
+        : announcementTitle;
     return this.pushService.sendToSubscriptions(subscriptionMap, {
       title: `Новость: ${title}`,
       body: 'Опубликована новая новость на платформе',
@@ -432,8 +466,12 @@ export class NotificationsService {
             'metadata.reactionsCount': totalReactionsCount,
             'metadata.lastReactorUsername': reactorUsername,
             'metadata.lastEmoji': emoji,
-            ...(options.titleId && { titleId: new Types.ObjectId(options.titleId) }),
-            ...(options.chapterId && { chapterId: new Types.ObjectId(options.chapterId) }),
+            ...(options.titleId && {
+              titleId: new Types.ObjectId(options.titleId),
+            }),
+            ...(options.chapterId && {
+              chapterId: new Types.ObjectId(options.chapterId),
+            }),
           },
         },
         { new: true },

@@ -42,8 +42,9 @@ export class TranslatorTeamMemberSchema {
   socialLinks?: Record<string, string>;
 }
 
-export const TranslatorTeamMemberSchemaFactory =
-  SchemaFactory.createForClass(TranslatorTeamMemberSchema);
+export const TranslatorTeamMemberSchemaFactory = SchemaFactory.createForClass(
+  TranslatorTeamMemberSchema,
+);
 
 @Schema({ timestamps: true })
 export class TranslatorTeam {
@@ -108,7 +109,8 @@ export class TranslatorTeam {
   isActive: boolean;
 }
 
-export const TranslatorTeamSchema = SchemaFactory.createForClass(TranslatorTeam);
+export const TranslatorTeamSchema =
+  SchemaFactory.createForClass(TranslatorTeam);
 
 TranslatorTeamSchema.index({ slug: 1 });
 TranslatorTeamSchema.index({ titleIds: 1 });

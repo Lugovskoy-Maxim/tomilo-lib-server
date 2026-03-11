@@ -27,11 +27,7 @@ export class GenresAdminService {
       .replace(/^-|-$/g, '');
   }
 
-  async findAll(params: {
-    search?: string;
-    page?: number;
-    limit?: number;
-  }) {
+  async findAll(params: { search?: string; page?: number; limit?: number }) {
     const page = Math.max(1, params.page ?? 1);
     const limit = Math.min(100, Math.max(1, params.limit ?? 50));
     const skip = (page - 1) * limit;
@@ -65,7 +61,10 @@ export class GenresAdminService {
       namesById.set(id, name);
     }
 
-    const counts = await this.titleModel.aggregate<{ _id: string; count: number }>([
+    const counts = await this.titleModel.aggregate<{
+      _id: string;
+      count: number;
+    }>([
       { $unwind: '$genres' },
       { $match: { genres: { $in: Array.from(namesById.values()) } } },
       { $group: { _id: '$genres', count: { $sum: 1 } } },
@@ -77,7 +76,14 @@ export class GenresAdminService {
     }
 
     const list = genres.map((g) => {
-      const doc = g as unknown as { _id: Types.ObjectId; name: string; slug: string; description?: string; createdAt?: Date; updatedAt?: Date };
+      const doc = g as unknown as {
+        _id: Types.ObjectId;
+        name: string;
+        slug: string;
+        description?: string;
+        createdAt?: Date;
+        updatedAt?: Date;
+      };
       const name = doc.name;
       const titlesCount = countByName.get(name) ?? 0;
       return {
@@ -106,7 +112,14 @@ export class GenresAdminService {
     if (!genre) {
       throw new NotFoundException('Genre not found');
     }
-    const g = genre as unknown as { _id: Types.ObjectId; name: string; slug: string; description?: string; createdAt?: Date; updatedAt?: Date };
+    const g = genre as unknown as {
+      _id: Types.ObjectId;
+      name: string;
+      slug: string;
+      description?: string;
+      createdAt?: Date;
+      updatedAt?: Date;
+    };
     const titlesCount = await this.titleModel.countDocuments({
       genres: g.name,
     });
@@ -131,7 +144,9 @@ export class GenresAdminService {
       $or: [{ slug }, { name: new RegExp(`^${escapeRegex(name)}$`, 'i') }],
     });
     if (existing) {
-      throw new ConflictException('Genre with this name or slug already exists');
+      throw new ConflictException(
+        'Genre with this name or slug already exists',
+      );
     }
     const genre = await this.genreModel.create({
       name,
@@ -155,7 +170,8 @@ export class GenresAdminService {
     const oldName = genre.name;
     if (body.name !== undefined) genre.name = body.name.trim();
     if (body.slug !== undefined) genre.slug = body.slug.trim();
-    if (body.description !== undefined) genre.description = body.description.trim();
+    if (body.description !== undefined)
+      genre.description = body.description.trim();
     await genre.save();
 
     if (body.name !== undefined && oldName !== genre.name) {
@@ -186,7 +202,10 @@ export class GenresAdminService {
     if (sourceId === targetId) {
       throw new BadRequestException('sourceId and targetId must be different');
     }
-    if (!Types.ObjectId.isValid(sourceId) || !Types.ObjectId.isValid(targetId)) {
+    if (
+      !Types.ObjectId.isValid(sourceId) ||
+      !Types.ObjectId.isValid(targetId)
+    ) {
       throw new BadRequestException('Invalid genre id');
     }
     const [source, target] = await Promise.all([

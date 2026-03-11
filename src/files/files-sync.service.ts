@@ -55,11 +55,21 @@ export class FilesSyncService {
   async fullSync(): Promise<SyncResult> {
     if (this.isSyncing) {
       this.logger.warn('Синхронизация уже выполняется, пропускаем');
-      return { uploaded: 0, deleted: 0, orphansDeleted: 0, errors: ['Already syncing'] };
+      return {
+        uploaded: 0,
+        deleted: 0,
+        orphansDeleted: 0,
+        errors: ['Already syncing'],
+      };
     }
 
     this.isSyncing = true;
-    const result: SyncResult = { uploaded: 0, deleted: 0, orphansDeleted: 0, errors: [] };
+    const result: SyncResult = {
+      uploaded: 0,
+      deleted: 0,
+      orphansDeleted: 0,
+      errors: [],
+    };
 
     try {
       if (this.s3Service.isConfigured()) {
@@ -104,8 +114,13 @@ export class FilesSyncService {
       for (const file of toUpload) {
         try {
           const buffer = await fs.readFile(file.fullPath);
-          const contentType = lookup(file.relativePath) || 'application/octet-stream';
-          await this.s3Service.uploadFile(file.relativePath, buffer, contentType);
+          const contentType =
+            lookup(file.relativePath) || 'application/octet-stream';
+          await this.s3Service.uploadFile(
+            file.relativePath,
+            buffer,
+            contentType,
+          );
           uploaded++;
         } catch (error) {
           const msg = `Ошибка загрузки ${file.relativePath}: ${error}`;
@@ -138,7 +153,9 @@ export class FilesSyncService {
       const localPaths = new Set(localFiles.map((f) => f.relativePath));
       const s3Files = await this.getAllS3FilesWithSize();
 
-      const toDelete = s3Files.filter((f) => !localPaths.has(f.key)).map((f) => f.key);
+      const toDelete = s3Files
+        .filter((f) => !localPaths.has(f.key))
+        .map((f) => f.key);
 
       if (toDelete.length > 0) {
         this.logger.log(`Найдено ${toDelete.length} лишних файлов в S3`);
@@ -164,7 +181,9 @@ export class FilesSyncService {
       const localFiles = await this.getAllLocalFiles();
       const referencedFiles = await this.getReferencedFilesFromDB();
 
-      const orphans = localFiles.filter((f) => !referencedFiles.has(f.relativePath));
+      const orphans = localFiles.filter(
+        (f) => !referencedFiles.has(f.relativePath),
+      );
 
       this.logger.log(`Найдено ${orphans.length} осиротевших файлов`);
 
@@ -203,7 +222,10 @@ export class FilesSyncService {
             await walkDir(fullPath);
           } else if (entry.isFile()) {
             const stat = await fs.stat(fullPath);
-            const relativePath = relative(this.uploadsDir, fullPath).replace(/\\/g, '/');
+            const relativePath = relative(this.uploadsDir, fullPath).replace(
+              /\\/g,
+              '/',
+            );
             files.push({ relativePath, fullPath, size: stat.size });
           }
         }
@@ -244,7 +266,9 @@ export class FilesSyncService {
     return keys;
   }
 
-  private async getAllS3FilesWithSize(): Promise<{ key: string; size: number }[]> {
+  private async getAllS3FilesWithSize(): Promise<
+    { key: string; size: number }[]
+  > {
     const files: { key: string; size: number }[] = [];
     const client = this.s3Service.getClient();
     const bucket = this.s3Service.getBucket();
@@ -311,7 +335,10 @@ export class FilesSyncService {
   private async getReferencedFilesFromDB(): Promise<Set<string>> {
     const referenced = new Set<string>();
 
-    const users = await this.connection.collection('users').find({}, { projection: { avatar: 1 } }).toArray();
+    const users = await this.connection
+      .collection('users')
+      .find({}, { projection: { avatar: 1 } })
+      .toArray();
     for (const user of users) {
       const path = this.normalizeImagePath(user.avatar);
       if (path) referenced.add(path);
@@ -332,13 +359,19 @@ export class FilesSyncService {
       }
     }
 
-    const titles = await this.connection.collection('titles').find({}, { projection: { coverImage: 1 } }).toArray();
+    const titles = await this.connection
+      .collection('titles')
+      .find({}, { projection: { coverImage: 1 } })
+      .toArray();
     for (const title of titles) {
       const path = this.normalizeImagePath(title.coverImage);
       if (path) referenced.add(path);
     }
 
-    const chapters = await this.connection.collection('chapters').find({}, { projection: { pages: 1 } }).toArray();
+    const chapters = await this.connection
+      .collection('chapters')
+      .find({}, { projection: { pages: 1 } })
+      .toArray();
     for (const chapter of chapters) {
       if (chapter.pages && Array.isArray(chapter.pages)) {
         for (const page of chapter.pages) {
@@ -348,7 +381,10 @@ export class FilesSyncService {
       }
     }
 
-    const collections = await this.connection.collection('collections').find({}, { projection: { cover: 1 } }).toArray();
+    const collections = await this.connection
+      .collection('collections')
+      .find({}, { projection: { cover: 1 } })
+      .toArray();
     for (const col of collections) {
       const path = this.normalizeImagePath(col.cover);
       if (path) referenced.add(path);
@@ -363,7 +399,10 @@ export class FilesSyncService {
 
     for (const collName of decorationCollections) {
       try {
-        const docs = await this.connection.collection(collName).find({}, { projection: { imageUrl: 1 } }).toArray();
+        const docs = await this.connection
+          .collection(collName)
+          .find({}, { projection: { imageUrl: 1 } })
+          .toArray();
         for (const doc of docs) {
           const path = this.normalizeImagePath(doc.imageUrl);
           if (path) referenced.add(path);
@@ -373,7 +412,10 @@ export class FilesSyncService {
       }
     }
 
-    const characters = await this.connection.collection('characters').find({}, { projection: { avatar: 1 } }).toArray();
+    const characters = await this.connection
+      .collection('characters')
+      .find({}, { projection: { avatar: 1 } })
+      .toArray();
     for (const char of characters) {
       const path = this.normalizeImagePath(char.avatar);
       if (path) referenced.add(path);

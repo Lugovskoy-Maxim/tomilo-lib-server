@@ -1,6 +1,20 @@
-import { IsString, IsOptional, IsArray, IsBoolean, IsObject, IsEnum } from 'class-validator';
+import {
+  IsString,
+  IsOptional,
+  IsArray,
+  IsBoolean,
+  IsObject,
+  IsEnum,
+} from 'class-validator';
 
-const ROLES = ['translator', 'editor', 'proofreader', 'cleaner', 'typesetter', 'leader'] as const;
+const ROLES = [
+  'translator',
+  'editor',
+  'proofreader',
+  'cleaner',
+  'typesetter',
+  'leader',
+] as const;
 
 export class TranslatorTeamMemberDto {
   @IsString()

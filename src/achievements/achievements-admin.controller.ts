@@ -19,7 +19,9 @@ import { ApiResponseDto } from '../common/dto/api-response.dto';
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
 export class AchievementsAdminController {
-  constructor(private readonly achievementsAdminService: AchievementsAdminService) {}
+  constructor(
+    private readonly achievementsAdminService: AchievementsAdminService,
+  ) {}
 
   @Get()
   async getAchievements(
@@ -204,7 +206,9 @@ export class AchievementsAdminController {
   }
 
   @Delete(':id')
-  async deleteAchievement(@Param('id') id: string): Promise<ApiResponseDto<any>> {
+  async deleteAchievement(
+    @Param('id') id: string,
+  ): Promise<ApiResponseDto<any>> {
     try {
       const data = await this.achievementsAdminService.remove(id);
       return {

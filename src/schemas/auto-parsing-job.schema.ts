@@ -76,4 +76,9 @@ export const AutoParsingJobSchema =
 
 AutoParsingJobSchema.index({ titleId: 1 });
 AutoParsingJobSchema.index({ enabled: 1 });
-AutoParsingJobSchema.index({ frequency: 1, scheduleHour: 1, scheduleMinute: 1, enabled: 1 });
+AutoParsingJobSchema.index({
+  frequency: 1,
+  scheduleHour: 1,
+  scheduleMinute: 1,
+  enabled: 1,
+});

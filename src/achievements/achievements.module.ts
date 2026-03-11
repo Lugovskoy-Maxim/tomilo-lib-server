@@ -3,10 +3,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { AchievementsService } from './achievements.service';
 import { AchievementsAdminController } from './achievements-admin.controller';
 import { AchievementsAdminService } from './achievements-admin.service';
-import {
-  Achievement,
-  AchievementSchema,
-} from '../schemas/achievement.schema';
+import { Achievement, AchievementSchema } from '../schemas/achievement.schema';
 import { User, UserSchema } from '../schemas/user.schema';
 
 @Global()

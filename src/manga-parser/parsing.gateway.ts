@@ -226,10 +226,7 @@ export class ParsingGateway {
           );
           return fn()
             .then((result) => {
-              emitChapterProgress(
-                chapter,
-                `Глава ${chapterNum} скачана`,
-              );
+              emitChapterProgress(chapter, `Глава ${chapterNum} скачана`);
               return result;
             })
             .catch((error) => {
@@ -266,12 +263,7 @@ export class ParsingGateway {
           titleId: string,
         ) =>
           wrapChapterDownload(chapter, () =>
-            originalDownloadChapterImages(
-              chapter,
-              chapterId,
-              domain,
-              titleId,
-            ),
+            originalDownloadChapterImages(chapter, chapterId, domain, titleId),
           );
 
         this.mangaParserService['downloadMangabuffChapterImages'] = async (
@@ -280,11 +272,7 @@ export class ParsingGateway {
           titleId: string,
         ) =>
           wrapChapterDownload(chapter, () =>
-            originalDownloadMangabuffChapterImages(
-              chapter,
-              chapterId,
-              titleId,
-            ),
+            originalDownloadMangabuffChapterImages(chapter, chapterId, titleId),
           );
 
         this.mangaParserService['downloadMangaShiChapterImages'] = async (
@@ -293,11 +281,7 @@ export class ParsingGateway {
           titleId: string,
         ) =>
           wrapChapterDownload(chapter, () =>
-            originalDownloadMangaShiChapterImages(
-              chapter,
-              chapterId,
-              titleId,
-            ),
+            originalDownloadMangaShiChapterImages(chapter, chapterId, titleId),
           );
 
         this.mangaParserService['downloadTelemangaChapterImages'] = async (
@@ -320,11 +304,7 @@ export class ParsingGateway {
           titleId: string,
         ) =>
           wrapChapterDownload(chapter, () =>
-            originalDownloadAb728TeamChapterImages(
-              chapter,
-              chapterId,
-              titleId,
-            ),
+            originalDownloadAb728TeamChapterImages(chapter, chapterId, titleId),
           );
 
         const result = await originalParseAndImportTitle(parseTitleDto);

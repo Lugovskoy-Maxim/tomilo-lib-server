@@ -38,7 +38,10 @@ export class AppService {
     private collectionModel: Model<CollectionDocument>,
     private readonly statsService: StatsService,
     @Inject(CACHE_MANAGER)
-    private cacheManager: { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown) => Promise<void> },
+    private cacheManager: {
+      get: (k: string) => Promise<unknown>;
+      set: (k: string, v: unknown) => Promise<void>;
+    },
   ) {
     this.logger.setContext(AppService.name);
   }
@@ -331,7 +334,8 @@ export class AppService {
   async getRecentStats(days: number = 30) {
     const cacheKey = `stats:recent:${days}`;
     const cached = await this.cacheManager.get(cacheKey);
-    if (cached) return cached as Awaited<ReturnType<StatsService['getRecentDailyStats']>>;
+    if (cached)
+      return cached as Awaited<ReturnType<StatsService['getRecentDailyStats']>>;
     const data = await this.statsService.getRecentDailyStats(days);
     await this.cacheManager.set(cacheKey, data);
     return data;
@@ -343,7 +347,8 @@ export class AppService {
   async getMonthlyStats(year: number, month: number) {
     const cacheKey = `stats:monthly:${year}:${month}`;
     const cached = await this.cacheManager.get(cacheKey);
-    if (cached) return cached as Awaited<ReturnType<StatsService['getMonthlyStats']>>;
+    if (cached)
+      return cached as Awaited<ReturnType<StatsService['getMonthlyStats']>>;
     const data = await this.statsService.getMonthlyStats(year, month);
     await this.cacheManager.set(cacheKey, data);
     return data;
@@ -355,7 +360,8 @@ export class AppService {
   async getYearlyStats(year: number) {
     const cacheKey = `stats:yearly:${year}`;
     const cached = await this.cacheManager.get(cacheKey);
-    if (cached) return cached as Awaited<ReturnType<StatsService['getYearlyStats']>>;
+    if (cached)
+      return cached as Awaited<ReturnType<StatsService['getYearlyStats']>>;
     const data = await this.statsService.getYearlyStats(year);
     await this.cacheManager.set(cacheKey, data);
     return data;

@@ -55,7 +55,10 @@ export class PromoCode {
   @Prop()
   expiresAt?: Date;
 
-  @Prop({ default: 'active', enum: ['active', 'inactive', 'expired', 'exhausted'] })
+  @Prop({
+    default: 'active',
+    enum: ['active', 'inactive', 'expired', 'exhausted'],
+  })
   status: PromoCodeStatus;
 
   @Prop({ default: false })

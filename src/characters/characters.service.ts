@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import {
@@ -15,7 +19,8 @@ import { FilesService } from '../files/files.service';
 @Injectable()
 export class CharactersService {
   constructor(
-    @InjectModel(Character.name) private characterModel: Model<CharacterDocument>,
+    @InjectModel(Character.name)
+    private characterModel: Model<CharacterDocument>,
     private titlesService: TitlesService,
     private filesService: FilesService,
   ) {}
@@ -60,7 +65,9 @@ export class CharactersService {
       this.characterModel.countDocuments(filter),
     ]);
     return {
-      characters: list.map((doc) => this.toResponse(doc)) as CharacterDocument[],
+      characters: list.map((doc) =>
+        this.toResponse(doc),
+      ) as CharacterDocument[],
       total,
     };
   }
@@ -114,7 +121,10 @@ export class CharactersService {
   }
 
   /** Создать персонажа со статусом «на модерации» (любой авторизованный пользователь). */
-  async proposeCreate(dto: CreateCharacterDto, userId: string): Promise<CharacterDocument> {
+  async proposeCreate(
+    dto: CreateCharacterDto,
+    userId: string,
+  ): Promise<CharacterDocument> {
     await this.titlesService.findById(dto.titleId);
     const role = dto.role ?? CharacterRole.OTHER;
     const doc = await this.characterModel.create({
@@ -171,36 +181,51 @@ export class CharactersService {
     return this.findById(created._id.toString());
   }
 
-  async update(id: string, dto: UpdateCharacterDto): Promise<CharacterDocument> {
+  async update(
+    id: string,
+    dto: UpdateCharacterDto,
+  ): Promise<CharacterDocument> {
     const existing = await this.characterModel.findById(id).exec();
     if (!existing) {
       throw new NotFoundException('Character not found');
     }
     const update: Record<string, unknown> = {};
     if (dto.name !== undefined) update.name = dto.name.trim();
-    if (dto.description !== undefined) update.description = dto.description?.trim() || null;
+    if (dto.description !== undefined)
+      update.description = dto.description?.trim() || null;
     if (dto.role !== undefined) update.role = dto.role;
-    if (dto.altNames !== undefined) update.altNames = dto.altNames.filter(Boolean);
+    if (dto.altNames !== undefined)
+      update.altNames = dto.altNames.filter(Boolean);
     if (dto.age !== undefined) update.age = dto.age?.trim() || null;
     if (dto.gender !== undefined) update.gender = dto.gender?.trim() || null;
     if (dto.guild !== undefined) update.guild = dto.guild?.trim() || null;
     if (dto.clan !== undefined) update.clan = dto.clan?.trim() || null;
     if (dto.notes !== undefined) update.notes = dto.notes?.trim() || null;
-    if (dto.voiceActor !== undefined) update.voiceActor = dto.voiceActor?.trim() || null;
+    if (dto.voiceActor !== undefined)
+      update.voiceActor = dto.voiceActor?.trim() || null;
     if (dto.sortOrder !== undefined) update.sortOrder = dto.sortOrder;
 
     await this.characterModel.findByIdAndUpdate(id, { $set: update }).exec();
     return this.findById(id);
   }
 
-  async updateImage(id: string, file: Express.Multer.File): Promise<CharacterDocument> {
+  async updateImage(
+    id: string,
+    file: Express.Multer.File,
+  ): Promise<CharacterDocument> {
     const existing = await this.characterModel.findById(id).exec();
     if (!existing) {
       throw new NotFoundException('Character not found');
     }
     const titleId = existing.titleId.toString();
-    const avatarPath = await this.filesService.saveCharacterAvatar(file, titleId, id);
-    await this.characterModel.findByIdAndUpdate(id, { avatar: avatarPath }).exec();
+    const avatarPath = await this.filesService.saveCharacterAvatar(
+      file,
+      titleId,
+      id,
+    );
+    await this.characterModel
+      .findByIdAndUpdate(id, { avatar: avatarPath })
+      .exec();
     return this.findById(id);
   }
 
@@ -216,15 +241,18 @@ export class CharactersService {
     }
     const update: Record<string, unknown> = {};
     if (dto.name !== undefined) update.name = dto.name.trim();
-    if (dto.description !== undefined) update.description = dto.description?.trim() ?? null;
+    if (dto.description !== undefined)
+      update.description = dto.description?.trim() ?? null;
     if (dto.role !== undefined) update.role = dto.role;
-    if (dto.altNames !== undefined) update.altNames = dto.altNames.filter(Boolean);
+    if (dto.altNames !== undefined)
+      update.altNames = dto.altNames.filter(Boolean);
     if (dto.age !== undefined) update.age = dto.age?.trim() ?? null;
     if (dto.gender !== undefined) update.gender = dto.gender?.trim() ?? null;
     if (dto.guild !== undefined) update.guild = dto.guild?.trim() ?? null;
     if (dto.clan !== undefined) update.clan = dto.clan?.trim() ?? null;
     if (dto.notes !== undefined) update.notes = dto.notes?.trim() ?? null;
-    if (dto.voiceActor !== undefined) update.voiceActor = dto.voiceActor?.trim() ?? null;
+    if (dto.voiceActor !== undefined)
+      update.voiceActor = dto.voiceActor?.trim() ?? null;
     if (dto.sortOrder !== undefined) update.sortOrder = dto.sortOrder;
 
     await this.characterModel
@@ -249,7 +277,11 @@ export class CharactersService {
       throw new NotFoundException('Character not found');
     }
     const titleId = existing.titleId.toString();
-    const pendingPath = await this.filesService.saveCharacterPendingImage(file, titleId, id);
+    const pendingPath = await this.filesService.saveCharacterPendingImage(
+      file,
+      titleId,
+      id,
+    );
     await this.characterModel
       .findByIdAndUpdate(id, {
         $set: {
@@ -272,7 +304,7 @@ export class CharactersService {
     };
     const unsetPayload: Record<string, 1> = { pendingUpdate: 1, proposedBy: 1 };
     if (doc.pendingUpdate && typeof doc.pendingUpdate === 'object') {
-      const pu = doc.pendingUpdate as Record<string, unknown>;
+      const pu = doc.pendingUpdate;
       if (pu.name !== undefined) setPayload.name = pu.name;
       if (pu.description !== undefined) setPayload.description = pu.description;
       if (pu.role !== undefined) setPayload.role = pu.role;
@@ -301,7 +333,11 @@ export class CharactersService {
     if (!doc) {
       throw new NotFoundException('Character not found');
     }
-    if (doc.status === CharacterModerationStatus.PENDING && !doc.pendingUpdate && !doc.pendingImage) {
+    if (
+      doc.status === CharacterModerationStatus.PENDING &&
+      !doc.pendingUpdate &&
+      !doc.pendingImage
+    ) {
       await this.characterModel
         .findByIdAndUpdate(id, {
           $set: { status: CharacterModerationStatus.REJECTED },
