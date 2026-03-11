@@ -22,7 +22,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: jwtFromCookieOrHeader,
       ignoreExpiration: false,
-      secretOrKey: getJwtSecret(),
+      secretOrKeyProvider: (_req, _token, done) => {
+        try {
+          done(null, getJwtSecret());
+        } catch (e) {
+          done(e as Error, undefined);
+        }
+      },
+      algorithms: ['HS256'],
     });
     this.logger.setContext(JwtStrategy.name);
 
