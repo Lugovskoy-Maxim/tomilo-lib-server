@@ -1,5 +1,5 @@
 export interface ParsingProgressDto {
-  type: 'chapters_info' | 'chapter_import' | 'title_import';
+  type: 'chapters_info' | 'chapter_import' | 'title_import' | 'batch_import';
   sessionId: string;
   userId?: string;
   status: 'started' | 'progress' | 'completed' | 'error';
@@ -10,6 +10,18 @@ export interface ParsingProgressDto {
     total: number;
     percentage: number;
   };
+  /** Для batch_import: прогресс по тайтлам (например "Тайтл 2 из 5") */
+  batch?: {
+    currentTitleIndex: number;
+    totalTitles: number;
+    currentTitleName?: string;
+    titleProgress?: { current: number; total: number; percentage: number };
+  };
+}
+
+/** Репортер прогресса парсинга: сервис вызывает report(), gateway реализует отправку в WebSocket. */
+export interface IParsingProgressReporter {
+  report(progress: ParsingProgressDto): void;
 }
 
 export interface ChaptersInfoData {
@@ -38,4 +50,5 @@ export interface TitleImportData {
     | 'completed';
   currentStep?: number;
   totalSteps?: number;
+  chapterProgress?: { current: number; total: number; percentage: number };
 }

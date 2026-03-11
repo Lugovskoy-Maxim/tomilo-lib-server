@@ -3,6 +3,7 @@ import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
 import { LoggerService } from '../../common/logger/logger.service';
 import { UsersService } from '../../users/users.service';
+import { getJwtSecret } from '../../config/jwt.config';
 
 const COOKIE_ACCESS_TOKEN = 'access_token';
 
@@ -21,14 +22,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: jwtFromCookieOrHeader,
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
+      secretOrKey: getJwtSecret(),
     });
     this.logger.setContext(JwtStrategy.name);
 
-    // Log the JWT secret being used (without revealing the actual secret)
     const secretSource = process.env.JWT_SECRET
       ? 'environment variable'
-      : 'default value';
+      : 'dev default';
     this.logger.log(
       `JWT Strategy initialized with secret from ${secretSource}`,
     );

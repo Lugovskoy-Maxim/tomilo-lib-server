@@ -15,6 +15,12 @@ import { CreateChapterDto } from '../chapters/dto/create-chapter.dto';
 import { ParseTitleDto } from './dto/parse-title.dto';
 import { ParseChapterDto } from './dto/parse-chapter.dto';
 import { ParseChaptersInfoDto } from './dto/parse-chapters-info.dto';
+import {
+  IParsingProgressReporter,
+  ParsingProgressDto,
+  TitleImportData,
+  ChapterImportData,
+} from './dto/parsing-progress.dto';
 import { MangaParser, ChapterInfo } from './parsers/base.parser';
 import { SenkuroParser } from './parsers/senkuro.parser';
 import { MangaShiParser } from './parsers/manga-shi.parser';
@@ -925,6 +931,10 @@ export class MangaParserService {
 
   async parseAndImportTitle(
     parseTitleDto: ParseTitleDto,
+    options?: {
+      reporter?: IParsingProgressReporter;
+      sessionId?: string;
+    },
   ): Promise<{ title: any; importedChapters: any[]; totalChapters: number }> {
     const {
       url,
@@ -934,6 +944,8 @@ export class MangaParserService {
       customGenres,
       customType,
     } = parseTitleDto;
+    const reporter = options?.reporter;
+    const sessionId = options?.sessionId ?? '';
 
     const parser = this.getParserForUrl(url);
     if (!parser) {
@@ -943,7 +955,33 @@ export class MangaParserService {
       );
     }
 
+    const emit = (payload: Partial<ParsingProgressDto>) => {
+      reporter?.report({
+        type: 'title_import',
+        sessionId,
+        status: 'progress',
+        message: '',
+        ...payload,
+      });
+    };
+
+    emit({
+      status: 'started',
+      message: 'Начинаем импорт тайтла...',
+      data: { titleName: 'Парсинг...', status: 'parsing', currentStep: 1, totalSteps: 4 } as TitleImportData,
+    });
+
     const parsedData = await parser.parse(url);
+
+    emit({
+      message: 'Парсим информацию о тайтле...',
+      data: {
+        titleName: parsedData.title,
+        status: 'parsing',
+        currentStep: 1,
+        totalSteps: 4,
+      } as TitleImportData,
+    });
 
     let chapters = parsedData.chapters;
     if (chapterNumbers && chapterNumbers.length > 0) {
@@ -977,6 +1015,15 @@ export class MangaParserService {
     this.logger.log(`Created title: ${createdTitle.name}`);
 
     if (parsedData.coverUrl) {
+      emit({
+        message: 'Скачиваем обложку...',
+        data: {
+          titleName: createdTitle.name,
+          status: 'downloading_cover',
+          currentStep: 2,
+          totalSteps: 4,
+        } as TitleImportData,
+      });
       try {
         const localCoverPath = await this.filesService.downloadTitleCover(
           parsedData.coverUrl,
@@ -998,11 +1045,33 @@ export class MangaParserService {
     const importedChapters: any[] = [];
     const domain = this.extractDomain(url);
     const mangaSlug = this.extractMangaSlug(url);
+    const totalChaptersCount = chapters.length;
 
     try {
+      let chapterIndex = 0;
       for (const chapter of chapters) {
         try {
+          chapterIndex++;
           const chapterNumber = chapter.number || 1;
+          const chapterName = chapter.name ?? `Глава ${chapterNumber}`;
+
+          emit({
+            message: `Скачиваем главу ${chapterNumber}: ${chapterName}`,
+            data: {
+              titleName: createdTitle.name,
+              status: 'importing_chapters',
+              currentStep: 3,
+              totalSteps: 4,
+              chapterProgress: {
+                current: chapterIndex,
+                total: totalChaptersCount,
+                percentage:
+                  totalChaptersCount > 0
+                    ? Math.round((chapterIndex / totalChaptersCount) * 100)
+                    : 0,
+              },
+            } as TitleImportData,
+          });
 
           const createChapterDto: CreateChapterDto = {
             titleId: createdTitle._id.toString(),
@@ -1045,6 +1114,23 @@ export class MangaParserService {
           importedChapters.push(createdChapter);
           this.logger.log(`Imported chapter ${chapterNumber}: ${chapter.name}`);
         } catch (error) {
+          emit({
+            message: `Ошибка при скачивании главы ${chapter.number ?? chapterIndex}`,
+            data: {
+              titleName: createdTitle.name,
+              status: 'importing_chapters',
+              currentStep: 3,
+              totalSteps: 4,
+              chapterProgress: {
+                current: chapterIndex,
+                total: totalChaptersCount,
+                percentage:
+                  totalChaptersCount > 0
+                    ? Math.round((chapterIndex / totalChaptersCount) * 100)
+                    : 0,
+              },
+            } as TitleImportData,
+          });
           this.logger.error(
             `Failed to import chapter ${chapter.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
           );
@@ -1055,6 +1141,17 @@ export class MangaParserService {
       this.filesService.disposeWatermarkResources();
     }
 
+    emit({
+      status: 'completed',
+      message: `Импорт завершен: "${createdTitle.name}" с ${importedChapters.length} главами`,
+      data: {
+        titleName: createdTitle.name,
+        status: 'completed',
+        currentStep: 4,
+        totalSteps: 4,
+      } as TitleImportData,
+    });
+
     return {
       title: createdTitle,
       importedChapters,
@@ -1064,8 +1161,24 @@ export class MangaParserService {
 
   async parseAndImportChapters(
     parseChapterDto: ParseChapterDto,
+    options?: {
+      reporter?: IParsingProgressReporter;
+      sessionId?: string;
+    },
   ): Promise<any[]> {
     const { url, titleId, chapterNumbers } = parseChapterDto;
+    const reporter = options?.reporter;
+    const sessionId = options?.sessionId ?? '';
+
+    const emit = (payload: Partial<ParsingProgressDto>) => {
+      reporter?.report({
+        type: 'chapter_import',
+        sessionId,
+        status: 'progress',
+        message: '',
+        ...payload,
+      });
+    };
 
     await this.titlesService.findById(titleId);
 
@@ -1076,6 +1189,8 @@ export class MangaParserService {
         `Unsupported site for chapter import. Supported: ${sites.join(', ')}`,
       );
     }
+
+    emit({ status: 'started', message: 'Начинаем импорт глав...' });
 
     const parsedData = await parser.parse(url);
     let selectedChapters = parsedData.chapters;
@@ -1104,11 +1219,30 @@ export class MangaParserService {
     const importedChapters: any[] = [];
     const domain = this.extractDomain(url);
     const mangaSlug = this.extractMangaSlug(url);
+    const totalCh = selectedChapters.length;
 
     try {
+      let chIndex = 0;
       for (const chapter of selectedChapters) {
         try {
+          chIndex++;
           const chapterNumber = chapter.number || 1;
+          const chapterName = chapter.name ?? `Глава ${chapterNumber}`;
+
+          const chapterData: ChapterImportData = {
+            chapterNumber,
+            chapterName,
+            status: 'downloading',
+          };
+          emit({
+            message: `Скачиваем главу ${chapterNumber}: ${chapterName}`,
+            data: chapterData,
+            progress: {
+              current: chIndex,
+              total: totalCh,
+              percentage: totalCh > 0 ? Math.round((chIndex / totalCh) * 100) : 0,
+            },
+          });
 
           const createChapterDto: CreateChapterDto = {
             titleId,
@@ -1148,14 +1282,46 @@ export class MangaParserService {
             }
           }
 
+          chapterData.status = 'completed';
+          emit({
+            message: `Глава ${chapterNumber} скачана`,
+            data: chapterData,
+            progress: {
+              current: chIndex,
+              total: totalCh,
+              percentage: totalCh > 0 ? Math.round((chIndex / totalCh) * 100) : 0,
+            },
+          });
+
           importedChapters.push(createdChapter);
           this.logger.log(`Imported chapter ${chapterNumber}: ${chapter.name}`);
         } catch (error) {
+          const chapterDataErr: ChapterImportData = {
+            chapterNumber: chapter.number || 1,
+            chapterName: chapter.name ?? '',
+            status: 'error',
+            error: error instanceof Error ? error.message : 'Unknown error',
+          };
+          emit({
+            message: `Ошибка при скачивании главы ${chapter.number ?? chIndex}`,
+            data: chapterDataErr,
+            progress: {
+              current: chIndex,
+              total: totalCh,
+              percentage: totalCh > 0 ? Math.round((chIndex / totalCh) * 100) : 0,
+            },
+          });
           this.logger.error(
             `Failed to import chapter ${chapter.name}: ${error instanceof Error ? error.message : 'Unknown error'}`,
           );
         }
       }
+
+      emit({
+        status: 'completed',
+        message: `Импорт завершен: скачано ${importedChapters.length} глав`,
+        progress: { current: totalCh, total: totalCh, percentage: 100 },
+      });
     } finally {
       // Всегда освобождаем ресурсы водяных знаков (предотвращение утечек ОЗУ)
       this.filesService.disposeWatermarkResources();

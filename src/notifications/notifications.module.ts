@@ -11,6 +11,7 @@ import {
 import { User, UserSchema } from '../schemas/user.schema';
 import { PushModule } from '../push/push.module';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { getJwtSecret } from '../config/jwt.config';
 
 @Module({
   imports: [
@@ -19,7 +20,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
       { name: User.name, schema: UserSchema },
     ]),
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
+      secret: getJwtSecret(),
       signOptions: { expiresIn: '365d' },
     }),
     PushModule,

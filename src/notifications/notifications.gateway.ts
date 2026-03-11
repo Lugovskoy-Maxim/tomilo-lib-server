@@ -52,9 +52,7 @@ export class NotificationsGateway
 
     let userId: string;
     try {
-      const payload = this.jwtService.verify(token, {
-        secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
-      });
+      const payload = this.jwtService.verify(token);
       if (!payload?.userId) {
         this.logger.warn('Notifications WS: invalid payload');
         client.disconnect(true);

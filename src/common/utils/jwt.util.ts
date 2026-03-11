@@ -1,4 +1,5 @@
 import * as jwt from 'jsonwebtoken';
+import { getJwtSecret } from '../../config/jwt.config';
 
 export interface JwtPayload {
   userId?: string;
@@ -19,8 +20,7 @@ export function extractUserIdFromRequest(req: any): string | null {
   if (!token) return null;
 
   try {
-    const jwtSecret = process.env.JWT_SECRET || 'your-super-secret-jwt-key';
-    const decoded = jwt.verify(token, jwtSecret) as JwtPayload;
+    const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload;
     return decoded?.userId || null;
   } catch {
     return null;
@@ -35,8 +35,7 @@ export function decodeTokenFromRequest(req: any): JwtPayload | null {
   if (!token) return null;
 
   try {
-    const jwtSecret = process.env.JWT_SECRET || 'your-super-secret-jwt-key';
-    return jwt.verify(token, jwtSecret) as JwtPayload;
+    return jwt.verify(token, getJwtSecret()) as JwtPayload;
   } catch {
     return null;
   }

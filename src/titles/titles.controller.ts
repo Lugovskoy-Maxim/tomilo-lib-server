@@ -23,6 +23,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import * as jwt from 'jsonwebtoken';
+import { getJwtSecret } from '../config/jwt.config';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -60,7 +61,7 @@ class ReadingProgressResponseDto {
   progress!: number;
 }
 
-@Controller()
+@Controller('titles')
 export class TitlesController {
   private readonly logger = new Logger(TitlesController.name);
 
@@ -115,8 +116,7 @@ export class TitlesController {
     if (!token) return false;
 
     try {
-      const jwtSecret = process.env.JWT_SECRET || 'your-super-secret-jwt-key';
-      const decoded = jwt.verify(token, jwtSecret) as { userId?: string };
+      const decoded = jwt.verify(token, getJwtSecret()) as { userId?: string };
 
       if (decoded?.userId) {
         const userCanViewAdult = await this.usersService.getCanViewAdult(
@@ -175,7 +175,7 @@ export class TitlesController {
     }
   }
 
-  @Get('titles/popular')
+  @Get('popular')
   @Header('Cache-Control', 'public, max-age=120, stale-while-revalidate=600')
   async getPopularTitles(
     @Query('limit') limit = 10,
@@ -258,7 +258,7 @@ export class TitlesController {
     }
   }
 
-  @Get('titles/filters/options')
+  @Get('filters/options')
   @Header('Cache-Control', 'public, max-age=3600, stale-while-revalidate=86400')
   async getFilterOptions(): Promise<ApiResponseDto<FilterOptionsResponseDto>> {
     try {
@@ -328,7 +328,7 @@ export class TitlesController {
     }
   }
 
-  @Get('titles/latest-updates')
+  @Get('latest-updates')
   @Header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
   async getLatestUpdates(
     @Query('page') page = 1,
@@ -468,7 +468,7 @@ export class TitlesController {
     }
   }
 
-  @Post('titles')
+  @Post()
   @Roles('admin')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @UseInterceptors(
@@ -515,7 +515,7 @@ export class TitlesController {
     }
   }
 
-  @Put('titles/:id')
+  @Put(':id')
   @UseInterceptors(
     FileInterceptor('coverImage', {
       storage: memoryStorage(),
@@ -638,7 +638,7 @@ export class TitlesController {
     }
   }
 
-  @Get('titles')
+  @Get()
   async findAll(
     @Query('page') page = 1,
     @Query('limit') limit = 10,
@@ -776,7 +776,7 @@ export class TitlesController {
     }
   }
 
-  @Get('titles/recent')
+  @Get('recent')
   async getRecent(
     @Query('limit') limit = 10,
     @Query('includeAdult') includeAdult?: string,
@@ -806,7 +806,7 @@ export class TitlesController {
     }
   }
 
-  @Get('titles/random')
+  @Get('random')
   async getRandomTitles(
     @Query('limit') limit = 10,
     @Query('includeAdult') includeAdult?: string,
@@ -851,7 +851,7 @@ export class TitlesController {
   /**
    * Получить рекомендуемые тайтлы на основе истории чтения и закладок пользователя
    */
-  @Get('titles/recommended')
+  @Get('recommended')
   @UseGuards(JwtAuthGuard)
   async getRecommendedTitles(
     @Query('limit') limit = 10,
@@ -919,7 +919,7 @@ export class TitlesController {
   /**
    * Получить похожие тайтлы (по жанрам и тегам)
    */
-  @Get('titles/:id/similar')
+  @Get(':id/similar')
   @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   async getSimilarTitles(
     @Param('id') id: string,
@@ -967,7 +967,7 @@ export class TitlesController {
   /**
    * Получить статистику тайтла (для отображения на странице)
    */
-  @Get('titles/:id/stats')
+  @Get(':id/stats')
   @Header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
   async getTitleStats(@Param('id') id: string): Promise<ApiResponseDto<any>> {
     try {
@@ -993,7 +993,7 @@ export class TitlesController {
   /**
    * Проверить рейтинг пользователя для тайтла
    */
-  @Get('titles/:id/my-rating')
+  @Get(':id/my-rating')
   @UseGuards(JwtAuthGuard)
   async getMyRating(
     @Param('id') id: string,
@@ -1019,7 +1019,7 @@ export class TitlesController {
     }
   }
 
-  @Get('titles/:id')
+  @Get(':id')
   async findOne(
     @Param('id') id: string,
     @Query('populateChapters') populateChapters: string = 'true',
@@ -1054,7 +1054,7 @@ export class TitlesController {
   }
 
   @SkipThrottle()
-  @Get('titles/slug/:slug')
+  @Get('slug/:slug')
   @Header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300')
   async findBySlug(
     @Param('slug') slug: string,
@@ -1099,7 +1099,7 @@ export class TitlesController {
     }
   }
 
-  @Delete('titles/:id')
+  @Delete(':id')
   @Roles('admin')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -1126,7 +1126,7 @@ export class TitlesController {
     }
   }
 
-  @Post('titles/:id/views')
+  @Post(':id/views')
   async incrementViews(@Param('id') id: string): Promise<ApiResponseDto<any>> {
     try {
       const data = await this.titlesService.incrementViews(id);
@@ -1151,7 +1151,7 @@ export class TitlesController {
     }
   }
 
-  @Post('titles/:id/rating')
+  @Post(':id/rating')
   @UseGuards(JwtAuthGuard)
   async updateRating(
     @Param('id') id: string,
@@ -1185,7 +1185,7 @@ export class TitlesController {
     }
   }
 
-  @Get('titles/:id/chapters/count')
+  @Get(':id/chapters/count')
   async getChaptersCount(
     @Param('id') id: string,
   ): Promise<ApiResponseDto<any>> {
@@ -1212,7 +1212,7 @@ export class TitlesController {
   /**
    * Получить тайтлы по жанру (для страницы жанра)
    */
-  @Get('titles/genre/:genre')
+  @Get('genre/:genre')
   @Header('Cache-Control', 'public, max-age=120, stale-while-revalidate=600')
   async getTitlesByGenre(
     @Param('genre') genre: string,
@@ -1273,7 +1273,7 @@ export class TitlesController {
     }
   }
 
-  @Get('titles/top/day')
+  @Get('top/day')
   @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   async getTopTitlesDay(
     @Query('limit') limit: string | number = 10,
@@ -1327,7 +1327,7 @@ export class TitlesController {
     }
   }
 
-  @Get('titles/top/week')
+  @Get('top/week')
   @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   async getTopTitlesWeek(
     @Query('limit') limit: string | number = 10,
@@ -1381,7 +1381,7 @@ export class TitlesController {
     }
   }
 
-  @Get('titles/top/month')
+  @Get('top/month')
   @Header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
   async getTopTitlesMonth(
     @Query('limit') limit: string | number = 10,

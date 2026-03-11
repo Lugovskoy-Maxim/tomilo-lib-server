@@ -19,13 +19,14 @@ import {
   PendingRegistrationSchema,
 } from '../schemas/pending-registration.schema';
 import { EmailModule } from '../email/email.module';
+import { getJwtSecret } from '../config/jwt.config';
 
 @Module({
   imports: [
     UsersModule,
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
+      secret: getJwtSecret(),
       signOptions: { expiresIn: '365d' },
     }),
     MongooseModule.forFeature([
