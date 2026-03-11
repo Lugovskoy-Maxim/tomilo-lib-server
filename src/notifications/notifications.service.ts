@@ -288,9 +288,25 @@ export class NotificationsService {
     }));
 
     if (notifications.length > 0) {
-      await this.notificationModel.insertMany(notifications);
-      for (const uid of allUserIds) {
+      const inserted = await this.notificationModel.insertMany(notifications);
+      for (let i = 0; i < inserted.length; i++) {
+        const doc = inserted[i];
+        const uid = doc.userId?.toString?.() ?? allUserIds[i];
         await this.notifyUnreadCount(uid);
+        if (this.notificationsGateway) {
+          const id = (doc as any)._id?.toString?.() ?? String((doc as any).id);
+          const titleIdStr = (doc as any).titleId?.toString?.();
+          const chapterIdStr = (doc as any).chapterId?.toString?.();
+          this.notificationsGateway.emitNotificationToUser(uid, {
+            _id: id,
+            type: (doc as any).type ?? NotificationType.NEW_CHAPTER,
+            title: (doc as any).title ?? '',
+            message: (doc as any).message ?? '',
+            ...(titleIdStr && { titleId: titleIdStr }),
+            ...(chapterIdStr && { chapterId: chapterIdStr }),
+            ...((doc as any).metadata && { metadata: (doc as any).metadata }),
+          });
+        }
       }
     }
 
@@ -370,7 +386,7 @@ export class NotificationsService {
     metadata?: Record<string, any>,
   ): Promise<void> {
     const notifications = userIds.map((userId) => ({
-      userId,
+      userId: new Types.ObjectId(userId),
       type: NotificationType.SYSTEM,
       title,
       message,
@@ -378,9 +394,21 @@ export class NotificationsService {
     }));
 
     if (notifications.length > 0) {
-      await this.notificationModel.insertMany(notifications);
-      for (const uid of userIds) {
+      const inserted = await this.notificationModel.insertMany(notifications);
+      for (let i = 0; i < inserted.length; i++) {
+        const doc = inserted[i];
+        const uid = doc.userId?.toString?.() ?? userIds[i];
         await this.notifyUnreadCount(uid);
+        if (this.notificationsGateway) {
+          const id = (doc as any)._id?.toString?.() ?? String((doc as any).id);
+          this.notificationsGateway.emitNotificationToUser(uid, {
+            _id: id,
+            type: (doc as any).type ?? NotificationType.SYSTEM,
+            title: (doc as any).title ?? title,
+            message: (doc as any).message ?? message,
+            ...((doc as any).metadata && { metadata: (doc as any).metadata }),
+          });
+        }
       }
     }
   }
