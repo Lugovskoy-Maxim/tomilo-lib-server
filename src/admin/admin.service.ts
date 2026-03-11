@@ -759,7 +759,7 @@ export class AdminService {
     };
   }
 
-  getSystemInfo(): Promise<{
+  async getSystemInfo(): Promise<{
     uptime: number;
     uptimeFormatted: string;
     memory: { used: number; total: number; usedPercent: number };

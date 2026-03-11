@@ -121,7 +121,7 @@ export class CommentsController {
   }
 
   @Get('reactions/emojis')
-  getReactionEmojis(): Promise<ApiResponseDto<{ emojis: string[] }>> {
+  async getReactionEmojis(): Promise<ApiResponseDto<{ emojis: string[] }>> {
     return {
       success: true,
       data: { emojis: [...ALLOWED_REACTION_EMOJIS] },

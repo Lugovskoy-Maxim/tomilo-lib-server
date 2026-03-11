@@ -151,7 +151,7 @@ export class ShopController {
       },
     }),
   )
-  uploadSuggestionImage(
+  async uploadSuggestionImage(
     @Req() req: Express.Request,
   ): Promise<ApiResponseDto<{ imageUrl: string }>> {
     const file = (req as any).file ?? req.file ?? null;
