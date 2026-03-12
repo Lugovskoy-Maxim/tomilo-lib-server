@@ -224,7 +224,8 @@ export class AuthService {
 
   login(user: any) {
     const userIdStr =
-      user._id?.toString?.() ?? (typeof user._id === 'string' ? user._id : String(user._id));
+      user._id?.toString?.() ??
+      (typeof user._id === 'string' ? user._id : String(user._id));
     const payload = {
       email: user.email,
       userId: userIdStr,

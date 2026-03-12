@@ -255,6 +255,7 @@ export class UsersController {
           success: true,
           expGained: result.expGained,
           coinsGained: result.coinsGained,
+          itemsGained: result.itemsGained,
         },
         timestamp: new Date().toISOString(),
         path: 'users/daily-quests/claim',
@@ -272,6 +273,623 @@ export class UsersController {
     }
   }
 
+  // 🎮 Инвентарь (предметы из дропов и квестов)
+  @Get('profile/inventory')
+  @UseGuards(JwtAuthGuard)
+  async getProfileInventory(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getProfileInventory(req.user.userId);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/inventory',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/inventory',
+        method: 'GET',
+      };
+    }
+  }
+
+  // 🎮 Учитель — ученики
+  @Get('profile/disciples')
+  @UseGuards(JwtAuthGuard)
+  async getProfileDisciples(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getProfileDisciples(req.user.userId);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('profile/disciples/reroll')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesReroll(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesReroll(req.user.userId);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/reroll',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/reroll',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Post('profile/disciples/recruit')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesRecruit(
+    @Request() req,
+    @Body() body: { characterId: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesRecruit(
+        req.user.userId,
+        body?.characterId ?? '',
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/recruit',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/recruit',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Post('profile/disciples/dismiss')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesDismiss(
+    @Request() req,
+    @Body() body: { characterId: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      await this.usersService.disciplesDismiss(
+        req.user.userId,
+        body?.characterId ?? '',
+      );
+      return {
+        success: true,
+        data: { ok: true },
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/dismiss',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/dismiss',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Post('profile/disciples/train')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesTrain(
+    @Request() req,
+    @Body() body: { characterId: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesTrain(
+        req.user.userId,
+        body?.characterId ?? '',
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/train',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/train',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Get('profile/disciples/battle-match')
+  @UseGuards(JwtAuthGuard)
+  async disciplesBattleMatch(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesBattleMatch(
+        req.user.userId,
+      );
+      return {
+        success: true,
+        data: data ?? null,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/battle-match',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/battle-match',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('profile/disciples/battle')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesBattle(
+    @Request() req,
+    @Body() body: { opponentUserId: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesBattle(
+        req.user.userId,
+        body?.opponentUserId ?? '',
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/battle',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/battle',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Get('profile/disciples/weekly-battle-match')
+  @UseGuards(JwtAuthGuard)
+  async disciplesWeeklyBattleMatch(
+    @Request() req,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesWeeklyBattleMatch(
+        req.user.userId,
+      );
+      return {
+        success: true,
+        data: data ?? null,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/weekly-battle-match',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/weekly-battle-match',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('profile/disciples/weekly-battle')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesWeeklyBattle(
+    @Request() req,
+    @Body() body: { opponentUserId: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesWeeklyBattle(
+        req.user.userId,
+        body?.opponentUserId ?? '',
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/weekly-battle',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/weekly-battle',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Get('profile/disciples/weekly-leaderboard')
+  @UseGuards(JwtAuthGuard)
+  async disciplesWeeklyLeaderboard(
+    @Request() req,
+    @Query('limit') limit?: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesWeeklyLeaderboard(
+        limit ? parseInt(limit, 10) : undefined,
+      );
+      return {
+        success: true,
+        data: data ?? [],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/weekly-leaderboard',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/weekly-leaderboard',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Get('profile/disciples/techniques')
+  @UseGuards(JwtAuthGuard)
+  async disciplesTechniques(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesTechniques(req.user.userId);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/techniques',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/techniques',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('profile/disciples/techniques/learn')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesLearnTechnique(
+    @Request() req,
+    @Body() body: { characterId: string; techniqueId: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesLearnTechnique(
+        req.user.userId,
+        body?.characterId ?? '',
+        body?.techniqueId ?? '',
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/techniques/learn',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/techniques/learn',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Post('profile/disciples/techniques/equip')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesEquipTechniques(
+    @Request() req,
+    @Body() body: { characterId: string; techniqueIds: string[] },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesEquipTechniques(
+        req.user.userId,
+        body?.characterId ?? '',
+        Array.isArray(body?.techniqueIds) ? body.techniqueIds : [],
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/techniques/equip',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/techniques/equip',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Get('profile/disciples/expedition')
+  @UseGuards(JwtAuthGuard)
+  async disciplesExpeditionStatus(
+    @Request() req,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesExpeditionStatus(
+        req.user.userId,
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/expedition',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/expedition',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('profile/disciples/expedition/start')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesStartExpedition(
+    @Request() req,
+    @Body() body: { difficulty: 'easy' | 'normal' | 'hard' },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesStartExpedition(
+        req.user.userId,
+        body?.difficulty ?? 'easy',
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/expedition/start',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/expedition/start',
+        method: 'POST',
+      };
+    }
+  }
+
+  // 🧪 Алхимия
+  @Get('profile/alchemy/recipes')
+  @UseGuards(JwtAuthGuard)
+  async getAlchemyRecipes(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getAlchemyRecipes(req.user.userId);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/alchemy/recipes',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/alchemy/recipes',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Get('profile/alchemy/status')
+  @UseGuards(JwtAuthGuard)
+  async getAlchemyStatus(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getAlchemyStatus(req.user.userId);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/alchemy/status',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/alchemy/status',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('profile/alchemy/craft')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async alchemyCraft(
+    @Request() req,
+    @Body() body: { recipeId: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.alchemyCraft(
+        req.user.userId,
+        body?.recipeId ?? '',
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/alchemy/craft',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/alchemy/craft',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Post('profile/alchemy/cauldron/upgrade')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async alchemyUpgradeCauldron(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.alchemyUpgradeCauldron(
+        req.user.userId,
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/alchemy/cauldron/upgrade',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/alchemy/cauldron/upgrade',
+        method: 'POST',
+      };
+    }
+  }
+
+  // 🎡 Колесо судьбы
+  @Get('profile/wheel')
+  @UseGuards(JwtAuthGuard)
+  async getWheel(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getWheel(req.user.userId);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/wheel',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/wheel',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('profile/wheel/spin')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async wheelSpin(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.wheelSpin(req.user.userId);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/wheel/spin',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/wheel/spin',
+        method: 'POST',
+      };
+    }
+  }
+
   // ✏️ Обновить профиль пользователя
   @Put('profile')
   @UseGuards(JwtAuthGuard)
@@ -281,12 +899,17 @@ export class UsersController {
   ): Promise<ApiResponseDto<any>> {
     try {
       // Запрещаем менять баланс и декорации через профиль (только через магазин/админку)
-      const { balance, ownedDecorations, equippedDecorations, ...safeUpdate } =
-        updateUserDto as UpdateUserDto & {
-          balance?: number;
-          ownedDecorations?: unknown;
-          equippedDecorations?: unknown;
-        };
+      const {
+        balance: _,
+        ownedDecorations: __,
+        equippedDecorations: ___,
+        ...safeUpdate
+      } = updateUserDto as UpdateUserDto & {
+        balance?: number;
+        ownedDecorations?: unknown;
+        equippedDecorations?: unknown;
+      };
+      void [_, __, ___];
       const data = await this.usersService.update(
         req.user.userId,
         safeUpdate as UpdateUserDto,

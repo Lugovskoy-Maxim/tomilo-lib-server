@@ -47,7 +47,7 @@ export class ReportsService {
     void this.usersService.incrementReportsCount(userId);
 
     // При жалобе на отсутствие страниц в главе — запускаем синхронизацию из источников автопарсинга
-    const reportType = createReportDto.reportType as ReportType;
+    const reportType = createReportDto.reportType;
     const isMissingPages =
       reportType === ReportType.MISSING_PAGES ||
       (reportType === ReportType.ERROR &&

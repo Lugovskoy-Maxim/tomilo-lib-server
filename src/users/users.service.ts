@@ -32,6 +32,11 @@ import {
 } from '../achievements/achievements.service';
 import { PushService } from '../push/push.service';
 import { NotificationsGateway } from '../notifications/notifications.gateway';
+import { DropsService } from '../game-items/drops.service';
+import { DisciplesService } from '../game-items/disciples.service';
+import { AlchemyService } from '../game-items/alchemy.service';
+import { WheelService } from '../game-items/wheel.service';
+import { GameItemsService } from '../game-items/game-items.service';
 import { Cron } from '@nestjs/schedule';
 /** Категории закладок: читаю, в планах, прочитано, избранное, брошено */
 export const BOOKMARK_CATEGORIES = [
@@ -168,6 +173,16 @@ export class UsersService {
     @Optional()
     @Inject(forwardRef(() => NotificationsGateway))
     private notificationsGateway?: NotificationsGateway,
+    @Optional()
+    private dropsService?: DropsService,
+    @Optional()
+    private disciplesService?: DisciplesService,
+    @Optional()
+    private alchemyService?: AlchemyService,
+    @Optional()
+    private wheelService?: WheelService,
+    @Optional()
+    private gameItemsService?: GameItemsService,
   ) {
     this.logger.setContext(UsersService.name);
   }
@@ -1053,27 +1068,44 @@ export class UsersService {
     return this.extractTitleIdFromBookmark(b);
   }
 
+  /** Безопасное приведение к строке без использования default stringification объекта. */
+  private safeStr(x: unknown): string {
+    if (x == null) return '';
+    if (typeof x === 'string') return x;
+    if (typeof x === 'number' || typeof x === 'boolean') return String(x);
+    if (
+      typeof x === 'object' &&
+      'toString' in x &&
+      typeof (x as { toString(): string }).toString === 'function'
+    )
+      return (x as { toString(): string }).toString();
+    return '';
+  }
+
   /**
    * Восстанавливает titleId из закладки.
    * Поддерживает: titleId, title (старый ref), string, испорченный spread ("0"-"23"),
    * populated document (titleId как объект с _id после populate).
    */
-  private extractTitleIdFromBookmark(b: any): string {
+  private extractTitleIdFromBookmark(b: unknown): string {
     if (typeof b === 'string') return b;
-    const from = b?.titleId ?? b?.title;
-    if (from) {
+    const from =
+      (b as { titleId?: unknown; title?: unknown })?.titleId ??
+      (b as { title?: unknown })?.title;
+    if (from !== undefined && from !== null) {
       if (from instanceof Types.ObjectId) return from.toString();
       // Populated document: { _id: ObjectId, ... }
-      if (typeof from === 'object' && from._id) {
-        return from._id instanceof Types.ObjectId
-          ? from._id.toString()
-          : String(from._id);
+      if (typeof from === 'object' && from !== null && '_id' in from) {
+        const fid = (from as { _id: unknown })._id;
+        return fid instanceof Types.ObjectId
+          ? fid.toString()
+          : this.safeStr(fid);
       }
-      return String(from);
+      return this.safeStr(from);
     }
     const chars: string[] = [];
     for (let i = 0; i < 24; i++) {
-      const c = b?.[String(i)];
+      const c = (b as Record<string, unknown>)?.[String(i)];
       if (typeof c === 'string' && /^[0-9a-f]$/i.test(c)) chars.push(c);
     }
     return chars.length === 24 ? chars.join('') : '';
@@ -1152,7 +1184,12 @@ export class UsersService {
           _id: b._id,
         };
       })
-      .filter(Boolean) as any;
+      .filter(Boolean) as Array<{
+      titleId: unknown;
+      category: string;
+      addedAt: Date;
+      _id?: unknown;
+    }>;
   }
 
   private isCorruptedBookmark(b: any): boolean {
@@ -1505,13 +1542,22 @@ export class UsersService {
       list = list.filter((b: any) => b.category === options.category);
     }
     if (options?.grouped) {
-      const byCategory: Record<string, any[]> = {};
+      type BookmarkItem = {
+        titleId: unknown;
+        category: string;
+        addedAt: Date;
+        _id?: unknown;
+      };
+      const byCategory: Record<string, BookmarkItem[]> = {};
       for (const cat of BOOKMARK_CATEGORIES) {
-        byCategory[cat] = list.filter((b: any) => b.category === cat);
+        byCategory[cat] = list.filter(
+          (b) => b.category === cat,
+        ) as BookmarkItem[];
       }
       return byCategory;
     }
-    return list;
+    // list from Mongoose .select('bookmarks') is any[]
+    return list; // eslint-disable-line @typescript-eslint/no-unsafe-return
   }
 
   /**
@@ -1993,6 +2039,10 @@ export class UsersService {
     await user.save();
     this.logger.log(`Reading history updated successfully for user ${userId}`);
 
+    if (!botDetectionResult.isBot && isNewChapter && this.dropsService) {
+      void this.dropsService.tryReadingDrops(userId, true);
+    }
+
     // Отправка прогресса по WebSocket для тостов (опыт, уровень, достижения)
     if (this.notificationsGateway) {
       setImmediate(() => {
@@ -2154,15 +2204,15 @@ export class UsersService {
         id,
         type: 'achievement',
         achievement: {
-          id: String(a.id ?? ''),
-          name: String(a.name ?? ''),
-          description: String(a.description ?? ''),
-          icon: String(a.icon ?? ''),
-          type: (String(a.type ?? '') || 'reading') as AchievementTypeDto,
-          rarity: (String(a.rarity ?? '') || 'common') as AchievementRarityDto,
+          id: this.safeStr(a.id),
+          name: this.safeStr(a.name),
+          description: this.safeStr(a.description),
+          icon: this.safeStr(a.icon),
+          type: (this.safeStr(a.type) || 'reading') as AchievementTypeDto,
+          rarity: (this.safeStr(a.rarity) || 'common') as AchievementRarityDto,
           level: Number(a.level ?? 0),
-          levelName: String(a.levelName ?? ''),
-          unlockedAt: String(a.unlockedAt ?? ''),
+          levelName: this.safeStr(a.levelName),
+          unlockedAt: this.safeStr(a.unlockedAt),
           progress: Number(a.progress ?? 0),
           maxProgress: Number(a.maxProgress ?? 0),
         },
@@ -2672,32 +2722,6 @@ export class UsersService {
       `User ${userId} awarded ${UsersService.DAILY_LOGIN_EXP} XP for daily login. Current level: ${user.level}, XP: ${user.experience}`,
     );
 
-    // Отправка прогресса по WebSocket для тостов (опыт за ежедневный вход)
-    if (this.notificationsGateway) {
-      setImmediate(() => {
-        try {
-          this.notificationsGateway!.emitProgressToUser(userId, {
-            type: 'exp_gain',
-            amount: UsersService.DAILY_LOGIN_EXP,
-            reason: 'Ежедневный вход',
-          });
-          if (leveledUp) {
-            const oldRank = this.levelToRank(oldLevel);
-            const newRank = this.levelToRank(user.level);
-            this.notificationsGateway!.emitProgressToUser(userId, {
-              type: 'level_up',
-              oldLevel,
-              newLevel: user.level,
-              oldRank,
-              newRank,
-            });
-          }
-        } catch (e) {
-          this.logger.warn(`WS progress emit failed for user ${userId} (daily login)`, e);
-        }
-      });
-    }
-
     void this.checkAchievementsForUser(userId);
     void this.getOrCreateDailyQuests(userId).then(() =>
       this.incrementDailyQuestProgress(userId, 'daily_login', 1),
@@ -3100,81 +3124,65 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID');
     }
 
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
     const today = UsersService.getStartOfDayUTC();
-    const maxRetries = 3;
+    const existing = user.dailyQuests;
+    const existingDate = existing?.date
+      ? UsersService.getStartOfDayUTC(new Date(existing.date))
+      : null;
 
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const user = await this.userModel.findById(new Types.ObjectId(userId));
-      if (!user) {
-        throw new NotFoundException('User not found');
-      }
-
-      const existing = user.dailyQuests;
-      const existingDate = existing?.date
-        ? UsersService.getStartOfDayUTC(new Date(existing.date))
-        : null;
-
-      if (
-        existingDate &&
-        existingDate.getTime() === today.getTime() &&
-        existing?.quests?.length
-      ) {
-        return {
-          date: today.toISOString(),
-          quests: existing.quests.map((q) => ({
-            id: q.id,
-            type: q.type,
-            name: q.name,
-            description: q.description,
-            target: q.target,
-            progress: q.progress,
-            rewardExp: q.rewardExp,
-            rewardCoins: q.rewardCoins,
-            completed: q.completed,
-            claimedAt: q.claimedAt ? new Date(q.claimedAt).toISOString() : null,
-          })),
-        };
-      }
-
-      // Создаём 3 случайных квеста на сегодня
-      const pool = [...UsersService.DAILY_QUEST_POOL];
-      const shuffled = pool.sort(() => Math.random() - 0.5);
-      const selected = shuffled.slice(0, 3).map((def, i) => ({
-        id: `daily_${today.getTime()}_${i}`,
-        type: def.type,
-        name: def.name,
-        description: def.description,
-        target: def.target,
-        progress: 0,
-        rewardExp: def.rewardExp,
-        rewardCoins: def.rewardCoins,
-        completed: false,
-        claimedAt: null as Date | null,
-      }));
-
-      user.dailyQuests = { date: today, quests: selected } as any;
-      try {
-        await user.save();
-      } catch (err: unknown) {
-        if (
-          (err as { name?: string })?.name === 'VersionError' &&
-          attempt < maxRetries - 1
-        ) {
-          continue;
-        }
-        throw err;
-      }
-
+    if (
+      existingDate &&
+      existingDate.getTime() === today.getTime() &&
+      existing?.quests?.length
+    ) {
       return {
         date: today.toISOString(),
-        quests: selected.map((q) => ({
-          ...q,
-          claimedAt: null,
+        quests: existing.quests.map((q) => ({
+          id: q.id,
+          type: q.type,
+          name: q.name,
+          description: q.description,
+          target: q.target,
+          progress: q.progress,
+          rewardExp: q.rewardExp,
+          rewardCoins: q.rewardCoins,
+          completed: q.completed,
+          claimedAt: q.claimedAt ? new Date(q.claimedAt).toISOString() : null,
         })),
       };
     }
 
-    throw new ConflictException('Could not create daily quests after retries');
+    // Создаём 3 случайных квеста на сегодня
+    const pool = [...UsersService.DAILY_QUEST_POOL];
+    const shuffled = pool.sort(() => Math.random() - 0.5);
+    const selected = shuffled.slice(0, 3).map((def, i) => ({
+      id: `daily_${today.getTime()}_${i}`,
+      type: def.type,
+      name: def.name,
+      description: def.description,
+      target: def.target,
+      progress: 0,
+      rewardExp: def.rewardExp,
+      rewardCoins: def.rewardCoins,
+      completed: false,
+      claimedAt: null as Date | null,
+    }));
+
+    user.dailyQuests = { date: today, quests: selected } as any;
+    await user.save();
+
+    return {
+      date: today.toISOString(),
+      quests: selected.map((q) => ({
+        ...q,
+        claimedAt: null,
+      })),
+    };
   }
 
   /** Увеличивает прогресс по типу квеста для сегодняшних заданий. */
@@ -3185,44 +3193,28 @@ export class UsersService {
   ): Promise<void> {
     if (!Types.ObjectId.isValid(userId) || delta <= 0) return;
 
+    // Сначала создаём задания на сегодня, если их ещё нет (иначе прогресс чтения глав и др. не засчитается)
     await this.getOrCreateDailyQuests(userId);
 
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user?.dailyQuests?.quests?.length) return;
+
     const today = UsersService.getStartOfDayUTC();
-    const maxRetries = 3;
+    const questDate = user.dailyQuests.date
+      ? UsersService.getStartOfDayUTC(new Date(user.dailyQuests.date))
+      : null;
+    if (!questDate || questDate.getTime() !== today.getTime()) return;
 
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const user = await this.userModel.findById(new Types.ObjectId(userId));
-      if (!user?.dailyQuests?.quests?.length) return;
-
-      const questDate = user.dailyQuests.date
-        ? UsersService.getStartOfDayUTC(new Date(user.dailyQuests.date))
-        : null;
-      if (!questDate || questDate.getTime() !== today.getTime()) return;
-
-      let changed = false;
-      for (const q of user.dailyQuests.quests) {
-        if (q.type === questType && !q.completed) {
-          const before = q.progress;
-          q.progress = Math.min((q.progress ?? 0) + delta, q.target);
-          if (q.progress >= q.target) q.completed = true;
-          if (q.progress !== before) changed = true;
-        }
-      }
-      if (!changed) return;
-
-      try {
-        await user.save();
-        return;
-      } catch (err: unknown) {
-        if (
-          (err as { name?: string })?.name === 'VersionError' &&
-          attempt < maxRetries - 1
-        ) {
-          continue;
-        }
-        throw err;
+    let changed = false;
+    for (const q of user.dailyQuests.quests) {
+      if (q.type === questType && !q.completed) {
+        const before = q.progress;
+        q.progress = Math.min((q.progress ?? 0) + delta, q.target);
+        if (q.progress >= q.target) q.completed = true;
+        if (q.progress !== before) changed = true;
       }
     }
+    if (changed) await user.save();
   }
 
   /** Забрать награду за выполненное задание. */
@@ -3233,73 +3225,246 @@ export class UsersService {
     success: boolean;
     expGained?: number;
     coinsGained?: number;
+    itemsGained?: { itemId: string; count: number }[];
     message?: string;
   }> {
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user ID');
     }
 
-    const today = UsersService.getStartOfDayUTC();
-    const maxRetries = 3;
-
-    for (let attempt = 0; attempt < maxRetries; attempt++) {
-      const user = await this.userModel.findById(new Types.ObjectId(userId));
-      if (!user) {
-        throw new NotFoundException('User not found');
-      }
-
-      const dq = user.dailyQuests;
-      if (!dq?.quests?.length) {
-        return { success: false, message: 'Нет заданий на сегодня' };
-      }
-      const questDate = dq.date
-        ? UsersService.getStartOfDayUTC(new Date(dq.date))
-        : null;
-      if (!questDate || questDate.getTime() !== today.getTime()) {
-        return { success: false, message: 'Задания устарели' };
-      }
-
-      const quest = dq.quests.find((q) => q.id === questId);
-      if (!quest) {
-        return { success: false, message: 'Задание не найдено' };
-      }
-      if (!quest.completed) {
-        return { success: false, message: 'Задание ещё не выполнено' };
-      }
-      if (quest.claimedAt) {
-        return { success: false, message: 'Награда уже получена' };
-      }
-
-      quest.claimedAt = new Date();
-      if (quest.rewardExp > 0) {
-        user.experience += quest.rewardExp;
-        while (user.experience >= this.calculateNextLevelExp(user.level)) {
-          user.level += 1;
-          user.balance += user.level * 10;
-        }
-      }
-      if (quest.rewardCoins > 0) user.balance += quest.rewardCoins;
-
-      try {
-        await user.save();
-      } catch (err: unknown) {
-        if (
-          (err as { name?: string })?.name === 'VersionError' &&
-          attempt < maxRetries - 1
-        ) {
-          continue;
-        }
-        throw err;
-      }
-
-      return {
-        success: true,
-        expGained: quest.rewardExp,
-        coinsGained: quest.rewardCoins,
-      };
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) {
+      throw new NotFoundException('User not found');
     }
 
-    throw new ConflictException('Could not claim daily quest after retries');
+    const today = UsersService.getStartOfDayUTC();
+    const dq = user.dailyQuests;
+    if (!dq?.quests?.length) {
+      return { success: false, message: 'Нет заданий на сегодня' };
+    }
+    const questDate = dq.date
+      ? UsersService.getStartOfDayUTC(new Date(dq.date))
+      : null;
+    if (!questDate || questDate.getTime() !== today.getTime()) {
+      return { success: false, message: 'Задания устарели' };
+    }
+
+    const quest = dq.quests.find((q) => q.id === questId);
+    if (!quest) {
+      return { success: false, message: 'Задание не найдено' };
+    }
+    if (!quest.completed) {
+      return { success: false, message: 'Задание ещё не выполнено' };
+    }
+    if (quest.claimedAt) {
+      return { success: false, message: 'Награда уже получена' };
+    }
+
+    quest.claimedAt = new Date();
+    if (quest.rewardExp > 0) {
+      user.experience += quest.rewardExp;
+      while (user.experience >= this.calculateNextLevelExp(user.level)) {
+        user.level += 1;
+        user.balance += user.level * 10;
+      }
+    }
+    if (quest.rewardCoins > 0) user.balance += quest.rewardCoins;
+    await user.save();
+
+    let itemsGained: { itemId: string; count: number }[] | undefined;
+    if (this.dropsService) {
+      itemsGained = await this.dropsService.grantDailyQuestRewards(
+        userId,
+        quest.type,
+      );
+    }
+
+    return {
+      success: true,
+      expGained: quest.rewardExp,
+      coinsGained: quest.rewardCoins,
+      itemsGained,
+    };
+  }
+
+  // 🎮 Mini-games (delegate to game-items services)
+  async getProfileDisciples(userId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.getProfileDisciples(userId);
+  }
+
+  async disciplesReroll(userId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.reroll(userId);
+  }
+
+  async disciplesRecruit(userId: string, characterId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.recruit(userId, characterId);
+  }
+
+  async disciplesDismiss(userId: string, characterId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.dismiss(userId, characterId);
+  }
+
+  async disciplesTrain(userId: string, characterId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.train(userId, characterId);
+  }
+
+  async disciplesBattleMatch(userId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.battleMatch(userId);
+  }
+
+  async disciplesBattle(userId: string, opponentUserId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.battle(userId, opponentUserId);
+  }
+
+  async disciplesWeeklyBattleMatch(userId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.weeklyBattleMatch(userId);
+  }
+
+  async disciplesWeeklyBattle(userId: string, opponentUserId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.weeklyBattle(userId, opponentUserId);
+  }
+
+  async disciplesWeeklyLeaderboard(limit?: number) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.weeklyLeaderboard(limit ?? 20);
+  }
+
+  async disciplesTechniques(userId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return await this.disciplesService.getDiscipleTechniques(userId);
+  }
+
+  async disciplesLearnTechnique(
+    userId: string,
+    characterId: string,
+    techniqueId: string,
+  ) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return await this.disciplesService.learnTechnique(
+      userId,
+      characterId,
+      techniqueId,
+    );
+  }
+
+  async disciplesEquipTechniques(
+    userId: string,
+    characterId: string,
+    techniqueIds: string[],
+  ) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return await this.disciplesService.equipTechniques(
+      userId,
+      characterId,
+      techniqueIds,
+    );
+  }
+
+  async disciplesExpeditionStatus(userId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.expeditionStatus(userId);
+  }
+
+  async disciplesStartExpedition(
+    userId: string,
+    difficulty: 'easy' | 'normal' | 'hard',
+  ) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.startExpedition(userId, difficulty);
+  }
+
+  async getAlchemyRecipes(userId: string) {
+    if (!this.alchemyService)
+      throw new BadRequestException('Alchemy not available');
+    return this.alchemyService.getRecipes(userId);
+  }
+
+  async getAlchemyStatus(userId: string) {
+    if (!this.alchemyService)
+      throw new BadRequestException('Alchemy not available');
+    return this.alchemyService.getStatus(userId);
+  }
+
+  async alchemyCraft(userId: string, recipeId: string) {
+    if (!this.alchemyService)
+      throw new BadRequestException('Alchemy not available');
+    return this.alchemyService.craft(userId, recipeId);
+  }
+
+  async alchemyUpgradeCauldron(userId: string) {
+    if (!this.alchemyService)
+      throw new BadRequestException('Alchemy not available');
+    return this.alchemyService.upgradeCauldron(userId);
+  }
+
+  async getProfileInventory(
+    userId: string,
+  ): Promise<{ itemId: string; count: number; name: string; icon: string }[]> {
+    if (!this.gameItemsService) return [];
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('inventory')
+      .lean()
+      .exec();
+    if (!user || !Array.isArray(user.inventory) || user.inventory.length === 0)
+      return [];
+    const inv = user.inventory as Array<{ itemId: string; count: number }>;
+    const items = await Promise.all(
+      [...new Set(inv.map((e) => e.itemId))].map((id) =>
+        this.gameItemsService!.findById(id).then((item) =>
+          item ? { id, name: item.name, icon: item.icon ?? '' } : null,
+        ),
+      ),
+    );
+    type InvItem = { id: string; name: string; icon: string };
+    const byId = new Map<string, { name: string; icon: string }>(
+      (items.filter(Boolean) as InvItem[]).map((i) => [
+        i.id,
+        { name: i.name, icon: i.icon },
+      ]),
+    );
+    return inv.map((e) => ({
+      itemId: e.itemId,
+      count: e.count,
+      name: byId.get(e.itemId)?.name ?? e.itemId,
+      icon: byId.get(e.itemId)?.icon ?? '',
+    }));
+  }
+
+  async getWheel(userId: string) {
+    if (!this.wheelService)
+      throw new BadRequestException('Wheel not available');
+    return this.wheelService.getWheel(userId);
+  }
+
+  async wheelSpin(userId: string) {
+    if (!this.wheelService)
+      throw new BadRequestException('Wheel not available');
+    return this.wheelService.spin(userId);
   }
 
   // 💰 Balance management

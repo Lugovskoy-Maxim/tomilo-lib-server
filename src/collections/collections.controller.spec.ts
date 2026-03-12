@@ -96,7 +96,10 @@ describe('CollectionsController', () => {
       const result = await controller.create(req as any, dto);
       expect(result.success).toBe(true);
       expect(result.data).toEqual(created);
-      expect(mockCollectionsService.create).toHaveBeenCalledWith(dto, undefined);
+      expect(mockCollectionsService.create).toHaveBeenCalledWith(
+        dto,
+        undefined,
+      );
     });
 
     it('should set cover from file when provided', async () => {
@@ -123,7 +126,11 @@ describe('CollectionsController', () => {
 
       const result = await controller.update(id, dto);
       expect(result.success).toBe(true);
-      expect(mockCollectionsService.update).toHaveBeenCalledWith(id, dto, undefined);
+      expect(mockCollectionsService.update).toHaveBeenCalledWith(
+        id,
+        dto,
+        undefined,
+      );
     });
   });
 

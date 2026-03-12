@@ -441,6 +441,190 @@ export class User {
     progress: number;
   }[];
 
+  // ——— Мини-игры: инвентарь и состояние ———
+
+  /** Инвентарь: предметы по itemId и количеству */
+  @Prop({
+    type: [
+      {
+        itemId: { type: String, required: true },
+        count: { type: Number, required: true },
+      },
+    ],
+    default: [],
+  })
+  inventory: { itemId: string; count: number }[];
+
+  /** Стихия в профиле (для бонусов алхимии/колеса) */
+  @Prop({
+    type: String,
+    enum: ['fire', 'water', 'earth', 'wood', 'metal'],
+    default: null,
+  })
+  element?: 'fire' | 'water' | 'earth' | 'wood' | 'metal' | null;
+
+  @Prop()
+  guildId?: Types.ObjectId;
+
+  @Prop()
+  lastPillCraftedAt?: Date;
+
+  /** Алхимия: мастерство (уровень) и дневные попытки */
+  @Prop({ default: 1 })
+  alchemyLevel?: number;
+
+  @Prop({ default: 0 })
+  alchemyExp?: number;
+
+  @Prop()
+  alchemyAttemptsDate?: Date;
+
+  @Prop({ default: 0 })
+  alchemyAttemptsToday?: number;
+
+  /** Алхимия: уровень котла/печи (уменьшает риск и улучшает качество) */
+  @Prop({ default: 1 })
+  alchemyCauldronTier?: number;
+
+  @Prop()
+  lastWheelSpinAt?: Date;
+
+  /** Ученики (игра «Учитель — ученики») */
+  @Prop({
+    type: [
+      {
+        characterId: { type: Types.ObjectId, ref: 'Character', required: true },
+        titleId: { type: Types.ObjectId, ref: 'Title', required: true },
+        recruitedAt: { type: Date, default: Date.now },
+        attack: { type: Number, required: true },
+        defense: { type: Number, required: true },
+        speed: { type: Number, required: true },
+        hp: { type: Number, required: true },
+        level: { type: Number, default: 1 },
+        exp: { type: Number, default: 0 },
+        rank: { type: String, default: 'F' },
+        techniquesLearned: { type: [String], default: [] },
+        techniquesEquipped: { type: [String], default: [] },
+      },
+    ],
+    default: [],
+  })
+  disciples: {
+    characterId: Types.ObjectId;
+    titleId: Types.ObjectId;
+    recruitedAt: Date;
+    attack: number;
+    defense: number;
+    speed: number;
+    hp: number;
+    level?: number;
+    exp?: number;
+    rank?: string;
+    techniquesLearned?: string[];
+    techniquesEquipped?: string[];
+  }[];
+
+  @Prop({ default: 5 })
+  maxDisciples?: number;
+
+  @Prop()
+  lastTrainingAt?: Date;
+
+  @Prop({ default: 0 })
+  combatRating?: number;
+
+  @Prop()
+  lastBattleAt?: Date;
+
+  /** Недельная схватка: дата последнего боя (1 раз в неделю) */
+  @Prop()
+  lastWeeklyBattleAt?: Date;
+
+  @Prop({ default: 1000 })
+  weeklyRating?: number;
+
+  @Prop({ default: 0 })
+  weeklyWins?: number;
+
+  @Prop({ default: 0 })
+  weeklyLosses?: number;
+
+  /** Экспедиции: дата последней вылазки (кулдаун) */
+  @Prop()
+  lastExpeditionAt?: Date;
+
+  /** Последний результат экспедиции (для UI) */
+  @Prop({
+    type: {
+      at: { type: Date, default: Date.now },
+      difficulty: { type: String, default: 'easy' },
+      success: { type: Boolean, default: true },
+      coinsGained: { type: Number, default: 0 },
+      expGained: { type: Number, default: 0 },
+      itemsGained: {
+        type: [
+          {
+            itemId: { type: String, required: true },
+            count: { type: Number, required: true },
+          },
+        ],
+        default: [],
+      },
+      log: { type: [String], default: [] },
+    },
+    default: null,
+  })
+  lastExpeditionResult?: {
+    at: Date;
+    difficulty: string;
+    success: boolean;
+    coinsGained: number;
+    expGained: number;
+    itemsGained: { itemId: string; count: number }[];
+    log: string[];
+  } | null;
+
+  /** Последний кандидат с реролла (для recruit) */
+  @Prop({
+    type: {
+      characterId: { type: Types.ObjectId, ref: 'Character', required: true },
+      titleId: { type: Types.ObjectId, ref: 'Title', required: true },
+      attack: { type: Number, required: true },
+      defense: { type: Number, required: true },
+      speed: { type: Number, required: true },
+      hp: { type: Number, required: true },
+      at: { type: Date, default: Date.now },
+    },
+    default: null,
+  })
+  lastRerollCandidate?: {
+    characterId: Types.ObjectId;
+    titleId: Types.ObjectId;
+    attack: number;
+    defense: number;
+    speed: number;
+    hp: number;
+    at: Date;
+  } | null;
+
+  /** Счётчики для дропа за чтение (сбрасывать по началу дня UTC) */
+  @Prop()
+  readingDropsDate?: Date;
+
+  @Prop({ default: 0 })
+  readingChaptersToday?: number;
+
+  @Prop({
+    type: [
+      {
+        itemId: { type: String, required: true },
+        count: { type: Number, required: true },
+      },
+    ],
+    default: [],
+  })
+  readingDropsToday: { itemId: string; count: number }[];
+
   /** Ежедневные задания: дата (начало дня) и список квестов на этот день */
   @Prop({
     type: {

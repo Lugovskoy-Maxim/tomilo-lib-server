@@ -8,6 +8,7 @@ import { ChaptersModule } from '../chapters/chapters.module';
 import { BotDetectionModule } from '../common/services/bot-detection.module';
 import { PushModule } from '../push/push.module';
 import { NotificationsModule } from '../notifications/notifications.module';
+import { GameItemsModule } from '../game-items/game-items.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { NotificationsModule } from '../notifications/notifications.module';
     BotDetectionModule,
     PushModule,
     forwardRef(() => NotificationsModule),
+    GameItemsModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],

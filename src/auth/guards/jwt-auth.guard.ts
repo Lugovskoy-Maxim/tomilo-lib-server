@@ -49,7 +49,9 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
 
     if (!user) {
       const infoMsg = info?.message ?? '';
-      this.logger.warn(`JWT Auth Guard no user (strategy returned null). info: ${infoMsg}`);
+      this.logger.warn(
+        `JWT Auth Guard no user (strategy returned null). info: ${infoMsg}`,
+      );
       throw new UnauthorizedException('Invalid token');
     }
 

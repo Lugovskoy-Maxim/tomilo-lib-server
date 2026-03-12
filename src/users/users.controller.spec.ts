@@ -5,7 +5,7 @@ import { UpdateUserDto } from './dto/update-user.dto';
 
 describe('UsersController', () => {
   let controller: UsersController;
-  let usersService: UsersService;
+  let _usersService: UsersService;
 
   const mockUsersService = {
     findAll: jest.fn(),
@@ -29,11 +29,12 @@ describe('UsersController', () => {
     }).compile();
 
     controller = module.get<UsersController>(UsersController);
-    usersService = module.get<UsersService>(UsersService);
+    _usersService = module.get<UsersService>(UsersService);
   });
 
   it('should be defined', () => {
     expect(controller).toBeDefined();
+    expect(_usersService).toBeDefined();
   });
 
   describe('getAllUsers', () => {

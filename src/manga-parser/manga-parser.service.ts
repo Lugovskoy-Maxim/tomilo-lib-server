@@ -968,7 +968,12 @@ export class MangaParserService {
     emit({
       status: 'started',
       message: 'Начинаем импорт тайтла...',
-      data: { titleName: 'Парсинг...', status: 'parsing', currentStep: 1, totalSteps: 4 } as TitleImportData,
+      data: {
+        titleName: 'Парсинг...',
+        status: 'parsing',
+        currentStep: 1,
+        totalSteps: 4,
+      } as TitleImportData,
     });
 
     const parsedData = await parser.parse(url);
@@ -1240,7 +1245,8 @@ export class MangaParserService {
             progress: {
               current: chIndex,
               total: totalCh,
-              percentage: totalCh > 0 ? Math.round((chIndex / totalCh) * 100) : 0,
+              percentage:
+                totalCh > 0 ? Math.round((chIndex / totalCh) * 100) : 0,
             },
           });
 
@@ -1289,7 +1295,8 @@ export class MangaParserService {
             progress: {
               current: chIndex,
               total: totalCh,
-              percentage: totalCh > 0 ? Math.round((chIndex / totalCh) * 100) : 0,
+              percentage:
+                totalCh > 0 ? Math.round((chIndex / totalCh) * 100) : 0,
             },
           });
 
@@ -1308,7 +1315,8 @@ export class MangaParserService {
             progress: {
               current: chIndex,
               total: totalCh,
-              percentage: totalCh > 0 ? Math.round((chIndex / totalCh) * 100) : 0,
+              percentage:
+                totalCh > 0 ? Math.round((chIndex / totalCh) * 100) : 0,
             },
           });
           this.logger.error(
