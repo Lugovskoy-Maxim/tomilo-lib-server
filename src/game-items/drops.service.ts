@@ -12,10 +12,34 @@ import {
 } from '../schemas/daily-quest-item-reward.schema';
 import { GameItemsService } from './game-items.service';
 
+/** Макс. дропов необычных (uncommon) в день на пользователя — всего. */
+const MAX_UNCOMMON_READING_DROPS_PER_DAY = 2;
+/** Макс. дропов редких (rare) в день на пользователя — всего. */
+const MAX_RARE_READING_DROPS_PER_DAY = 3;
+/** Макс. дропов эпик + легендарный в день — вместе только 1. */
+const MAX_HIGH_RARITY_READING_DROPS_PER_DAY = 1;
+
 function getStartOfDayUTC(d: Date = new Date()): Date {
   const t = new Date(d);
   t.setUTCHours(0, 0, 0, 0);
   return t;
+}
+
+function countDropsTodayByRarity(
+  dropsToday: { itemId: string; count: number }[],
+  itemIdToRarity: Map<string, string>,
+): { uncommon: number; rare: number; epicOrLegendary: number } {
+  let uncommon = 0;
+  let rare = 0;
+  let epicOrLegendary = 0;
+  for (const d of dropsToday) {
+    const r = itemIdToRarity.get(d.itemId) ?? 'common';
+    const add = d.count ?? 0;
+    if (r === 'uncommon') uncommon += add;
+    else if (r === 'rare') rare += add;
+    else if (r === 'epic' || r === 'legendary') epicOrLegendary += add;
+  }
+  return { uncommon, rare, epicOrLegendary };
 }
 
 @Injectable()
@@ -64,21 +88,42 @@ export class DropsService {
       .lean()
       .exec();
 
+    const allItems = await this.gameItemsService.findAllActive();
+    const itemIdToRarity = new Map<string, string>();
+    for (const item of allItems) {
+      itemIdToRarity.set(item.id, item.rarity ?? 'common');
+    }
+
     const gained: { itemId: string; count: number }[] = [];
     const dropsToday = [...(user.readingDropsToday ?? [])];
     const countsByItem = new Map<string, number>();
     for (const d of dropsToday) {
       countsByItem.set(d.itemId, (countsByItem.get(d.itemId) ?? 0) + d.count);
     }
+    const byRarity = countDropsTodayByRarity(dropsToday, itemIdToRarity);
 
     for (const rule of rules) {
       if (user.readingChaptersToday < (rule.minChaptersToday ?? 1)) continue;
       const already = countsByItem.get(rule.itemId) ?? 0;
       if (already >= rule.maxDropsPerDay) continue;
+
+      const rarity = itemIdToRarity.get(rule.itemId) ?? 'common';
+      if (rarity === 'uncommon' && byRarity.uncommon >= MAX_UNCOMMON_READING_DROPS_PER_DAY)
+        continue;
+      if (rarity === 'rare' && byRarity.rare >= MAX_RARE_READING_DROPS_PER_DAY) continue;
+      if (
+        (rarity === 'epic' || rarity === 'legendary') &&
+        byRarity.epicOrLegendary >= MAX_HIGH_RARITY_READING_DROPS_PER_DAY
+      )
+        continue;
+
       if (Math.random() > rule.chance) continue;
 
       await this.gameItemsService.addToInventory(userId, rule.itemId, 1);
       countsByItem.set(rule.itemId, already + 1);
+      if (rarity === 'uncommon') byRarity.uncommon += 1;
+      else if (rarity === 'rare') byRarity.rare += 1;
+      else if (rarity === 'epic' || rarity === 'legendary') byRarity.epicOrLegendary += 1;
       gained.push({ itemId: rule.itemId, count: 1 });
     }
 

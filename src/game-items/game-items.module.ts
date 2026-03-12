@@ -8,6 +8,11 @@ import {
   CharacterCardSchema,
 } from '../schemas/character-card.schema';
 import {
+  CardDecoration,
+  CardDecorationSchema,
+} from '../schemas/card-decoration.schema';
+import { CardDeck, CardDeckSchema } from '../schemas/card-deck.schema';
+import {
   ReadingDropRule,
   ReadingDropRuleSchema,
 } from '../schemas/reading-drop-rule.schema';
@@ -37,6 +42,7 @@ import { FilesModule } from '../files/files.module';
 import { DisciplesService } from './disciples.service';
 import { AlchemyService } from './alchemy.service';
 import { WheelService } from './wheel.service';
+import { CardsService } from './cards.service';
 
 @Module({
   imports: [
@@ -46,6 +52,8 @@ import { WheelService } from './wheel.service';
       { name: User.name, schema: UserSchema },
       { name: Character.name, schema: CharacterSchema },
       { name: CharacterCard.name, schema: CharacterCardSchema },
+      { name: CardDecoration.name, schema: CardDecorationSchema },
+      { name: CardDeck.name, schema: CardDeckSchema },
       { name: ReadingDropRule.name, schema: ReadingDropRuleSchema },
       { name: DailyQuestItemReward.name, schema: DailyQuestItemRewardSchema },
       { name: LeaderboardReward.name, schema: LeaderboardRewardSchema },
@@ -63,6 +71,7 @@ import { WheelService } from './wheel.service';
     DisciplesService,
     AlchemyService,
     WheelService,
+    CardsService,
   ],
   exports: [
     GameItemsService,
@@ -70,6 +79,7 @@ import { WheelService } from './wheel.service';
     DisciplesService,
     AlchemyService,
     WheelService,
+    CardsService,
   ],
 })
 export class GameItemsModule {}

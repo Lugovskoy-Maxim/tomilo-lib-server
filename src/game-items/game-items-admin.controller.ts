@@ -22,6 +22,7 @@ import { FileUploadInterceptor } from '../common/interceptors/file-upload.interc
 import { GameItemsService } from './game-items.service';
 import { GameItemsAdminService } from './game-items-admin.service';
 import { FilesService } from '../files/files.service';
+import { CardsService } from './cards.service';
 
 @Controller('game-items/admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -31,6 +32,7 @@ export class GameItemsAdminController {
     private readonly gameItemsService: GameItemsService,
     private readonly gameItemsAdminService: GameItemsAdminService,
     private readonly filesService: FilesService,
+    private readonly cardsService: CardsService,
   ) {}
 
   // ——— GameItem CRUD ———
@@ -738,6 +740,198 @@ export class GameItemsAdminController {
         timestamp: new Date().toISOString(),
         path: 'game-items/admin/config/wheel',
         method: 'PUT',
+      };
+    }
+  }
+
+  // ——— Character cards ———
+  @Get('cards')
+  async listCards(): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.cardsService.listCardsAdmin();
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'game-items/admin/cards',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'game-items/admin/cards',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('cards')
+  async createCard(@Body() body: any): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.cardsService.createCard(body);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'game-items/admin/cards',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'game-items/admin/cards',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Patch('cards/:id')
+  async updateCard(
+    @Param('id') id: string,
+    @Body() body: any,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.cardsService.updateCard(id, body);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `game-items/admin/cards/${id}`,
+        method: 'PATCH',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `game-items/admin/cards/${id}`,
+        method: 'PATCH',
+      };
+    }
+  }
+
+  @Delete('cards/:id')
+  async deleteCard(@Param('id') id: string): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.cardsService.deleteCard(id);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `game-items/admin/cards/${id}`,
+        method: 'DELETE',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `game-items/admin/cards/${id}`,
+        method: 'DELETE',
+      };
+    }
+  }
+
+  // ——— Card decks ———
+  @Get('card-decks')
+  async listCardDecks(): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.cardsService.listDecksAdmin();
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'game-items/admin/card-decks',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'game-items/admin/card-decks',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('card-decks')
+  async createCardDeck(@Body() body: any): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.cardsService.createDeck(body);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'game-items/admin/card-decks',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'game-items/admin/card-decks',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Patch('card-decks/:id')
+  async updateCardDeck(
+    @Param('id') id: string,
+    @Body() body: any,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.cardsService.updateDeck(id, body);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `game-items/admin/card-decks/${id}`,
+        method: 'PATCH',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `game-items/admin/card-decks/${id}`,
+        method: 'PATCH',
+      };
+    }
+  }
+
+  @Delete('card-decks/:id')
+  async deleteCardDeck(@Param('id') id: string): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.cardsService.deleteDeck(id);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `game-items/admin/card-decks/${id}`,
+        method: 'DELETE',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `game-items/admin/card-decks/${id}`,
+        method: 'DELETE',
       };
     }
   }

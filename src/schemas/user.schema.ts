@@ -215,6 +215,65 @@ export class User {
     purchasedAt: Date;
   }[];
 
+  @Prop({
+    type: [
+      {
+        cardId: { type: Types.ObjectId, ref: 'CardDecoration', required: true },
+        currentStage: {
+          type: String,
+          enum: ['F', 'E', 'D', 'C', 'B', 'A', 'S', 'SS', 'SSS'],
+          default: 'F',
+        },
+        copies: { type: Number, default: 1, min: 1 },
+        shards: { type: Number, default: 0, min: 0 },
+        unlockedAt: { type: Date, default: Date.now },
+        lastUpgradedAt: { type: Date, default: null },
+      },
+    ],
+    default: [],
+  })
+  ownedCards: {
+    cardId: Types.ObjectId;
+    currentStage: 'F' | 'E' | 'D' | 'C' | 'B' | 'A' | 'S' | 'SS' | 'SSS';
+    copies: number;
+    shards: number;
+    unlockedAt: Date;
+    lastUpgradedAt?: Date | null;
+  }[];
+
+  @Prop({
+    type: [{ type: MongooseSchema.Types.ObjectId, ref: 'CardDecoration' }],
+    default: [],
+  })
+  profileCardsShowcase: Types.ObjectId[];
+
+  @Prop({
+    type: String,
+    enum: ['manual', 'rarity', 'favorites', 'last_upgraded'],
+    default: 'manual',
+  })
+  profileCardsShowcaseSort:
+    | 'manual'
+    | 'rarity'
+    | 'favorites'
+    | 'last_upgraded';
+
+  @Prop({
+    type: [
+      {
+        deckId: { type: Types.ObjectId, ref: 'CardDeck', required: true },
+        misses: { type: Number, default: 0, min: 0 },
+        lastOpenedAt: { type: Date, default: Date.now },
+      },
+    ],
+    default: [],
+  })
+  cardDeckPity: {
+    deckId: Types.ObjectId;
+    misses: number;
+    lastOpenedAt?: Date;
+  }[];
+
   /** Избранные персонажи (отображаются в профиле) */
   @Prop({
     type: [{ type: Types.ObjectId, ref: 'Character' }],

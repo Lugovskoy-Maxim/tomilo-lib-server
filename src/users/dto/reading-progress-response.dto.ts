@@ -56,6 +56,19 @@ export interface ReadingDropItemDto {
   icon?: string;
 }
 
+export interface ReadingCardDropDto {
+  id: string;
+  name: string;
+  characterId?: string | null;
+  characterName?: string;
+  titleId?: string | null;
+  titleName?: string;
+  currentStage: string;
+  stageImageUrl?: string;
+  isNew?: boolean;
+  shardsGained?: number;
+}
+
 export interface ReadingProgressResponseDto {
   user: {
     _id: string;
@@ -69,6 +82,8 @@ export interface ReadingProgressResponseDto {
   newAchievements?: UnlockedAchievementDto[];
   /** Дропы за чтение (при добавлении новой главы в историю) */
   readingDrops?: ReadingDropItemDto[];
+  /** Дропы карточек/осколков за чтение */
+  readingCardDrops?: ReadingCardDropDto[];
 }
 
 /** Событие в истории прогресса (для GET profile/progress-history) */

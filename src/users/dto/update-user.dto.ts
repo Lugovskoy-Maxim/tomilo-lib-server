@@ -91,6 +91,28 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
   }[];
 
   @IsOptional()
+  ownedCards?: {
+    cardId: Types.ObjectId;
+    currentStage: 'F' | 'E' | 'D' | 'C' | 'B' | 'A' | 'S' | 'SS' | 'SSS';
+    copies: number;
+    shards: number;
+    unlockedAt: Date;
+    lastUpgradedAt?: Date | null;
+  }[];
+
+  @IsOptional()
+  @IsArray()
+  profileCardsShowcase?: Types.ObjectId[];
+
+  @IsOptional()
+  @IsEnum(['manual', 'rarity', 'favorites', 'last_upgraded'])
+  profileCardsShowcaseSort?:
+    | 'manual'
+    | 'rarity'
+    | 'favorites'
+    | 'last_upgraded';
+
+  @IsOptional()
   @IsObject()
   @ValidateNested()
   @Type(() => PrivacySettingsDto)

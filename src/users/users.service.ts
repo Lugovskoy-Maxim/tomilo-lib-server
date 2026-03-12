@@ -37,6 +37,7 @@ import { DisciplesService } from '../game-items/disciples.service';
 import { AlchemyService } from '../game-items/alchemy.service';
 import { WheelService } from '../game-items/wheel.service';
 import { GameItemsService } from '../game-items/game-items.service';
+import { CardsService } from '../game-items/cards.service';
 import { Cron } from '@nestjs/schedule';
 /** Категории закладок: читаю, в планах, прочитано, избранное, брошено */
 export const BOOKMARK_CATEGORIES = [
@@ -183,6 +184,8 @@ export class UsersService {
     private wheelService?: WheelService,
     @Optional()
     private gameItemsService?: GameItemsService,
+    @Optional()
+    private cardsService?: CardsService,
   ) {
     this.logger.setContext(UsersService.name);
   }
@@ -877,6 +880,16 @@ export class UsersService {
       lastExp.getFullYear() === today.getFullYear() &&
       lastExp.getMonth() === today.getMonth() &&
       lastExp.getDate() === today.getDate();
+    if (this.cardsService) {
+      try {
+        const cards = await this.cardsService.getProfileCards(id);
+        (plain as any).profileCards = cards.cards;
+        (plain as any).profileCardsShowcase = cards.showcase;
+        (plain as any).profileCardsStats = cards.stats;
+      } catch {
+        // ignore card enrichment errors for profile endpoint
+      }
+    }
     this.logger.log(`User profile found with ID: ${id}`);
     return plain as User;
   }
@@ -2056,6 +2069,38 @@ export class UsersService {
         readingDrops = gained.map((g) => ({ itemId: g.itemId, count: g.count }));
       }
     }
+    let readingCardDrops: Array<Record<string, unknown>> = [];
+    if (!botDetectionResult.isBot && isNewChapter && this.cardsService) {
+      try {
+        const cardDrop = await this.cardsService.tryGrantReadingCard(userId, titleIdStr);
+        if (cardDrop?.card) {
+          readingCardDrops = [
+            {
+              id: (cardDrop.card as { id?: string }).id ?? '',
+              name: (cardDrop.card as { name?: string }).name ?? '',
+              characterId:
+                (cardDrop.card as { characterId?: string | null }).characterId ??
+                null,
+              characterName:
+                (cardDrop.card as { characterName?: string }).characterName ?? '',
+              titleId:
+                (cardDrop.card as { titleId?: string | null }).titleId ?? null,
+              titleName: (cardDrop.card as { titleName?: string }).titleName ?? '',
+              currentStage:
+                (cardDrop.card as { currentStage?: string }).currentStage ?? 'F',
+              stageImageUrl:
+                (cardDrop.card as { stageImageUrl?: string }).stageImageUrl ?? '',
+              isNew: cardDrop.isNew,
+              shardsGained: cardDrop.shardsGained ?? 0,
+            },
+          ];
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Card drop grant failed for user ${userId}: ${(error as Error).message}`,
+        );
+      }
+    }
 
     // Отправка прогресса по WebSocket для тостов (опыт, уровень, достижения, дропы)
     if (this.notificationsGateway) {
@@ -2107,6 +2152,12 @@ export class UsersService {
               items: readingDrops,
             });
           }
+          if (readingCardDrops.length > 0) {
+            this.notificationsGateway!.emitProgressToUser(userId, {
+              type: 'reading_card_drops',
+              cards: readingCardDrops,
+            });
+          }
         } catch (e) {
           this.logger.warn(`WS progress emit failed for user ${userId}`, e);
         }
@@ -2125,6 +2176,8 @@ export class UsersService {
       newRank: newRankInfo,
       newAchievements: newUnlocked.length > 0 ? newUnlocked : undefined,
       readingDrops: readingDrops.length > 0 ? readingDrops : undefined,
+      readingCardDrops:
+        readingCardDrops.length > 0 ? (readingCardDrops as any) : undefined,
     };
   }
 
@@ -3345,10 +3398,14 @@ export class UsersService {
     return this.disciplesService.battleMatch(userId);
   }
 
-  async disciplesBattle(userId: string, opponentUserId: string) {
+  async disciplesBattle(
+    userId: string,
+    opponentUserId: string,
+    supportItemIds: string[] = [],
+  ) {
     if (!this.disciplesService)
       throw new BadRequestException('Disciples game not available');
-    return this.disciplesService.battle(userId, opponentUserId);
+    return this.disciplesService.battle(userId, opponentUserId, supportItemIds);
   }
 
   async disciplesWeeklyBattleMatch(userId: string) {
@@ -3357,10 +3414,18 @@ export class UsersService {
     return this.disciplesService.weeklyBattleMatch(userId);
   }
 
-  async disciplesWeeklyBattle(userId: string, opponentUserId: string) {
+  async disciplesWeeklyBattle(
+    userId: string,
+    opponentUserId: string,
+    supportItemIds: string[] = [],
+  ) {
     if (!this.disciplesService)
       throw new BadRequestException('Disciples game not available');
-    return this.disciplesService.weeklyBattle(userId, opponentUserId);
+    return this.disciplesService.weeklyBattle(
+      userId,
+      opponentUserId,
+      supportItemIds,
+    );
   }
 
   async disciplesWeeklyLeaderboard(limit?: number) {
@@ -3474,6 +3539,28 @@ export class UsersService {
       name: byId.get(e.itemId)?.name ?? e.itemId,
       icon: byId.get(e.itemId)?.icon ?? '',
     }));
+  }
+
+  async getProfileCards(userId: string) {
+    if (!this.cardsService)
+      throw new BadRequestException('Cards system not available');
+    return this.cardsService.getProfileCards(userId);
+  }
+
+  async upgradeProfileCard(userId: string, cardId: string) {
+    if (!this.cardsService)
+      throw new BadRequestException('Cards system not available');
+    return this.cardsService.upgradeCard(userId, cardId);
+  }
+
+  async updateProfileCardsShowcase(
+    userId: string,
+    cardIds: string[],
+    sortMode?: 'manual' | 'rarity' | 'favorites' | 'last_upgraded',
+  ) {
+    if (!this.cardsService)
+      throw new BadRequestException('Cards system not available');
+    return this.cardsService.updateProfileShowcase(userId, cardIds, sortMode);
   }
 
   async getWheel(userId: string) {
@@ -3958,6 +4045,19 @@ export class UsersService {
       profile.equippedDecorations = targetUser.equippedDecorations;
       if (isOwnProfile) {
         profile.email = targetUser.email;
+      }
+    }
+
+    if (this.cardsService) {
+      try {
+        const cards = await this.cardsService.getProfileCards(targetUserId);
+        profile.profileCardsShowcase = cards.showcase;
+        profile.profileCardsStats = cards.stats;
+        if (isOwnProfile) {
+          profile.profileCards = cards.cards;
+        }
+      } catch {
+        // ignore card enrichment errors for public profile
       }
     }
 

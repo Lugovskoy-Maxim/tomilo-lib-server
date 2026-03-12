@@ -28,6 +28,7 @@ import {
   SuggestedDecorationSchema,
 } from '../schemas/suggested-decoration.schema';
 import { UsersModule } from '../users/users.module';
+import { GameItemsModule } from '../game-items/game-items.module';
 
 const DECORATIONS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 
@@ -45,6 +46,7 @@ const DECORATIONS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
       { name: SuggestedDecoration.name, schema: SuggestedDecorationSchema },
     ]),
     UsersModule,
+    GameItemsModule,
   ],
   controllers: [ShopController, ShopAdminController],
   providers: [ShopService, ShopSchedulerService],

@@ -29,6 +29,7 @@ import {
 } from '../schemas/suggested-decoration.schema';
 import { UsersService } from '../users/users.service';
 import { LoggerService } from '../common/logger/logger.service';
+import { CardsService } from '../game-items/cards.service';
 
 @Injectable()
 export class ShopService {
@@ -46,6 +47,7 @@ export class ShopService {
     @InjectModel(SuggestedDecoration.name)
     private suggestedDecorationModel: Model<SuggestedDecorationDocument>,
     private usersService: UsersService,
+    private cardsService: CardsService,
     @Inject(CACHE_MANAGER)
     private cacheManager: {
       get: (k: string) => Promise<unknown>;
@@ -315,6 +317,18 @@ export class ShopService {
 
     await this.usersService.update(userId, updateUserDto);
 
+    // Карточка из магазина теперь также попадает в игровую коллекцию пользователя.
+    let grantedCard: unknown = null;
+    if (decorationType === 'card') {
+      try {
+        grantedCard = await this.cardsService.grantCardToUser(userId, decorationId, 1);
+      } catch (err) {
+        this.logger.warn(
+          `Failed to grant shop card ${decorationId} to user ${userId}: ${(err as Error).message}`,
+        );
+      }
+    }
+
     // Author royalty: 10% of sale price to decoration author (only when price > 0)
     const authorId =
       decoration.authorId != null ? String(decoration.authorId) : null;
@@ -343,6 +357,7 @@ export class ShopService {
       message: 'Decoration purchased successfully',
       decoration,
       newBalance,
+      grantedCard,
     };
   }
 

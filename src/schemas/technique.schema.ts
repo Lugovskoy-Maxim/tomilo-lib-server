@@ -19,7 +19,7 @@ export class Technique {
   @Prop({ type: Types.ObjectId, ref: 'Character', default: null, index: true })
   characterId?: Types.ObjectId | null;
 
-  @Prop({ required: true, index: true })
+  @Prop({ required: true })
   id: string;
 
   @Prop({ required: true })

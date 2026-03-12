@@ -137,6 +137,10 @@ export class NotificationsGateway
       | {
           type: 'reading_drops';
           items: { itemId: string; count: number; name?: string; icon?: string }[];
+        }
+      | {
+          type: 'reading_card_drops';
+          cards: Record<string, unknown>[];
         },
   ): void {
     try {

@@ -22,6 +22,7 @@ import { diskStorage } from 'multer';
 import * as path from 'path';
 import * as fs from 'fs';
 import { ShopService } from './shop.service';
+import { CardsService } from '../game-items/cards.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -38,7 +39,10 @@ export enum DecorationType {
 @Controller('shop')
 @UsePipes(new ValidationPipe())
 export class ShopController {
-  constructor(private readonly shopService: ShopService) {}
+  constructor(
+    private readonly shopService: ShopService,
+    private readonly cardsService: CardsService,
+  ) {}
 
   // Get all available decorations
   @Get('decorations')
@@ -85,6 +89,55 @@ export class ShopController {
         errors: [error.message],
         timestamp: new Date().toISOString(),
         path: `shop/decorations/${type}`,
+      };
+    }
+  }
+
+  @Get('decks')
+  async getCardDecks(): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.cardsService.getPublicDecks();
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'shop/decks',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch card decks',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'shop/decks',
+      };
+    }
+  }
+
+  @Post('decks/:deckId/open')
+  @UseGuards(JwtAuthGuard)
+  async openDeck(
+    @Request() req,
+    @Param('deckId') deckId: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.cardsService.openDeck(req.user.userId, deckId);
+      return {
+        success: true,
+        data,
+        message: 'Deck opened successfully',
+        timestamp: new Date().toISOString(),
+        path: `shop/decks/${deckId}/open`,
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to open deck',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `shop/decks/${deckId}/open`,
+        method: 'POST',
       };
     }
   }

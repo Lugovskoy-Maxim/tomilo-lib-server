@@ -298,6 +298,96 @@ export class UsersController {
     }
   }
 
+  @Get('profile/cards')
+  @UseGuards(JwtAuthGuard)
+  async getProfileCards(@Request() req): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getProfileCards(req.user.userId);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/cards',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/cards',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('profile/cards/:cardId/upgrade')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async upgradeProfileCard(
+    @Request() req,
+    @Param('cardId') cardId: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.upgradeProfileCard(
+        req.user.userId,
+        cardId,
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `users/profile/cards/${cardId}/upgrade`,
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `users/profile/cards/${cardId}/upgrade`,
+        method: 'POST',
+      };
+    }
+  }
+
+  @Put('profile/cards/showcase')
+  @UseGuards(JwtAuthGuard)
+  async updateProfileCardsShowcase(
+    @Request() req,
+    @Body()
+    body: {
+      cardIds: string[];
+      sortMode?: 'manual' | 'rarity' | 'favorites' | 'last_upgraded';
+    },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.updateProfileCardsShowcase(
+        req.user.userId,
+        body?.cardIds ?? [],
+        body?.sortMode,
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/cards/showcase',
+        method: 'PUT',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/cards/showcase',
+        method: 'PUT',
+      };
+    }
+  }
+
   // 🎮 Учитель — ученики
   @Get('profile/disciples')
   @UseGuards(JwtAuthGuard)
@@ -472,12 +562,13 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   async disciplesBattle(
     @Request() req,
-    @Body() body: { opponentUserId: string },
+    @Body() body: { opponentUserId: string; supportItemIds?: string[] },
   ): Promise<ApiResponseDto<any>> {
     try {
       const data = await this.usersService.disciplesBattle(
         req.user.userId,
         body?.opponentUserId ?? '',
+        Array.isArray(body?.supportItemIds) ? body.supportItemIds : [],
       );
       return {
         success: true,
@@ -531,12 +622,13 @@ export class UsersController {
   @HttpCode(HttpStatus.OK)
   async disciplesWeeklyBattle(
     @Request() req,
-    @Body() body: { opponentUserId: string },
+    @Body() body: { opponentUserId: string; supportItemIds?: string[] },
   ): Promise<ApiResponseDto<any>> {
     try {
       const data = await this.usersService.disciplesWeeklyBattle(
         req.user.userId,
         body?.opponentUserId ?? '',
+        Array.isArray(body?.supportItemIds) ? body.supportItemIds : [],
       );
       return {
         success: true,

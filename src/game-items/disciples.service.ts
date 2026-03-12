@@ -21,6 +21,7 @@ import {
 } from '../schemas/disciples-config.schema';
 import { Technique, TechniqueDocument } from '../schemas/technique.schema';
 import { GameItemsService } from './game-items.service';
+import { CardsService } from './cards.service';
 
 function getStartOfDayUTC(d: Date = new Date()): Date {
   const t = new Date(d);
@@ -63,6 +64,57 @@ function divisionFromRating(rating: number): string {
   return 'Бронза';
 }
 
+type BattleSupportItemId =
+  | 'healing_pill'
+  | 'basic_talisman'
+  | 'defense_talisman'
+  | 'heavenly_thunder_talisman'
+  | 'resurrection_fragment';
+
+type BattleSupportEffectConfig = {
+  label: string;
+  shield?: number;
+  emergencyHealPercent?: number;
+  emergencyHealThresholdPercent?: number;
+  preDamage?: number;
+  revivePercent?: number;
+};
+
+type BattleSupportState = {
+  shield: number;
+  preDamage: number;
+  emergencyHealPercent: number;
+  emergencyHealThresholdPercent: number;
+  revivePercent: number;
+  usedEmergencyHeal: boolean;
+  usedRevive: boolean;
+  consumed: Array<{ itemId: BattleSupportItemId; count: number; name?: string; icon?: string }>;
+};
+
+const BATTLE_SUPPORT_ITEMS: Record<BattleSupportItemId, BattleSupportEffectConfig> = {
+  healing_pill: {
+    label: 'Пилюля исцеления',
+    emergencyHealPercent: 0.3,
+    emergencyHealThresholdPercent: 0.55,
+  },
+  basic_talisman: {
+    label: 'Базовый талисман',
+    shield: 20,
+  },
+  defense_talisman: {
+    label: 'Талисман защиты',
+    shield: 42,
+  },
+  heavenly_thunder_talisman: {
+    label: 'Талисман небесной грозы',
+    preDamage: 32,
+  },
+  resurrection_fragment: {
+    label: 'Осколок воскрешения',
+    revivePercent: 0.35,
+  },
+};
+
 @Injectable()
 export class DisciplesService {
   constructor(
@@ -76,6 +128,7 @@ export class DisciplesService {
     @InjectModel(Technique.name)
     private techniqueModel: Model<TechniqueDocument>,
     private gameItemsService: GameItemsService,
+    private cardsService: CardsService,
   ) {}
 
   private async getConfig(): Promise<DisciplesConfigDocument> {
@@ -105,6 +158,79 @@ export class DisciplesService {
     return config;
   }
 
+  private getInventoryCount(
+    inventory: Array<{ itemId?: string; count?: number }> | undefined,
+    itemId: string,
+  ): number {
+    return (inventory ?? []).reduce(
+      (sum, entry) =>
+        entry.itemId === itemId ? sum + Math.max(0, entry.count ?? 0) : sum,
+      0,
+    );
+  }
+
+  private async consumeBattleSupportItems(
+    userId: string,
+    inventory: Array<{ itemId?: string; count?: number }> | undefined,
+    supportItemIds?: string[],
+  ): Promise<BattleSupportState> {
+    const requested = Array.from(
+      new Set(
+        (supportItemIds ?? []).filter(
+          (id): id is BattleSupportItemId => id in BATTLE_SUPPORT_ITEMS,
+        ),
+      ),
+    ).slice(0, 3);
+
+    const state: BattleSupportState = {
+      shield: 0,
+      preDamage: 0,
+      emergencyHealPercent: 0,
+      emergencyHealThresholdPercent: 0.5,
+      revivePercent: 0,
+      usedEmergencyHeal: false,
+      usedRevive: false,
+      consumed: [],
+    };
+
+    for (const itemId of requested) {
+      if (this.getInventoryCount(inventory, itemId) <= 0) {
+        throw new BadRequestException(`Недостаточно предмета: ${itemId}`);
+      }
+    }
+
+    for (const itemId of requested) {
+      const consumed = await this.gameItemsService.deductFromInventory(
+        userId,
+        itemId,
+        1,
+      );
+      if (!consumed) {
+        throw new BadRequestException(`Не удалось использовать предмет: ${itemId}`);
+      }
+      const meta = await this.gameItemsService.findById(itemId);
+      const effect = BATTLE_SUPPORT_ITEMS[itemId];
+      state.shield += effect.shield ?? 0;
+      state.preDamage += effect.preDamage ?? 0;
+      if ((effect.emergencyHealPercent ?? 0) > state.emergencyHealPercent) {
+        state.emergencyHealPercent = effect.emergencyHealPercent ?? 0;
+        state.emergencyHealThresholdPercent =
+          effect.emergencyHealThresholdPercent ?? 0.5;
+      }
+      if ((effect.revivePercent ?? 0) > state.revivePercent) {
+        state.revivePercent = effect.revivePercent ?? 0;
+      }
+      state.consumed.push({
+        itemId,
+        count: 1,
+        name: meta?.name ?? effect.label,
+        icon: meta?.icon ?? undefined,
+      });
+    }
+
+    return state;
+  }
+
   private cp(
     stats: { attack: number; defense: number; speed: number; hp: number },
     formula: { attack: number; defense: number; speed: number; hp: number },
@@ -121,7 +247,18 @@ export class DisciplesService {
     return min + Math.floor(Math.random() * (max - min + 1));
   }
 
-  private async resolveCardMedia(characterId: string, level: number) {
+  private async resolveCardMedia(
+    characterId: string,
+    level: number,
+    userId?: string,
+  ) {
+    if (userId) {
+      const ownedCard = await this.cardsService.resolveCardMediaForUser(
+        userId,
+        characterId,
+      );
+      if (ownedCard) return ownedCard;
+    }
     const card = await this.characterCardModel
       .findOne({
         characterId: new Types.ObjectId(characterId),
@@ -253,6 +390,7 @@ export class DisciplesService {
       equipped: string[];
       stats: { attack: number; defense: number; speed: number; hp: number };
     },
+    supportState?: BattleSupportState,
   ) {
     await this.ensureDefaultTechniqueSeeded();
     const techIds = Array.from(
@@ -272,6 +410,49 @@ export class DisciplesService {
 
     const log: any[] = [];
     const cd: Record<string, number> = {};
+    const support = supportState ?? {
+      shield: 0,
+      preDamage: 0,
+      emergencyHealPercent: 0,
+      emergencyHealThresholdPercent: 0.5,
+      revivePercent: 0,
+      usedEmergencyHeal: false,
+      usedRevive: false,
+      consumed: [],
+    };
+
+    if (support.consumed.length > 0) {
+      log.push({
+        turn: 0,
+        actor: 'user',
+        action: 'support_items',
+        items: support.consumed,
+      });
+    }
+
+    if (support.preDamage > 0) {
+      hpOpp = Math.max(0, hpOpp - support.preDamage);
+      log.push({
+        turn: 0,
+        actor: 'user',
+        action: 'item_damage',
+        itemId: 'heavenly_thunder_talisman',
+        value: support.preDamage,
+        hpUser,
+        hpOpp,
+      });
+      if (hpOpp <= 0) {
+        return {
+          win: true,
+          log,
+          final: { hpUser, hpOpp, maxUser, maxOpp },
+          supportEffects: {
+            consumed: support.consumed,
+            shieldLeft: support.shield,
+          },
+        };
+      }
+    }
 
     const pick = (equipped: string[]) => {
       const list = equipped.length ? equipped : ['basic_strike'];
@@ -345,7 +526,13 @@ export class DisciplesService {
       } else {
         const base = (oT.power ?? 10) + opponentSide.stats.attack * 1.2;
         const mitigation = Math.max(1, userSide.stats.defense * 0.9);
-        const dmg = Math.max(4, Math.round(base - mitigation));
+        let dmg = Math.max(4, Math.round(base - mitigation));
+        let absorbed = 0;
+        if (support.shield > 0) {
+          absorbed = Math.min(support.shield, dmg);
+          support.shield -= absorbed;
+          dmg -= absorbed;
+        }
         hpUser = Math.max(0, hpUser - dmg);
         log.push({
           turn,
@@ -354,6 +541,43 @@ export class DisciplesService {
           techniqueId: oId,
           techniqueName: oT?.name,
           value: dmg,
+          absorbed,
+          hpUser,
+          hpOpp,
+        });
+      }
+      if (
+        hpUser > 0 &&
+        !support.usedEmergencyHeal &&
+        support.emergencyHealPercent > 0 &&
+        hpUser <= Math.round(maxUser * support.emergencyHealThresholdPercent)
+      ) {
+        const heal = Math.max(
+          1,
+          Math.round(maxUser * support.emergencyHealPercent),
+        );
+        hpUser = Math.min(maxUser, hpUser + heal);
+        support.usedEmergencyHeal = true;
+        log.push({
+          turn,
+          actor: 'user',
+          action: 'item_heal',
+          itemId: 'healing_pill',
+          value: heal,
+          hpUser,
+          hpOpp,
+        });
+      }
+      if (hpUser <= 0 && !support.usedRevive && support.revivePercent > 0) {
+        const heal = Math.max(1, Math.round(maxUser * support.revivePercent));
+        hpUser = Math.min(maxUser, heal);
+        support.usedRevive = true;
+        log.push({
+          turn,
+          actor: 'user',
+          action: 'item_revive',
+          itemId: 'resurrection_fragment',
+          value: heal,
           hpUser,
           hpOpp,
         });
@@ -366,6 +590,12 @@ export class DisciplesService {
       win,
       log,
       final: { hpUser, hpOpp, maxUser, maxOpp },
+      supportEffects: {
+        consumed: support.consumed,
+        shieldLeft: support.shield,
+        usedEmergencyHeal: support.usedEmergencyHeal,
+        usedRevive: support.usedRevive,
+      },
     };
   }
 
@@ -411,8 +641,8 @@ export class DisciplesService {
     const weeklyWins = (user as any).weeklyWins ?? 0;
     const weeklyLosses = (user as any).weeklyLosses ?? 0;
 
-    return {
-      disciples: (user.disciples ?? []).map((d: any) => {
+    const disciples = await Promise.all(
+      (user.disciples ?? []).map(async (d: any) => {
         const lvl = d.level ?? 1;
         const exp = d.exp ?? 0;
         const expNext = expToNextLevel(lvl);
@@ -441,8 +671,19 @@ export class DisciplesService {
               hp: 0.3,
             },
           ),
+          cardMedia: d.characterId?._id
+            ? await this.resolveCardMedia(
+                d.characterId._id.toString(),
+                lvl,
+                userId,
+              )
+            : null,
         };
       }),
+    );
+
+    return {
+      disciples,
       maxDisciples,
       combatRating: user.combatRating ?? 0,
       canTrain,
@@ -878,16 +1119,24 @@ export class DisciplesService {
   async battle(
     userId: string,
     opponentUserId: string,
+    supportItemIds: string[] = [],
   ): Promise<{
     win: boolean;
     coinsGained: number;
     expGained?: number;
+    consumedItems?: {
+      itemId: string;
+      count: number;
+      name?: string;
+      icon?: string;
+    }[];
     resultScreen?: {
       outcome: string;
       userCard: unknown;
       opponentCard: unknown;
       battleLog: unknown;
       hp: unknown;
+      supportEffects?: unknown;
     };
   }> {
     const config = await this.getConfig();
@@ -903,6 +1152,11 @@ export class DisciplesService {
       speed: 0.8,
       hp: 0.3,
     };
+    const supportState = await this.consumeBattleSupportItems(
+      userId,
+      user.inventory as Array<{ itemId?: string; count?: number }> | undefined,
+      supportItemIds,
+    );
     let cpUser = 0;
     for (const d of user.disciples) {
       cpUser += this.cp(
@@ -943,6 +1197,7 @@ export class DisciplesService {
         ? await this.resolveCardMedia(
             (opponent.disciples?.[0] as any).characterId.toString(),
             (opponent.disciples?.[0] as any).level ?? 1,
+            opponentUserId,
           )
         : null;
     }
@@ -968,6 +1223,7 @@ export class DisciplesService {
           hp: 30,
         },
       },
+      supportState,
     );
 
     const win = sim.win;
@@ -983,6 +1239,7 @@ export class DisciplesService {
       ? await this.resolveCardMedia(
           (user.disciples?.[0] as any).characterId.toString(),
           (user.disciples?.[0] as any).level ?? 1,
+          userId,
         )
       : null;
 
@@ -990,12 +1247,14 @@ export class DisciplesService {
       win,
       coinsGained,
       expGained: win ? 10 : 2,
+      consumedItems: supportState.consumed,
       resultScreen: {
         outcome: win ? 'win' : 'lose',
         userCard,
         opponentCard: oppCard,
         battleLog: sim.log,
         hp: sim.final,
+        supportEffects: sim.supportEffects,
       },
     };
   }
@@ -1091,11 +1350,26 @@ export class DisciplesService {
   async weeklyBattle(
     userId: string,
     opponentUserId: string,
+    supportItemIds: string[] = [],
   ): Promise<{
     win: boolean;
     coinsGained: number;
     expGained?: number;
     weeklyRatingDelta?: number;
+    consumedItems?: {
+      itemId: string;
+      count: number;
+      name?: string;
+      icon?: string;
+    }[];
+    resultScreen?: {
+      outcome: string;
+      userCard: unknown;
+      opponentCard: unknown;
+      battleLog: unknown;
+      hp: unknown;
+      supportEffects?: unknown;
+    };
   }> {
     const config = await this.getConfig();
     const user = await this.userModel.findById(new Types.ObjectId(userId));
@@ -1119,6 +1393,11 @@ export class DisciplesService {
       speed: 0.8,
       hp: 0.3,
     };
+    const supportState = await this.consumeBattleSupportItems(
+      userId,
+      user.inventory as Array<{ itemId?: string; count?: number }> | undefined,
+      supportItemIds,
+    );
     let cpUser = 0;
     for (const d of user.disciples) {
       cpUser += this.cp(
@@ -1130,6 +1409,8 @@ export class DisciplesService {
     const isBot = opponentUserId === 'bot:weekly' || opponentUserId?.startsWith?.('bot:');
     let cpOpponent: number;
     let oppRating: number;
+    let oppEquipped: string[] = [];
+    let oppCard: unknown = null;
 
     if (isBot) {
       const rating = user.weeklyRating ?? 1000;
@@ -1152,12 +1433,40 @@ export class DisciplesService {
         );
       }
       oppRating = opponent.weeklyRating ?? 1000;
+      oppEquipped = (opponent.disciples ?? []).flatMap(
+        (d: { techniquesEquipped?: string[] }) => d.techniquesEquipped ?? [],
+      );
+      oppCard = (opponent.disciples?.[0] as any)?.characterId
+        ? await this.resolveCardMedia(
+            (opponent.disciples?.[0] as any).characterId.toString(),
+            (opponent.disciples?.[0] as any).level ?? 1,
+            opponentUserId,
+          )
+        : null;
     }
-
-    const k = config.winChanceK ?? 0.3;
-    const winChance =
-      0.5 + (k * (cpUser - cpOpponent)) / (cpUser + cpOpponent || 1);
-    const win = Math.random() < winChance;
+    const userEquipped = (user.disciples ?? []).flatMap(
+      (d: { techniquesEquipped?: string[] }) => d.techniquesEquipped ?? [],
+    );
+    const sim = await this.simulateBattleWithTechniques(
+      {
+        characterId:
+          (user.disciples?.[0] as any)?.characterId?.toString?.() ?? '',
+        equipped: userEquipped,
+        stats: { attack: cpUser / 10, defense: cpUser / 12, speed: 10, hp: 30 },
+      },
+      {
+        characterId: '',
+        equipped: oppEquipped,
+        stats: {
+          attack: cpOpponent / 10,
+          defense: cpOpponent / 12,
+          speed: 10,
+          hp: 30,
+        },
+      },
+      supportState,
+    );
+    const win = sim.win;
 
     const coinsWin = (config as any).weeklyBattleCoinsWin ?? 100;
     const coinsLoss = (config as any).weeklyBattleCoinsLoss ?? 20;
@@ -1180,11 +1489,28 @@ export class DisciplesService {
     user.markModified('weeklyRating');
     await user.save();
 
+    const userCard = (user.disciples?.[0] as any)?.characterId
+      ? await this.resolveCardMedia(
+          (user.disciples?.[0] as any).characterId.toString(),
+          (user.disciples?.[0] as any).level ?? 1,
+          userId,
+        )
+      : null;
+
     return {
       win,
       coinsGained,
       expGained: win ? 15 : 5,
       weeklyRatingDelta: delta,
+      consumedItems: supportState.consumed,
+      resultScreen: {
+        outcome: win ? 'win' : 'lose',
+        userCard,
+        opponentCard: oppCard,
+        battleLog: sim.log,
+        hp: sim.final,
+        supportEffects: sim.supportEffects,
+      },
     };
   }
 
