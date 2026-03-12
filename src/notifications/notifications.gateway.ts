@@ -110,7 +110,7 @@ export class NotificationsGateway
   }
 
   /**
-   * Событие прогресса (опыт, уровень, достижение) — для тостов на клиенте.
+   * Событие прогресса (опыт, уровень, достижение, дропы) — для тостов на клиенте.
    */
   emitProgressToUser(
     userId: string,
@@ -133,7 +133,11 @@ export class NotificationsGateway
             minLevel: number;
           };
         }
-      | { type: 'achievement'; achievement: Record<string, unknown> },
+      | { type: 'achievement'; achievement: Record<string, unknown> }
+      | {
+          type: 'reading_drops';
+          items: { itemId: string; count: number; name?: string; icon?: string }[];
+        },
   ): void {
     try {
       const room = `${USER_ROOM_PREFIX}${userId}`;

@@ -2057,7 +2057,7 @@ export class UsersService {
       }
     }
 
-    // Отправка прогресса по WebSocket для тостов (опыт, уровень, достижения)
+    // Отправка прогресса по WebSocket для тостов (опыт, уровень, достижения, дропы)
     if (this.notificationsGateway) {
       setImmediate(() => {
         try {
@@ -2099,6 +2099,12 @@ export class UsersService {
                 progress: ach.progress,
                 maxProgress: ach.maxProgress,
               },
+            });
+          }
+          if (readingDrops.length > 0) {
+            this.notificationsGateway!.emitProgressToUser(userId, {
+              type: 'reading_drops',
+              items: readingDrops,
             });
           }
         } catch (e) {
