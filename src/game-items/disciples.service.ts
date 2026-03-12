@@ -44,6 +44,17 @@ function rankFromLevel(level: number): string {
   return 'F';
 }
 
+/** Случайная длительность экспедиции в мс: easy 20–60 с, normal 45–90 с, hard 60–120 с */
+function randomExpeditionDurationMs(difficulty: 'easy' | 'normal' | 'hard'): number {
+  const ranges = {
+    easy: [20, 60],
+    normal: [45, 90],
+    hard: [60, 120],
+  };
+  const [min, max] = ranges[difficulty];
+  return (min * 1000) + Math.floor(Math.random() * (max - min + 1) * 1000);
+}
+
 function divisionFromRating(rating: number): string {
   if (rating >= 2000) return 'Легенда';
   if (rating >= 1600) return 'Мастер';
@@ -77,7 +88,7 @@ export class DisciplesService {
         id: 'default',
         rerollCostCoins: 50,
         trainCostCoins: 15,
-        maxDisciples: 5,
+        maxDisciples: 3,
         maxBattlesPerDay: 5,
         rerollCandidateTtlMinutes: 10,
         characterPool: 'all',
@@ -377,7 +388,7 @@ export class DisciplesService {
     if (!user) throw new NotFoundException('User not found');
 
     const config = await this.getConfig();
-    const maxDisciples = user.maxDisciples ?? config.maxDisciples ?? 5;
+    const maxDisciples = Math.min(3, user.maxDisciples ?? config.maxDisciples ?? 3);
     const today = getStartOfDayUTC();
     const lastTrainingAt = user.lastTrainingAt
       ? new Date(user.lastTrainingAt)
@@ -580,9 +591,10 @@ export class DisciplesService {
     if (!user) throw new NotFoundException('User not found');
 
     const config = await this.getConfig();
-    const maxDisciples = user.maxDisciples ?? config.maxDisciples ?? 5;
+    const rawMax = user.maxDisciples ?? config.maxDisciples ?? 3;
+    const maxDisciples = Math.min(3, rawMax);
     if ((user.disciples?.length ?? 0) >= maxDisciples) {
-      throw new BadRequestException('Достигнут лимит учеников');
+      throw new BadRequestException('Достигнут лимит учеников (макс. 3)');
     }
 
     const candidate = user.lastRerollCandidate;
@@ -605,6 +617,14 @@ export class DisciplesService {
     }
 
     const disciples = [...(user.disciples ?? [])];
+    const alreadyHas = disciples.some(
+      (d: any) =>
+        (d.characterId?.toString?.() ?? String(d.characterId)) ===
+        (candidate.characterId?.toString?.() ?? String(candidate.characterId)),
+    );
+    if (alreadyHas) {
+      throw new BadRequestException('Этот персонаж уже в отряде');
+    }
     disciples.push({
       characterId: candidate.characterId,
       titleId: candidate.titleId,
@@ -784,9 +804,26 @@ export class DisciplesService {
     };
   }
 
+  /** Генерирует статы одного ученика-бота по рейтингу (CP ≈ rating). */
+  private getBotDiscipleStats(rating: number): {
+    attack: number;
+    defense: number;
+    speed: number;
+    hp: number;
+  } {
+    const cp = Math.max(30, rating);
+    const a = Math.max(5, Math.round(cp / 3.3));
+    return {
+      attack: a + Math.floor(Math.random() * 5) - 2,
+      defense: a + Math.floor(Math.random() * 5) - 2,
+      speed: Math.max(3, a - 2 + Math.floor(Math.random() * 4)),
+      hp: Math.max(15, a * 2 + Math.floor(Math.random() * 10) - 5),
+    };
+  }
+
   async battleMatch(
     userId: string,
-  ): Promise<{ opponent: any; combatRating: number } | null> {
+  ): Promise<{ opponent: any; combatRating: number; isBot?: boolean } | null> {
     const user = await this.userModel
       .findById(new Types.ObjectId(userId))
       .select('combatRating disciples')
@@ -805,22 +842,36 @@ export class DisciplesService {
       .select('username avatar combatRating disciples')
       .lean()
       .exec();
-    if (!opponent) return null;
 
+    if (opponent) {
+      return {
+        opponent: {
+          userId: (opponent as any)._id.toString(),
+          username: (opponent as any).username,
+          avatar: (opponent as any).avatar,
+          combatRating: (opponent as any).combatRating,
+          disciples: (opponent as any).disciples?.map((d: any) => ({
+            attack: d.attack,
+            defense: d.defense,
+            speed: d.speed,
+            hp: d.hp,
+          })),
+        },
+        combatRating: (opponent as any).combatRating,
+      };
+    }
+
+    const botStats = this.getBotDiscipleStats(rating);
     return {
       opponent: {
-        userId: (opponent as any)._id.toString(),
-        username: (opponent as any).username,
-        avatar: (opponent as any).avatar,
-        combatRating: (opponent as any).combatRating,
-        disciples: (opponent as any).disciples?.map((d: any) => ({
-          attack: d.attack,
-          defense: d.defense,
-          speed: d.speed,
-          hp: d.hp,
-        })),
+        userId: 'bot:casual',
+        username: 'Бот',
+        avatar: null,
+        combatRating: rating,
+        disciples: [botStats],
       },
-      combatRating: (opponent as any).combatRating,
+      combatRating: rating,
+      isBot: true,
     };
   }
 
@@ -841,14 +892,8 @@ export class DisciplesService {
   }> {
     const config = await this.getConfig();
     const user = await this.userModel.findById(new Types.ObjectId(userId));
-    const opponent = await this.userModel.findById(
-      new Types.ObjectId(opponentUserId),
-    );
-    if (!user || !opponent) throw new NotFoundException('User not found');
-    if (
-      (user.disciples?.length ?? 0) === 0 ||
-      (opponent.disciples?.length ?? 0) === 0
-    ) {
+    if (!user) throw new NotFoundException('User not found');
+    if ((user.disciples?.length ?? 0) === 0) {
       throw new BadRequestException('Недостаточно учеников для боя');
     }
 
@@ -865,18 +910,44 @@ export class DisciplesService {
         formula,
       );
     }
-    let cpOpponent = 0;
-    for (const d of opponent.disciples) {
-      cpOpponent += this.cp(
-        { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
-        formula,
+
+    const isBot = opponentUserId === 'bot:casual' || opponentUserId?.startsWith?.('bot:');
+    let cpOpponent: number;
+    let oppEquipped: string[];
+    let oppCard: unknown = null;
+
+    if (isBot) {
+      const rating = user.combatRating ?? 0;
+      const botStats = this.getBotDiscipleStats(rating);
+      cpOpponent = this.cp(botStats, formula);
+      oppEquipped = [];
+    } else {
+      const opponent = await this.userModel.findById(
+        new Types.ObjectId(opponentUserId),
       );
+      if (!opponent) throw new NotFoundException('Противник не найден');
+      if ((opponent.disciples?.length ?? 0) === 0) {
+        throw new BadRequestException('У противника нет учеников');
+      }
+      cpOpponent = 0;
+      for (const d of opponent.disciples) {
+        cpOpponent += this.cp(
+          { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
+          formula,
+        );
+      }
+      oppEquipped = (opponent.disciples ?? []).flatMap(
+        (d: { techniquesEquipped?: string[] }) => d.techniquesEquipped ?? [],
+      );
+      oppCard = (opponent.disciples?.[0] as any)?.characterId
+        ? await this.resolveCardMedia(
+            (opponent.disciples?.[0] as any).characterId.toString(),
+            (opponent.disciples?.[0] as any).level ?? 1,
+          )
+        : null;
     }
 
     const userEquipped = (user.disciples ?? []).flatMap(
-      (d: { techniquesEquipped?: string[] }) => d.techniquesEquipped ?? [],
-    );
-    const oppEquipped = (opponent.disciples ?? []).flatMap(
       (d: { techniquesEquipped?: string[] }) => d.techniquesEquipped ?? [],
     );
 
@@ -888,8 +959,7 @@ export class DisciplesService {
         stats: { attack: cpUser / 10, defense: cpUser / 12, speed: 10, hp: 30 },
       },
       {
-        characterId:
-          (opponent.disciples?.[0] as any)?.characterId?.toString?.() ?? '',
+        characterId: '',
         equipped: oppEquipped,
         stats: {
           attack: cpOpponent / 10,
@@ -915,12 +985,6 @@ export class DisciplesService {
           (user.disciples?.[0] as any).level ?? 1,
         )
       : null;
-    const oppCard = (opponent.disciples?.[0] as any)?.characterId
-      ? await this.resolveCardMedia(
-          (opponent.disciples?.[0] as any).characterId.toString(),
-          (opponent.disciples?.[0] as any).level ?? 1,
-        )
-      : null;
 
     return {
       win,
@@ -940,7 +1004,7 @@ export class DisciplesService {
     opponent: {
       userId: string;
       username: string;
-      avatar?: string;
+      avatar?: string | null;
       weeklyRating?: number;
       disciples: unknown[];
     };
@@ -950,6 +1014,7 @@ export class DisciplesService {
       weeklyRating?: number;
       weeklyDivision?: string;
     };
+    isBot?: boolean;
   } | null> {
     const user = await this.userModel
       .findById(new Types.ObjectId(userId))
@@ -979,21 +1044,39 @@ export class DisciplesService {
       .select('username avatar weeklyRating disciples')
       .lean()
       .exec();
-    if (!opponent) return null;
 
-    const oppRating = (opponent as any).weeklyRating ?? 1000;
+    if (opponent) {
+      const oppRating = (opponent as any).weeklyRating ?? 1000;
+      return {
+        opponent: {
+          userId: (opponent as any)._id.toString(),
+          username: (opponent as any).username,
+          avatar: (opponent as any).avatar,
+          weeklyRating: oppRating,
+          disciples: (opponent as any).disciples?.map((d: any) => ({
+            attack: d.attack,
+            defense: d.defense,
+            speed: d.speed,
+            hp: d.hp,
+          })),
+        },
+        weekly: {
+          canWeeklyBattle: true,
+          nextWeeklyBattleAt: null,
+          weeklyRating: rating,
+          weeklyDivision: divisionFromRating(rating),
+        },
+      };
+    }
+
+    const botStats = this.getBotDiscipleStats(rating);
     return {
       opponent: {
-        userId: (opponent as any)._id.toString(),
-        username: (opponent as any).username,
-        avatar: (opponent as any).avatar,
-        weeklyRating: oppRating,
-        disciples: (opponent as any).disciples?.map((d: any) => ({
-          attack: d.attack,
-          defense: d.defense,
-          speed: d.speed,
-          hp: d.hp,
-        })),
+        userId: 'bot:weekly',
+        username: 'Бот',
+        avatar: null,
+        weeklyRating: rating,
+        disciples: [botStats],
       },
       weekly: {
         canWeeklyBattle: true,
@@ -1001,6 +1084,7 @@ export class DisciplesService {
         weeklyRating: rating,
         weeklyDivision: divisionFromRating(rating),
       },
+      isBot: true,
     };
   }
 
@@ -1015,14 +1099,8 @@ export class DisciplesService {
   }> {
     const config = await this.getConfig();
     const user = await this.userModel.findById(new Types.ObjectId(userId));
-    const opponent = await this.userModel.findById(
-      new Types.ObjectId(opponentUserId),
-    );
-    if (!user || !opponent) throw new NotFoundException('User not found');
-    if (
-      (user.disciples?.length ?? 0) === 0 ||
-      (opponent.disciples?.length ?? 0) === 0
-    ) {
+    if (!user) throw new NotFoundException('User not found');
+    if ((user.disciples?.length ?? 0) === 0) {
       throw new BadRequestException('Недостаточно учеников для боя');
     }
 
@@ -1048,12 +1126,32 @@ export class DisciplesService {
         formula,
       );
     }
-    let cpOpponent = 0;
-    for (const d of opponent.disciples) {
-      cpOpponent += this.cp(
-        { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
-        formula,
+
+    const isBot = opponentUserId === 'bot:weekly' || opponentUserId?.startsWith?.('bot:');
+    let cpOpponent: number;
+    let oppRating: number;
+
+    if (isBot) {
+      const rating = user.weeklyRating ?? 1000;
+      const botStats = this.getBotDiscipleStats(rating);
+      cpOpponent = this.cp(botStats, formula);
+      oppRating = rating;
+    } else {
+      const opponent = await this.userModel.findById(
+        new Types.ObjectId(opponentUserId),
       );
+      if (!opponent) throw new NotFoundException('Противник не найден');
+      if ((opponent.disciples?.length ?? 0) === 0) {
+        throw new BadRequestException('У противника нет учеников');
+      }
+      cpOpponent = 0;
+      for (const d of opponent.disciples) {
+        cpOpponent += this.cp(
+          { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
+          formula,
+        );
+      }
+      oppRating = opponent.weeklyRating ?? 1000;
     }
 
     const k = config.winChanceK ?? 0.3;
@@ -1071,7 +1169,6 @@ export class DisciplesService {
 
     const kRating = (config as any).weeklyRatingK ?? 25;
     const myRating = user.weeklyRating ?? 1000;
-    const oppRating = opponent.weeklyRating ?? 1000;
     const expected = 1 / (1 + Math.pow(10, (oppRating - myRating) / 400));
     const delta = Math.round(kRating * ((win ? 1 : 0) - expected));
     user.weeklyRating = Math.max(0, myRating + delta);
@@ -1119,12 +1216,34 @@ export class DisciplesService {
   async expeditionStatus(userId: string) {
     const user = await this.userModel
       .findById(new Types.ObjectId(userId))
-      .select('disciples balance lastExpeditionAt lastExpeditionResult')
+      .select('disciples balance lastExpeditionAt lastExpeditionResult lastExpeditionCompletesAt lastExpeditionDifficulty')
       .lean()
       .exec();
     if (!user) throw new NotFoundException('User not found');
 
     const config = await this.getConfig();
+    const now = Date.now();
+    const completesAt = (user as any).lastExpeditionCompletesAt
+      ? new Date((user as any).lastExpeditionCompletesAt).getTime()
+      : null;
+    const inProgress = completesAt != null && now < completesAt;
+    const expiredPending = completesAt != null && now >= completesAt;
+
+    let lastResult = (user as any).lastExpeditionResult ?? null;
+    let balance = (user as any).balance ?? 0;
+    if (expiredPending) {
+      const completed = await this.completePendingExpedition(userId);
+      if (completed) {
+        lastResult = completed;
+        const updated = await this.userModel
+          .findById(new Types.ObjectId(userId))
+          .select('balance')
+          .lean()
+          .exec();
+        balance = (updated as any)?.balance ?? balance;
+      }
+    }
+
     const cooldownHours = (config as any).expeditionCooldownHours ?? 24;
     const last = (user as any).lastExpeditionAt
       ? new Date((user as any).lastExpeditionAt)
@@ -1132,20 +1251,180 @@ export class DisciplesService {
     const nextAt = last
       ? new Date(last.getTime() + cooldownHours * 60 * 60 * 1000)
       : null;
-    const canStart = !nextAt || Date.now() >= nextAt.getTime();
+    const canStart = !inProgress && (!nextAt || now >= nextAt.getTime());
 
     return {
       canStart,
+      inProgress,
+      completesAt:
+        inProgress && completesAt != null
+          ? new Date(completesAt).toISOString()
+          : null,
       nextExpeditionAt: nextAt ? nextAt.toISOString() : null,
       costs: {
         easy: (config as any).expeditionCostCoinsEasy ?? 0,
         normal: (config as any).expeditionCostCoinsNormal ?? 25,
         hard: (config as any).expeditionCostCoinsHard ?? 60,
       },
-      lastResult: (user as any).lastExpeditionResult ?? null,
+      lastResult,
       hasDisciples: (user.disciples?.length ?? 0) > 0,
-      balance: (user as any).balance ?? 0,
+      balance,
       ambushRiskPercent: 12,
+    };
+  }
+
+  /**
+   * Завершает экспедицию, если lastExpeditionCompletesAt уже в прошлом.
+   * Вызывается из expeditionStatus. Возвращает результат или null.
+   */
+  private async completePendingExpedition(
+    userId: string,
+  ): Promise<Record<string, unknown> | null> {
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) return null;
+    const completesAt = user.lastExpeditionCompletesAt
+      ? new Date(user.lastExpeditionCompletesAt).getTime()
+      : null;
+    if (completesAt == null || Date.now() < completesAt) return null;
+    const difficulty = (user.lastExpeditionDifficulty as 'easy' | 'normal' | 'hard') ?? 'easy';
+    const result = await this.computeExpeditionResult(userId, user, difficulty);
+    user.lastExpeditionResult = result as any;
+    user.lastExpeditionCompletesAt = undefined;
+    user.lastExpeditionDifficulty = undefined;
+    user.markModified('lastExpeditionResult');
+    user.markModified('lastExpeditionCompletesAt');
+    user.markModified('lastExpeditionDifficulty');
+    await user.save();
+    return result;
+  }
+
+  /**
+   * Вычисляет результат экспедиции и применяет изменения к user (balance, disciples, inventory).
+   * Не трогает lastExpeditionAt / lastExpeditionResult / completesAt.
+   */
+  private async computeExpeditionResult(
+    userId: string,
+    user: UserDocument,
+    difficulty: 'easy' | 'normal' | 'hard',
+  ): Promise<Record<string, unknown>> {
+    const levels = (user.disciples ?? []).map(
+      (d: { level?: number }) => d.level ?? 1,
+    );
+    const avgLevel =
+      levels.length > 0
+        ? levels.reduce((a: number, b: number) => a + b, 0) / levels.length
+        : 1;
+    const base =
+      difficulty === 'hard' ? 0.55 : difficulty === 'normal' ? 0.75 : 0.9;
+    const levelBonus = Math.min(0.15, (avgLevel - 1) * 0.01);
+    const successChance = Math.max(0.1, Math.min(0.95, base + levelBonus));
+    const success = Math.random() < successChance;
+
+    let coinsGained = success
+      ? difficulty === 'hard'
+        ? 120
+        : difficulty === 'normal'
+          ? 70
+          : 35
+      : difficulty === 'hard'
+        ? 25
+        : difficulty === 'normal'
+          ? 15
+          : 8;
+    const expGained = success
+      ? difficulty === 'hard'
+        ? 35
+        : difficulty === 'normal'
+          ? 20
+          : 10
+      : difficulty === 'hard'
+        ? 12
+        : difficulty === 'normal'
+          ? 8
+          : 4;
+
+    const log: string[] = [];
+    log.push(`Сложность: ${difficulty}`);
+    log.push(`Шанс успеха: ${Math.round(successChance * 100)}%`);
+    log.push(success ? 'Экспедиция успешна!' : 'Экспедиция провалилась...');
+
+    let itemsGained: { itemId: string; count: number; name?: string; icon?: string }[] = [];
+
+    const ambushChance = 0.12;
+    let ambushHappened = success && Math.random() < ambushChance;
+    let ambushPreventedByTalisman = false;
+    if (ambushHappened) {
+      const talismanId = 'expedition_talisman';
+      const haveTalisman = (user.inventory ?? []).reduce(
+        (sum: number, e: { itemId?: string; count?: number }) =>
+          e.itemId === talismanId ? sum + (e.count ?? 0) : sum,
+        0,
+      );
+      if (haveTalisman > 0) {
+        await this.gameItemsService.deductFromInventory(userId, talismanId, 1);
+        ambushPreventedByTalisman = true;
+        ambushHappened = false;
+        log.push('Засада отражена талисманом!');
+      } else {
+        coinsGained = Math.floor(coinsGained * 0.5);
+        itemsGained = [];
+        log.push('Засада! Потеряна часть добычи.');
+      }
+    }
+
+    user.balance = (user.balance ?? 0) + coinsGained;
+    user.markModified('balance');
+
+    const first = (user.disciples ?? [])[0] as any;
+    if (first) {
+      let lvl = first.level ?? 1;
+      let exp = first.exp ?? 0;
+      exp += expGained;
+      while (exp >= expToNextLevel(lvl)) {
+        exp -= expToNextLevel(lvl);
+        lvl += 1;
+      }
+      first.level = lvl;
+      first.exp = exp;
+      first.rank = rankFromLevel(lvl);
+      log.push(`Опыт первого ученика в отряде: +${expGained} (ур. ${lvl})`);
+      user.markModified('disciples');
+    }
+
+    if (
+      !ambushHappened &&
+      success &&
+      Math.random() <
+        (difficulty === 'hard' ? 0.35 : difficulty === 'normal' ? 0.2 : 0.12)
+    ) {
+      const fragmentItem = await this.gameItemsService.findById('mysterious_fragment');
+      itemsGained.push({
+        itemId: 'mysterious_fragment',
+        count: 1,
+        name: fragmentItem?.name,
+        icon: fragmentItem?.icon || undefined,
+      });
+      const inv = user.inventory ?? [];
+      const idx = inv.findIndex((x: any) => x.itemId === 'mysterious_fragment');
+      if (idx >= 0) inv[idx].count = (inv[idx].count ?? 0) + 1;
+      else inv.push({ itemId: 'mysterious_fragment', count: 1 } as any);
+      user.inventory = inv as any;
+      user.markModified('inventory');
+      log.push('Найден предмет: mysterious_fragment ×1');
+    }
+
+    return {
+      at: new Date(),
+      difficulty,
+      success,
+      coinsGained,
+      expGained,
+      itemsGained,
+      log,
+      ambush:
+        ambushHappened || ambushPreventedByTalisman
+          ? { happened: true, preventedByTalisman: ambushPreventedByTalisman }
+          : undefined,
     };
   }
 
@@ -1285,6 +1564,10 @@ export class DisciplesService {
     if ((user.disciples?.length ?? 0) === 0)
       throw new BadRequestException('Нужен хотя бы 1 ученик');
 
+    if (user.lastExpeditionCompletesAt && Date.now() < new Date(user.lastExpeditionCompletesAt).getTime()) {
+      throw new BadRequestException('Экспедиция уже в пути. Дождитесь завершения.');
+    }
+
     const cooldownHours = (config as any).expeditionCooldownHours ?? 24;
     const last = user.lastExpeditionAt ? new Date(user.lastExpeditionAt) : null;
     const nextAt = last
@@ -1304,136 +1587,24 @@ export class DisciplesService {
       throw new BadRequestException('Недостаточно монет');
     user.balance = (user.balance ?? 0) - cost;
 
-    const levels = (user.disciples ?? []).map(
-      (d: { level?: number }) => d.level ?? 1,
-    );
-    const avgLevel =
-      levels.length > 0
-        ? levels.reduce((a: number, b: number) => a + b, 0) / levels.length
-        : 1;
-    const base =
-      difficulty === 'hard' ? 0.55 : difficulty === 'normal' ? 0.75 : 0.9;
-    const levelBonus = Math.min(0.15, (avgLevel - 1) * 0.01);
-    const successChance = Math.max(0.1, Math.min(0.95, base + levelBonus));
-    const success = Math.random() < successChance;
-
-    let coinsGained = success
-      ? difficulty === 'hard'
-        ? 120
-        : difficulty === 'normal'
-          ? 70
-          : 35
-      : difficulty === 'hard'
-        ? 25
-        : difficulty === 'normal'
-          ? 15
-          : 8;
-    const expGained = success
-      ? difficulty === 'hard'
-        ? 35
-        : difficulty === 'normal'
-          ? 20
-          : 10
-      : difficulty === 'hard'
-        ? 12
-        : difficulty === 'normal'
-          ? 8
-          : 4;
-
-    const log: string[] = [];
-    log.push(`Сложность: ${difficulty}`);
-    log.push(`Шанс успеха: ${Math.round(successChance * 100)}%`);
-    log.push(success ? 'Экспедиция успешна!' : 'Экспедиция провалилась...');
-
-    let itemsGained: { itemId: string; count: number }[] = [];
-
-    // Засада: только при успехе, 12% шанс. Теряется половина монет и дроп предмета. Талисман страхует.
-    const ambushChance = 0.12;
-    let ambushHappened = success && Math.random() < ambushChance;
-    let ambushPreventedByTalisman = false;
-    if (ambushHappened) {
-      const talismanId = 'expedition_talisman';
-      const haveTalisman = (user.inventory ?? []).reduce(
-        (sum, e) => (e.itemId === talismanId ? sum + e.count : sum),
-        0,
-      );
-      if (haveTalisman > 0) {
-        await this.gameItemsService.deductFromInventory(userId, talismanId, 1);
-        ambushPreventedByTalisman = true;
-        ambushHappened = false;
-        log.push('Засада отражена талисманом!');
-      } else {
-        coinsGained = Math.floor(coinsGained * 0.5);
-        itemsGained = [];
-        log.push('Засада! Потеряна часть добычи.');
-      }
-    }
-
-    user.balance = (user.balance ?? 0) + coinsGained;
-
-    const first = (user.disciples ?? [])[0] as any;
-    if (first) {
-      let lvl = first.level ?? 1;
-      let exp = first.exp ?? 0;
-      exp += expGained;
-      while (exp >= expToNextLevel(lvl)) {
-        exp -= expToNextLevel(lvl);
-        lvl += 1;
-      }
-      first.level = lvl;
-      first.exp = exp;
-      first.rank = rankFromLevel(lvl);
-      log.push(`Опыт ученика: +${expGained} (Lv ${lvl})`);
-    }
-
-    if (
-      !ambushHappened &&
-      success &&
-      Math.random() <
-        (difficulty === 'hard' ? 0.35 : difficulty === 'normal' ? 0.2 : 0.12)
-    ) {
-      itemsGained.push({ itemId: 'mysterious_fragment', count: 1 });
-      const inv = user.inventory ?? [];
-      const idx = inv.findIndex((x: any) => x.itemId === 'mysterious_fragment');
-      if (idx >= 0) inv[idx].count = (inv[idx].count ?? 0) + 1;
-      else inv.push({ itemId: 'mysterious_fragment', count: 1 } as any);
-      user.inventory = inv as any;
-      user.markModified('inventory');
-      log.push('Найден предмет: mysterious_fragment ×1');
-    }
+    const durationMs = randomExpeditionDurationMs(difficulty);
+    const completesAt = new Date(Date.now() + durationMs);
 
     user.lastExpeditionAt = new Date();
-    user.lastExpeditionResult = {
-      at: new Date(),
-      difficulty,
-      success,
-      coinsGained,
-      expGained,
-      itemsGained,
-      log,
-      ambush:
-        ambushHappened || ambushPreventedByTalisman
-          ? { happened: true, preventedByTalisman: ambushPreventedByTalisman }
-          : undefined,
-    } as any;
-
-    user.markModified('disciples');
+    user.lastExpeditionCompletesAt = completesAt;
+    user.lastExpeditionDifficulty = difficulty;
+    user.lastExpeditionResult = undefined;
     user.markModified('balance');
     user.markModified('lastExpeditionAt');
+    user.markModified('lastExpeditionCompletesAt');
+    user.markModified('lastExpeditionDifficulty');
     user.markModified('lastExpeditionResult');
     await user.save();
 
     return {
-      success,
-      coinsGained,
-      expGained,
-      itemsGained,
-      log,
+      started: true,
+      completesAt: completesAt.toISOString(),
       balance: user.balance ?? 0,
-      ambush:
-        ambushHappened || ambushPreventedByTalisman
-          ? { happened: true, preventedByTalisman: ambushPreventedByTalisman }
-          : undefined,
     };
   }
 }

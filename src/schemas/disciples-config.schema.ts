@@ -17,7 +17,7 @@ export class DisciplesConfig {
   @Prop({ required: true })
   trainCostCoins: number;
 
-  @Prop({ default: 5 })
+  @Prop({ default: 3 })
   maxDisciples: number;
 
   @Prop({ default: 5 })

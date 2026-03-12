@@ -49,6 +49,13 @@ export interface UnlockedAchievementDto {
   maxProgress: number;
 }
 
+export interface ReadingDropItemDto {
+  itemId: string;
+  count: number;
+  name?: string;
+  icon?: string;
+}
+
 export interface ReadingProgressResponseDto {
   user: {
     _id: string;
@@ -60,6 +67,8 @@ export interface ReadingProgressResponseDto {
   oldRank?: RankInfoDto;
   newRank?: RankInfoDto;
   newAchievements?: UnlockedAchievementDto[];
+  /** Дропы за чтение (при добавлении новой главы в историю) */
+  readingDrops?: ReadingDropItemDto[];
 }
 
 /** Событие в истории прогресса (для GET profile/progress-history) */

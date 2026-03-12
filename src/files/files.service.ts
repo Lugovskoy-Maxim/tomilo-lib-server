@@ -130,9 +130,7 @@ export class FilesService {
         this.logger.log(`[S3 async] Папка удалена: ${s3Prefix}`);
       })
       .catch((error) => {
-        this.logger.error(
-          `[S3 async] Ошибка удаления папки ${s3Prefix}: ${error}`,
-        );
+        this.logger.error(`[S3 async] Ошибка удаления папки ${s3Prefix}: ${error}`);
       });
   }
 
@@ -482,6 +480,42 @@ export class FilesService {
     );
   }
 
+  /**
+   * Иконка предмета мини-игры: сохраняет в game-items/icon-{timestamp}-{random}.{ext}.
+   * Возвращает URL-путь для клиента, например /uploads/game-items/icon-123.webp.
+   */
+  async saveGameItemIcon(file: Express.Multer.File): Promise<string> {
+    if (!file) {
+      throw new BadRequestException('Нет файла для загрузки');
+    }
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Файл должен быть изображением');
+    }
+    const ext = file.originalname.split('.').pop()?.toLowerCase() || 'jpg';
+    const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext) ? ext : 'jpg';
+    const fileName = `icon-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${safeExt}`;
+    const localPath = `game-items/${fileName}`;
+    const s3Key = localPath;
+    let fileBuffer: Buffer;
+    if (file.path) {
+      fileBuffer = await fs.readFile(file.path);
+    } else if (file.buffer) {
+      fileBuffer = file.buffer;
+    } else {
+      throw new BadRequestException('Отсутствует содержимое файла');
+    }
+    const resultPath = await this.saveFileWithBackup(
+      fileBuffer,
+      localPath,
+      s3Key,
+      file.mimetype,
+    );
+    if (file.path) {
+      await fs.unlink(file.path);
+    }
+    return `/uploads/${resultPath.startsWith('/') ? resultPath.slice(1) : resultPath}`;
+  }
+
   /** Аватар персонажа: characters/{titleId}/{characterId}/avatar.* */
   async saveCharacterAvatar(
     file: Express.Multer.File,
@@ -528,10 +562,7 @@ export class FilesService {
     }
   }
 
-  async deleteCharacterAvatar(
-    titleId: string,
-    characterId: string,
-  ): Promise<void> {
+  async deleteCharacterAvatar(titleId: string, characterId: string): Promise<void> {
     await this.deleteFolderWithBackup(
       `characters/${titleId}/${characterId}`,
       `characters/${titleId}/${characterId}`,

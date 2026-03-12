@@ -2039,8 +2039,22 @@ export class UsersService {
     await user.save();
     this.logger.log(`Reading history updated successfully for user ${userId}`);
 
+    let readingDrops: { itemId: string; count: number; name?: string; icon?: string }[] = [];
     if (!botDetectionResult.isBot && isNewChapter && this.dropsService) {
-      void this.dropsService.tryReadingDrops(userId, true);
+      const gained = await this.dropsService.tryReadingDrops(userId, true);
+      if (gained.length > 0 && this.gameItemsService) {
+        for (const g of gained) {
+          const item = await this.gameItemsService.findById(g.itemId);
+          readingDrops.push({
+            itemId: g.itemId,
+            count: g.count,
+            name: item?.name,
+            icon: item?.icon || undefined,
+          });
+        }
+      } else if (gained.length > 0) {
+        readingDrops = gained.map((g) => ({ itemId: g.itemId, count: g.count }));
+      }
     }
 
     // Отправка прогресса по WebSocket для тостов (опыт, уровень, достижения)
@@ -2104,6 +2118,7 @@ export class UsersService {
       oldRank: oldRankInfo,
       newRank: newRankInfo,
       newAchievements: newUnlocked.length > 0 ? newUnlocked : undefined,
+      readingDrops: readingDrops.length > 0 ? readingDrops : undefined,
     };
   }
 

@@ -553,6 +553,14 @@ export class User {
   @Prop()
   lastExpeditionAt?: Date;
 
+  /** Экспедиция в процессе: время завершения (результат станет доступен после этой даты) */
+  @Prop()
+  lastExpeditionCompletesAt?: Date;
+
+  /** Сложность текущей экспедиции в процессе (easy | normal | hard) */
+  @Prop()
+  lastExpeditionDifficulty?: string;
+
   /** Последний результат экспедиции (для UI) */
   @Prop({
     type: {

@@ -157,7 +157,7 @@ export class WheelService {
       param?: unknown;
       expGained?: number;
       coinsGained?: number;
-      itemsGained?: { itemId: string; count: number }[];
+      itemsGained?: { itemId: string; count: number; name?: string; icon?: string }[];
     } = {
       rewardType: chosen.rewardType,
       label: chosen.label ?? '',
@@ -183,7 +183,15 @@ export class WheelService {
       const param = chosen.param as { itemId: string; count?: number };
       const count = param.count ?? 1;
       await this.gameItemsService.addToInventory(userId, param.itemId, count);
-      result.itemsGained = [{ itemId: param.itemId, count }];
+      const item = await this.gameItemsService.findById(param.itemId);
+      result.itemsGained = [
+        {
+          itemId: param.itemId,
+          count,
+          name: item?.name,
+          icon: item?.icon || undefined,
+        },
+      ];
     } else if (chosen.rewardType === 'element_bonus' && user.element) {
       user.balance = (user.balance ?? 0) + 5;
       user.markModified('balance');

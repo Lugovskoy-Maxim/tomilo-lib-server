@@ -234,7 +234,7 @@ export class AlchemyService {
     success: boolean;
     quality: 'common' | 'quality' | 'legendary';
     rewards: { exp?: number; coins?: number };
-    itemsGained?: { itemId: string; count: number }[];
+    itemsGained?: { itemId: string; count: number; name?: string; icon?: string }[];
     alchemy?: {
       level: number;
       exp: number;
@@ -443,7 +443,7 @@ export class AlchemyService {
     else if (r < scaled.legendary + scaled.quality) quality = 'quality';
 
     // выдаём “пилюлю” как предмет в инвентарь (resultType + суффикс качества)
-    const itemsGained: { itemId: string; count: number }[] = [];
+    const itemsGained: { itemId: string; count: number; name?: string; icon?: string }[] = [];
     const resultBase = (recipe as any).resultType ?? 'pill_common';
     const resultItemId =
       quality === 'legendary'
@@ -452,7 +452,13 @@ export class AlchemyService {
           ? `${resultBase}_quality`
           : `${resultBase}_common`;
     await this.gameItemsService.addToInventory(userId, resultItemId, 1);
-    itemsGained.push({ itemId: resultItemId, count: 1 });
+    const resultItem = await this.gameItemsService.findById(resultItemId);
+    itemsGained.push({
+      itemId: resultItemId,
+      count: 1,
+      name: resultItem?.name,
+      icon: resultItem?.icon || undefined,
+    });
 
     const rewards: { exp?: number; coins?: number } = {};
     if (quality === 'common') {

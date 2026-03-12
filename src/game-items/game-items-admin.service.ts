@@ -250,7 +250,7 @@ export class GameItemsAdminService {
         id: 'default',
         rerollCostCoins: 50,
         trainCostCoins: 15,
-        maxDisciples: 5,
+        maxDisciples: 3,
         maxBattlesPerDay: 5,
       });
       config = (await this.disciplesConfigModel

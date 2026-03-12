@@ -10,13 +10,18 @@ import {
   Query,
   UseGuards,
   Request,
+  BadRequestException,
 } from '@nestjs/common';
+import { UploadedFile } from '@nestjs/common';
+import { UseInterceptors } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
+import { FileUploadInterceptor } from '../common/interceptors/file-upload.interceptor';
 import { GameItemsService } from './game-items.service';
 import { GameItemsAdminService } from './game-items-admin.service';
+import { FilesService } from '../files/files.service';
 
 @Controller('game-items/admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -25,6 +30,7 @@ export class GameItemsAdminController {
   constructor(
     private readonly gameItemsService: GameItemsService,
     private readonly gameItemsAdminService: GameItemsAdminService,
+    private readonly filesService: FilesService,
   ) {}
 
   // ——— GameItem CRUD ———
@@ -62,6 +68,41 @@ export class GameItemsAdminController {
         timestamp: new Date().toISOString(),
         path: 'game-items/admin',
         method: 'GET',
+      };
+    }
+  }
+
+  @Post('upload-icon')
+  @UseInterceptors(
+    FileUploadInterceptor.create('file', {
+      fileTypes: /\/(jpg|jpeg|png|webp|gif)$/,
+      fileSize: 2 * 1024 * 1024, // 2MB
+    }),
+  )
+  async uploadIcon(
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<ApiResponseDto<{ url: string }>> {
+    try {
+      if (!file) {
+        throw new BadRequestException('Файл изображения обязателен');
+      }
+      const url = await this.filesService.saveGameItemIcon(file);
+      return {
+        success: true,
+        data: { url },
+        message: 'Иконка загружена',
+        timestamp: new Date().toISOString(),
+        path: 'game-items/admin/upload-icon',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'game-items/admin/upload-icon',
+        method: 'POST',
       };
     }
   }

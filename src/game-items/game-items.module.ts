@@ -33,12 +33,14 @@ import { GameItemsService } from './game-items.service';
 import { GameItemsAdminService } from './game-items-admin.service';
 import { GameItemsAdminController } from './game-items-admin.controller';
 import { DropsService } from './drops.service';
+import { FilesModule } from '../files/files.module';
 import { DisciplesService } from './disciples.service';
 import { AlchemyService } from './alchemy.service';
 import { WheelService } from './wheel.service';
 
 @Module({
   imports: [
+    FilesModule,
     MongooseModule.forFeature([
       { name: GameItem.name, schema: GameItemSchema },
       { name: User.name, schema: UserSchema },
