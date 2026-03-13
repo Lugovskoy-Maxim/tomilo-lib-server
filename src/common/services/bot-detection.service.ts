@@ -375,13 +375,15 @@ export class BotDetectionService {
     }
   }
 
-  private readonly suspiciousFilter = {
-    $or: [
-      { isBot: true },
-      { suspicious: true },
-      { botScore: { $gt: this.config.SUSPICIOUS_SCORE_THRESHOLD } },
-    ],
-  };
+  private get suspiciousFilter() {
+    return {
+      $or: [
+        { isBot: true },
+        { suspicious: true },
+        { botScore: { $gt: this.config.SUSPICIOUS_SCORE_THRESHOLD } },
+      ],
+    };
+  }
 
   /**
    * Получить подозрительных пользователей (с пагинацией)
