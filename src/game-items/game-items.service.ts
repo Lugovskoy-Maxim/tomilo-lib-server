@@ -46,6 +46,10 @@ export class GameItemsService {
     itemId: string,
     count: number,
   ): Promise<{ itemId: string; count: number }[]> {
+    if (process.env.DISABLE_ITEM_REWARDS === '1') {
+      return [];
+    }
+
     if (!Types.ObjectId.isValid(userId)) {
       throw new BadRequestException('Invalid user ID');
     }
