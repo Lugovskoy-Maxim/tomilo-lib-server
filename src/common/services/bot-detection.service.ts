@@ -375,22 +375,35 @@ export class BotDetectionService {
     }
   }
 
+  private readonly suspiciousFilter = {
+    $or: [
+      { isBot: true },
+      { suspicious: true },
+      { botScore: { $gt: this.config.SUSPICIOUS_SCORE_THRESHOLD } },
+    ],
+  };
+
   /**
-   * Получить подозрительных пользователей
+   * Получить подозрительных пользователей (с пагинацией)
    */
-  async getSuspiciousUsers(limit: number = 50): Promise<UserDocument[]> {
+  async getSuspiciousUsers(
+    limit: number = 50,
+    skip: number = 0,
+  ): Promise<UserDocument[]> {
     return this.userModel
-      .find({
-        $or: [
-          { isBot: true },
-          { suspicious: true },
-          { botScore: { $gt: this.config.SUSPICIOUS_SCORE_THRESHOLD } },
-        ],
-      })
+      .find(this.suspiciousFilter)
       .select('-password')
       .sort({ botScore: -1 })
+      .skip(skip)
       .limit(limit)
       .exec();
+  }
+
+  /**
+   * Количество подозрительных пользователей
+   */
+  async getSuspiciousUsersCount(): Promise<number> {
+    return this.userModel.countDocuments(this.suspiciousFilter).exec();
   }
 
   /**
@@ -404,9 +417,7 @@ export class BotDetectionService {
           isBot: false,
           suspicious: false,
           botScore: 0,
-        },
-        $unset: {
-          suspiciousActivityLog: '',
+          suspiciousActivityLog: [],
         },
       },
     );

@@ -2106,9 +2106,12 @@ export class UsersController {
   @Roles('admin')
   async getSuspiciousUsers(
     @Query('limit') limit: number = 50,
-  ): Promise<ApiResponseDto<any>> {
+    @Query('page') page: number = 1,
+  ): Promise<ApiResponseDto<{ users: any[]; total: number }>> {
     try {
-      const data = await this.usersService.getSuspiciousUsers(Number(limit));
+      const limitNum = Math.min(Number(limit) || 50, 100);
+      const pageNum = Math.max(1, Number(page) || 1);
+      const data = await this.usersService.getSuspiciousUsers(limitNum, pageNum);
 
       return {
         success: true,

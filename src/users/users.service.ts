@@ -2107,6 +2107,9 @@ export class UsersService {
       setImmediate(() => {
         try {
           if (progressEvent) {
+            this.logger.debug(
+              `Emitting exp_gain to user ${userId}: +${progressEvent.expGained} XP (${progressEvent.reason})`,
+            );
             this.notificationsGateway!.emitProgressToUser(userId, {
               type: 'exp_gain',
               amount: progressEvent.expGained,
@@ -3824,10 +3827,18 @@ export class UsersService {
 
   // 🛡️ Bot Detection Methods
   /**
-   * Получить подозрительных пользователей (для админов)
+   * Получить подозрительных пользователей с пагинацией (для админов)
    */
-  async getSuspiciousUsers(limit: number = 50) {
-    return this.botDetectionService.getSuspiciousUsers(limit);
+  async getSuspiciousUsers(
+    limit: number = 50,
+    page: number = 1,
+  ): Promise<{ users: any[]; total: number }> {
+    const skip = (Math.max(1, page) - 1) * limit;
+    const [users, total] = await Promise.all([
+      this.botDetectionService.getSuspiciousUsers(limit, skip),
+      this.botDetectionService.getSuspiciousUsersCount(),
+    ]);
+    return { users, total };
   }
 
   /**
