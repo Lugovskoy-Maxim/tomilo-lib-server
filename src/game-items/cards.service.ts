@@ -233,6 +233,21 @@ export class CardsService {
       (user?.favoriteCharacters ?? []).map((favorite: any) => favorite?.toString?.()),
     );
     const characterId = card?.characterId?._id?.toString?.() ?? null;
+    const nextStageShardCost = Math.max(
+      0,
+      ensurePositiveNumber(nextStageConfig?.upgradeItemCount, 0),
+    );
+    const upgradeBlockReason = !nextStage
+      ? 'max_stage'
+      : !hasNextStageImage
+        ? 'missing_stage_image'
+        : !canUpgradeByLevel
+          ? 'disciple_level_too_low'
+          : !hasCoins
+            ? 'not_enough_coins'
+            : !hasUpgradeMaterials
+              ? 'missing_upgrade_materials'
+              : null;
 
     return {
       id: card?._id?.toString?.() ?? '',
@@ -269,11 +284,19 @@ export class CardsService {
         nextStageUpgradeCoins: nextStageConfig?.upgradeCoins ?? 0,
         nextStageUpgradeItemId: nextStageConfig?.upgradeItemId ?? '',
         nextStageUpgradeItemCount: nextStageConfig?.upgradeItemCount ?? 0,
+        nextStageShardCost,
         nextStageSuccessChance: nextStageConfig?.upgradeSuccessChance ?? 1,
         canUpgradeByLevel,
         hasNextStageImage,
         hasUpgradeMaterials,
         hasCoins,
+        upgradeBlockReason,
+        shardProgress: {
+          current: entry?.shards ?? 0,
+          required: nextStageShardCost,
+          enough: nextStageShardCost <= 0 ? true : (entry?.shards ?? 0) >= nextStageShardCost,
+        },
+        copyOverflow: Math.max(0, entry?.copies ?? 0),
         canUpgrade:
           !!nextStage &&
           canUpgradeByLevel &&

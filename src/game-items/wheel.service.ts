@@ -52,10 +52,23 @@ export class WheelService {
   }
 
   async getWheel(userId: string): Promise<{
-    segments: { rewardType: string; label: string; param?: any }[];
+    segments: {
+      rewardType: string;
+      label: string;
+      weight: number;
+      param?: any;
+      icon?: string;
+      rarity?: string;
+      rewardMeta?: {
+        kind: string;
+        valueText?: string;
+      };
+    }[];
     spinCostCoins: number;
     canSpin: boolean;
     lastWheelSpinAt: string | null;
+    nextSpinAt: string | null;
+    balance: number;
   }> {
     const config = await this.getConfig();
     const user = await this.userModel
@@ -63,24 +76,81 @@ export class WheelService {
       .select('lastWheelSpinAt balance')
       .lean()
       .exec();
+    const itemMetaById = new Map(
+      (await this.gameItemsService.findAllActive()).map((item) => [
+        item.id,
+        {
+          icon: item.icon ?? undefined,
+          rarity: item.rarity ?? undefined,
+        },
+      ]),
+    );
 
     const today = getStartOfDayUTC();
     const last = user?.lastWheelSpinAt ? new Date(user.lastWheelSpinAt) : null;
     const canSpin =
       (!last || getStartOfDayUTC(last).getTime() < today.getTime()) &&
       (user?.balance ?? 0) >= (config.spinCostCoins ?? 20);
+    const nextSpinAt = last
+      ? new Date(getStartOfDayUTC(last).getTime() + 24 * 60 * 60 * 1000)
+      : null;
 
     return {
       segments: (config.segments ?? []).map((s: any) => ({
         rewardType: s.rewardType,
         label: s.label ?? '',
+        weight: Number(s.weight ?? 0),
         param: s.param,
+        icon:
+          s.rewardType === 'item' &&
+          s.param &&
+          typeof s.param === 'object' &&
+          'itemId' in s.param
+            ? itemMetaById.get((s.param as { itemId?: string }).itemId ?? '')?.icon
+            : undefined,
+        rarity:
+          s.rewardType === 'item' &&
+          s.param &&
+          typeof s.param === 'object' &&
+          'itemId' in s.param
+            ? itemMetaById.get((s.param as { itemId?: string }).itemId ?? '')?.rarity
+            : undefined,
+        rewardMeta:
+          s.rewardType === 'item' &&
+          s.param &&
+          typeof s.param === 'object' &&
+          'itemId' in s.param
+            ? {
+                kind: 'item',
+                valueText: `x${Number((s.param as { count?: number }).count ?? 1)}`,
+              }
+            : s.rewardType === 'coins'
+              ? {
+                  kind: 'coins',
+                  valueText: `+${Number(s.param ?? 0)}`,
+                }
+              : s.rewardType === 'xp'
+                ? {
+                    kind: 'xp',
+                    valueText: `+${Number(s.param ?? 0)}`,
+                  }
+                : s.rewardType === 'empty'
+                  ? {
+                      kind: 'empty',
+                      valueText: '0',
+                    }
+                  : {
+                      kind: s.rewardType,
+                      valueText: s.param != null ? String(s.param) : undefined,
+                    },
       })),
       spinCostCoins: config.spinCostCoins ?? 20,
       canSpin,
       lastWheelSpinAt: user?.lastWheelSpinAt
         ? new Date(user.lastWheelSpinAt).toISOString()
         : null,
+      nextSpinAt: nextSpinAt?.toISOString() ?? null,
+      balance: user?.balance ?? 0,
     };
   }
 
@@ -90,9 +160,18 @@ export class WheelService {
     param?: any;
     expGained?: number;
     coinsGained?: number;
-    itemsGained?: { itemId: string; count: number }[];
+    itemsGained?: { itemId: string; count: number; name?: string; icon?: string }[];
     twistOfFate?: boolean;
     compensationCoins?: number;
+    balance?: number;
+    selectedSegmentIndex?: number;
+    nextSpinAt?: string | null;
+    rewardSummary?: {
+      type: 'coins' | 'exp' | 'item';
+      label: string;
+      amount?: number;
+      icon?: string;
+    }[];
   }> {
     const config = await this.getConfig();
     const user = await this.userModel.findById(new Types.ObjectId(userId));
@@ -112,21 +191,32 @@ export class WheelService {
     const totalWeight = segments.reduce((s, seg) => s + (seg.weight ?? 0), 0);
     let r = Math.random() * totalWeight;
     let chosen: (typeof segments)[0] | null = null;
-    for (const seg of segments) {
+    let chosenIndex = -1;
+    for (const [index, seg] of segments.entries()) {
       r -= seg.weight ?? 0;
       if (r <= 0) {
         chosen = seg;
+        chosenIndex = index;
         break;
       }
     }
-    if (!chosen) chosen = segments[segments.length - 1] ?? null;
+    if (!chosen) {
+      chosen = segments[segments.length - 1] ?? null;
+      chosenIndex = segments.length - 1;
+    }
     if (!chosen) {
       user.balance = (user.balance ?? 0) - cost;
       user.lastWheelSpinAt = new Date();
       user.markModified('balance');
       user.markModified('lastWheelSpinAt');
       await user.save();
-      return { rewardType: 'empty', label: 'Пусто' };
+      return {
+        rewardType: 'empty',
+        label: 'Пусто',
+        balance: user.balance ?? 0,
+        selectedSegmentIndex: 0,
+        nextSpinAt: new Date(getStartOfDayUTC().getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      };
     }
 
     user.balance = (user.balance ?? 0) - cost;
@@ -148,6 +238,16 @@ export class WheelService {
         twistOfFate: true,
         compensationCoins,
         coinsGained: compensationCoins,
+        balance: user.balance ?? 0,
+        selectedSegmentIndex: chosenIndex,
+        nextSpinAt: new Date(getStartOfDayUTC().getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        rewardSummary: [
+          {
+            type: 'coins',
+            label: 'Компенсация',
+            amount: compensationCoins,
+          },
+        ],
       };
     }
 
@@ -200,6 +300,25 @@ export class WheelService {
     }
 
     await user.save();
-    return result;
+    return {
+      ...result,
+      balance: user.balance ?? 0,
+      selectedSegmentIndex: chosenIndex,
+      nextSpinAt: new Date(getStartOfDayUTC().getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      rewardSummary: [
+        ...(result.coinsGained
+          ? [{ type: 'coins' as const, label: 'Монеты', amount: result.coinsGained }]
+          : []),
+        ...(result.expGained
+          ? [{ type: 'exp' as const, label: 'Опыт', amount: result.expGained }]
+          : []),
+        ...((result.itemsGained ?? []).map((item) => ({
+          type: 'item' as const,
+          label: item.name ?? item.itemId,
+          amount: item.count,
+          icon: item.icon,
+        })) ?? []),
+      ],
+    };
   }
 }

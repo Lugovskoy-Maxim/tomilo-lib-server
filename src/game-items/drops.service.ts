@@ -145,14 +145,14 @@ export class DropsService {
   async grantDailyQuestRewards(
     userId: string,
     questType: string,
-  ): Promise<{ itemId: string; count: number }[]> {
+  ): Promise<{ itemId: string; count: number; name?: string; icon?: string }[]> {
     const rewards = await this.dailyQuestRewardModel
       .find({ questType, isActive: true })
       .sort({ sortOrder: 1 })
       .lean()
       .exec();
 
-    const gained: { itemId: string; count: number }[] = [];
+    const gained: { itemId: string; count: number; name?: string; icon?: string }[] = [];
     for (const r of rewards) {
       if (Math.random() > (r.chance ?? 1)) continue;
       const count =
@@ -162,8 +162,76 @@ export class DropsService {
             Math.floor(Math.random() * (r.countMax - r.countMin + 1));
       if (count <= 0) continue;
       await this.gameItemsService.addToInventory(userId, r.itemId, count);
-      gained.push({ itemId: r.itemId, count });
+      const item = await this.gameItemsService.findById(r.itemId);
+      gained.push({
+        itemId: r.itemId,
+        count,
+        name: item?.name,
+        icon: item?.icon ?? undefined,
+      });
     }
     return gained;
+  }
+
+  async getDailyQuestRewardPreviews(questTypes: string[]): Promise<
+    Record<
+      string,
+      {
+        itemId: string;
+        countMin: number;
+        countMax: number;
+        chance: number;
+        name?: string;
+        icon?: string;
+      }[]
+    >
+  > {
+    const normalizedQuestTypes = Array.from(
+      new Set((questTypes ?? []).filter((questType) => typeof questType === 'string' && questType.trim())),
+    );
+    if (normalizedQuestTypes.length === 0) return {};
+
+    const rewards = await this.dailyQuestRewardModel
+      .find({ questType: { $in: normalizedQuestTypes }, isActive: true })
+      .sort({ questType: 1, sortOrder: 1 })
+      .lean()
+      .exec();
+    const items = await this.gameItemsService.findAllActive();
+    const itemMetaById = new Map(
+      items.map((item) => [
+        item.id,
+        {
+          name: item.name,
+          icon: item.icon ?? undefined,
+        },
+      ]),
+    );
+
+    return rewards.reduce(
+      (acc, reward) => {
+        const itemMeta = itemMetaById.get(reward.itemId);
+        if (!acc[reward.questType]) acc[reward.questType] = [];
+        acc[reward.questType].push({
+          itemId: reward.itemId,
+          countMin: reward.countMin,
+          countMax: reward.countMax,
+          chance: reward.chance ?? 1,
+          name: itemMeta?.name,
+          icon: itemMeta?.icon,
+        });
+        return acc;
+      },
+      {} as Record<
+        string,
+        {
+          itemId: string;
+          countMin: number;
+          countMax: number;
+          chance: number;
+          name?: string;
+          icon?: string;
+        }[]
+      >,
+    );
   }
 }

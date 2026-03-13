@@ -46,9 +46,15 @@ export class AlchemyService {
         itemId: string;
         count: number;
         name?: string;
+        icon?: string;
         have: number;
       }[];
       resultType: string;
+      resultPreview?: {
+        common?: { itemId: string; name?: string; icon?: string };
+        quality?: { itemId: string; name?: string; icon?: string };
+        legendary?: { itemId: string; name?: string; icon?: string };
+      };
       element?: string | null;
       mishapChancePercent?: number;
       effectiveMishapChancePercent?: number;
@@ -74,6 +80,13 @@ export class AlchemyService {
       .sort({ sortOrder: 1, name: 1 })
       .lean()
       .exec();
+    const allItems = await this.gameItemsService.findAllActive();
+    const itemMetaById = new Map(
+      allItems.map((item) => [
+        item.id,
+        { name: item.name, icon: item.icon ?? undefined },
+      ]),
+    );
 
     const today = getStartOfDayUTC();
     const attemptsDate = (user as any)?.alchemyAttemptsDate
@@ -96,8 +109,19 @@ export class AlchemyService {
       description: string;
       icon: string;
       coinCost: number;
-      ingredients: { itemId: string; count: number; have: number }[];
+      ingredients: {
+        itemId: string;
+        count: number;
+        have: number;
+        name?: string;
+        icon?: string;
+      }[];
       resultType: string;
+      resultPreview?: {
+        common?: { itemId: string; name?: string; icon?: string };
+        quality?: { itemId: string; name?: string; icon?: string };
+        legendary?: { itemId: string; name?: string; icon?: string };
+      };
       element?: string | null;
       mishapChancePercent?: number;
       effectiveMishapChancePercent?: number;
@@ -108,6 +132,8 @@ export class AlchemyService {
         itemId: ing.itemId,
         count: ing.count,
         have: inventory.get(ing.itemId) ?? 0,
+        name: itemMetaById.get(ing.itemId)?.name,
+        icon: itemMetaById.get(ing.itemId)?.icon,
       }));
       let canCraft = true;
       for (const ing of ingredients) {
@@ -129,6 +155,7 @@ export class AlchemyService {
         0,
         95,
       );
+      const resultBase = r.resultType ?? 'pill_common';
       result.push({
         _id: (r as any)._id.toString(),
         name: r.name,
@@ -136,7 +163,24 @@ export class AlchemyService {
         icon: r.icon ?? '',
         coinCost,
         ingredients,
-        resultType: r.resultType ?? 'pill_common',
+        resultType: resultBase,
+        resultPreview: {
+          common: {
+            itemId: `${resultBase}_common`,
+            name: itemMetaById.get(`${resultBase}_common`)?.name,
+            icon: itemMetaById.get(`${resultBase}_common`)?.icon,
+          },
+          quality: {
+            itemId: `${resultBase}_quality`,
+            name: itemMetaById.get(`${resultBase}_quality`)?.name,
+            icon: itemMetaById.get(`${resultBase}_quality`)?.icon,
+          },
+          legendary: {
+            itemId: `${resultBase}_legendary`,
+            name: itemMetaById.get(`${resultBase}_legendary`)?.name,
+            icon: itemMetaById.get(`${resultBase}_legendary`)?.icon,
+          },
+        },
         element: (r as any).element ?? null,
         mishapChancePercent: baseMishap,
         effectiveMishapChancePercent,
@@ -148,6 +192,8 @@ export class AlchemyService {
 
   async getStatus(userId: string): Promise<{
     canCraft: boolean;
+    serverNow: string;
+    resetAt: string;
     lastPillCraftedAt: string | null;
     craftsPerDay: number;
     attemptsToday: number;
@@ -187,6 +233,8 @@ export class AlchemyService {
     const canCraft = attemptsLeft > 0;
     return {
       canCraft,
+      serverNow: new Date().toISOString(),
+      resetAt: new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString(),
       lastPillCraftedAt: user?.lastPillCraftedAt
         ? new Date(user.lastPillCraftedAt).toISOString()
         : null,
@@ -235,6 +283,13 @@ export class AlchemyService {
     quality: 'common' | 'quality' | 'legendary';
     rewards: { exp?: number; coins?: number };
     itemsGained?: { itemId: string; count: number; name?: string; icon?: string }[];
+    balance?: number;
+    rewardSummary?: {
+      type: 'coins' | 'exp' | 'item';
+      label: string;
+      amount?: number;
+      icon?: string;
+    }[];
     alchemy?: {
       level: number;
       exp: number;
@@ -385,6 +440,11 @@ export class AlchemyService {
           quality: 'common',
           rewards: { exp: 1, coins: 1 },
           itemsGained: [],
+          balance: user.balance ?? 0,
+          rewardSummary: [
+            { type: 'exp', label: 'Опыт алхимии', amount: 1 },
+            { type: 'coins', label: 'Монеты', amount: 1 },
+          ],
           alchemy: {
             level: user.alchemyLevel ?? 1,
             exp: user.alchemyExp ?? 0,
@@ -516,6 +576,21 @@ export class AlchemyService {
       quality,
       rewards,
       itemsGained,
+      balance: user.balance ?? 0,
+      rewardSummary: [
+        ...(rewards.coins
+          ? [{ type: 'coins' as const, label: 'Монеты', amount: rewards.coins }]
+          : []),
+        ...(rewards.exp
+          ? [{ type: 'exp' as const, label: 'Опыт', amount: rewards.exp }]
+          : []),
+        ...itemsGained.map((item) => ({
+          type: 'item' as const,
+          label: item.name ?? item.itemId,
+          amount: item.count,
+          icon: item.icon,
+        })),
+      ],
       alchemy: {
         level: user.alchemyLevel ?? 1,
         exp: user.alchemyExp ?? 0,

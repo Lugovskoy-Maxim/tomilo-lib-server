@@ -3181,6 +3181,8 @@ export class UsersService {
   /** Возвращает ежедневные задания на сегодня; создаёт новые, если дня ещё нет. */
   async getOrCreateDailyQuests(userId: string): Promise<{
     date: string;
+    serverNow: string;
+    resetAt: string;
     quests: {
       id: string;
       type: string;
@@ -3190,6 +3192,14 @@ export class UsersService {
       progress: number;
       rewardExp: number;
       rewardCoins: number;
+      rewardItems?: {
+        itemId: string;
+        countMin: number;
+        countMax: number;
+        chance: number;
+        name?: string;
+        icon?: string;
+      }[];
       completed: boolean;
       claimedAt: string | null;
     }[];
@@ -3204,10 +3214,16 @@ export class UsersService {
     }
 
     const today = UsersService.getStartOfDayUTC();
+    const resetAt = new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString();
     const existing = user.dailyQuests;
     const existingDate = existing?.date
       ? UsersService.getStartOfDayUTC(new Date(existing.date))
       : null;
+    const rewardPreviewByQuestType = this.dropsService
+      ? await this.dropsService.getDailyQuestRewardPreviews(
+          (existing?.quests ?? UsersService.DAILY_QUEST_POOL).map((quest) => quest.type),
+        )
+      : {};
 
     if (
       existingDate &&
@@ -3216,6 +3232,8 @@ export class UsersService {
     ) {
       return {
         date: today.toISOString(),
+        serverNow: new Date().toISOString(),
+        resetAt,
         quests: existing.quests.map((q) => ({
           id: q.id,
           type: q.type,
@@ -3225,6 +3243,7 @@ export class UsersService {
           progress: q.progress,
           rewardExp: q.rewardExp,
           rewardCoins: q.rewardCoins,
+          rewardItems: rewardPreviewByQuestType[q.type] ?? [],
           completed: q.completed,
           claimedAt: q.claimedAt ? new Date(q.claimedAt).toISOString() : null,
         })),
@@ -3252,8 +3271,11 @@ export class UsersService {
 
     return {
       date: today.toISOString(),
+      serverNow: new Date().toISOString(),
+      resetAt,
       quests: selected.map((q) => ({
         ...q,
+        rewardItems: rewardPreviewByQuestType[q.type] ?? [],
         claimedAt: null,
       })),
     };
@@ -3299,7 +3321,8 @@ export class UsersService {
     success: boolean;
     expGained?: number;
     coinsGained?: number;
-    itemsGained?: { itemId: string; count: number }[];
+    itemsGained?: { itemId: string; count: number; name?: string; icon?: string }[];
+    balance?: number;
     message?: string;
   }> {
     if (!Types.ObjectId.isValid(userId)) {
@@ -3345,7 +3368,9 @@ export class UsersService {
     if (quest.rewardCoins > 0) user.balance += quest.rewardCoins;
     await user.save();
 
-    let itemsGained: { itemId: string; count: number }[] | undefined;
+    let itemsGained:
+      | { itemId: string; count: number; name?: string; icon?: string }[]
+      | undefined;
     if (this.dropsService) {
       itemsGained = await this.dropsService.grantDailyQuestRewards(
         userId,
@@ -3358,6 +3383,7 @@ export class UsersService {
       expGained: quest.rewardExp,
       coinsGained: quest.rewardCoins,
       itemsGained,
+      balance: user.balance ?? 0,
     };
   }
 

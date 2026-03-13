@@ -382,7 +382,81 @@ export class GameItemsAdminService {
     const update: any = {};
     if (body.spinCostCoins !== undefined)
       update.spinCostCoins = body.spinCostCoins;
-    if (body.segments !== undefined) update.segments = body.segments;
+    if (body.segments !== undefined) {
+      if (!Array.isArray(body.segments) || body.segments.length === 0) {
+        throw new BadRequestException(
+          'Wheel config must contain at least one segment',
+        );
+      }
+      update.segments = body.segments.map((segment, index) => {
+        const rewardType = String(segment?.rewardType ?? '').trim();
+        const label = String(segment?.label ?? '').trim();
+        const weight = Number(segment?.weight ?? 0);
+        if (
+          !['xp', 'coins', 'item', 'element_bonus', 'empty'].includes(rewardType)
+        ) {
+          throw new BadRequestException(
+            `Wheel segment #${index + 1}: invalid rewardType`,
+          );
+        }
+        if (!label) {
+          throw new BadRequestException(
+            `Wheel segment #${index + 1}: label is required`,
+          );
+        }
+        if (!Number.isFinite(weight) || weight <= 0) {
+          throw new BadRequestException(
+            `Wheel segment #${index + 1}: weight must be greater than 0`,
+          );
+        }
+
+        if (rewardType === 'item') {
+          const itemId = String(segment?.param?.itemId ?? '').trim();
+          const count = Number(segment?.param?.count ?? 0);
+          if (!itemId) {
+            throw new BadRequestException(
+              `Wheel segment #${index + 1}: itemId is required`,
+            );
+          }
+          if (!Number.isFinite(count) || count <= 0) {
+            throw new BadRequestException(
+              `Wheel segment #${index + 1}: item count must be greater than 0`,
+            );
+          }
+          return {
+            rewardType,
+            label,
+            weight,
+            param: {
+              itemId,
+              count,
+            },
+          };
+        }
+
+        if (rewardType === 'empty') {
+          return {
+            rewardType,
+            label,
+            weight,
+          };
+        }
+
+        const param = Number(segment?.param ?? 0);
+        if (!Number.isFinite(param) || param < 0) {
+          throw new BadRequestException(
+            `Wheel segment #${index + 1}: reward value must be 0 or higher`,
+          );
+        }
+
+        return {
+          rewardType,
+          label,
+          weight,
+          param,
+        };
+      });
+    }
     const doc = await this.wheelConfigModel
       .findOneAndUpdate(
         { id: 'default' },
