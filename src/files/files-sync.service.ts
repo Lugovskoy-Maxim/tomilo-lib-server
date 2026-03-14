@@ -399,13 +399,23 @@ export class FilesSyncService {
 
     for (const collName of decorationCollections) {
       try {
+        const projection: Record<string, number> =
+          collName === 'carddecorations'
+            ? { imageUrl: 1, 'stages.imageUrl': 1 }
+            : { imageUrl: 1 };
         const docs = await this.connection
           .collection(collName)
-          .find({}, { projection: { imageUrl: 1 } })
+          .find({}, { projection })
           .toArray();
         for (const doc of docs) {
           const path = this.normalizeImagePath(doc.imageUrl);
           if (path) referenced.add(path);
+          if (doc.stages && Array.isArray(doc.stages)) {
+            for (const stage of doc.stages) {
+              const stagePath = this.normalizeImagePath(stage.imageUrl);
+              if (stagePath) referenced.add(stagePath);
+            }
+          }
         }
       } catch {
         // collection might not exist
@@ -414,11 +424,81 @@ export class FilesSyncService {
 
     const characters = await this.connection
       .collection('characters')
-      .find({}, { projection: { avatar: 1 } })
+      .find({}, { projection: { avatar: 1, pendingImage: 1 } })
       .toArray();
     for (const char of characters) {
       const path = this.normalizeImagePath(char.avatar);
       if (path) referenced.add(path);
+      const pendingPath = this.normalizeImagePath(char.pendingImage);
+      if (pendingPath) referenced.add(pendingPath);
+    }
+
+    const suggestedDecorations = await this.connection
+      .collection('suggesteddecorations')
+      .find({}, { projection: { imageUrl: 1 } })
+      .toArray();
+    for (const doc of suggestedDecorations) {
+      const path = this.normalizeImagePath(doc.imageUrl);
+      if (path) referenced.add(path);
+    }
+
+    const gameItems = await this.connection
+      .collection('gameitems')
+      .find({}, { projection: { icon: 1 } })
+      .toArray();
+    for (const item of gameItems) {
+      const path = this.normalizeImagePath(item.icon);
+      if (path) referenced.add(path);
+    }
+
+    const cardDecks = await this.connection
+      .collection('carddecks')
+      .find({}, { projection: { imageUrl: 1 } })
+      .toArray();
+    for (const deck of cardDecks) {
+      const path = this.normalizeImagePath(deck.imageUrl);
+      if (path) referenced.add(path);
+    }
+
+    try {
+      const techniques = await this.connection
+        .collection('techniques')
+        .find({}, { projection: { iconUrl: 1 } })
+        .toArray();
+      for (const t of techniques) {
+        const path = this.normalizeImagePath(t.iconUrl);
+        if (path) referenced.add(path);
+      }
+    } catch {
+      // collection might not exist
+    }
+
+    try {
+      const achievements = await this.connection
+        .collection('achievements')
+        .find({}, { projection: { icon: 1 } })
+        .toArray();
+      for (const a of achievements) {
+        const path = this.normalizeImagePath(a.icon);
+        if (path) referenced.add(path);
+      }
+    } catch {
+      // collection might not exist
+    }
+
+    const translatorTeams = await this.connection
+      .collection('translatorteams')
+      .find({}, { projection: { avatar: 1, 'members.avatar': 1 } })
+      .toArray();
+    for (const team of translatorTeams) {
+      const path = this.normalizeImagePath(team.avatar);
+      if (path) referenced.add(path);
+      if (team.members && Array.isArray(team.members)) {
+        for (const m of team.members) {
+          const memberPath = this.normalizeImagePath(m.avatar);
+          if (memberPath) referenced.add(memberPath);
+        }
+      }
     }
 
     return referenced;

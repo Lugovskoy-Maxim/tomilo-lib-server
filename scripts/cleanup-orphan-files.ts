@@ -157,12 +157,25 @@ async function getReferencedFilesFromDB(): Promise<Set<string>> {
   for (const collName of decorationCollections) {
     try {
       const coll = mongoose.connection.collection(collName);
-      const docs = await coll.find({}, { projection: { imageUrl: 1 } }).toArray();
+      const projection: Record<string, number> =
+        collName === 'carddecorations'
+          ? { imageUrl: 1, 'stages.imageUrl': 1 }
+          : { imageUrl: 1 };
+      const docs = await coll.find({}, { projection }).toArray();
       for (const doc of docs) {
         const path = normalizeImagePath(doc.imageUrl);
         if (path) {
           referenced.add(path);
           decorationFiles++;
+        }
+        if (doc.stages && Array.isArray(doc.stages)) {
+          for (const stage of doc.stages) {
+            const stagePath = normalizeImagePath(stage.imageUrl);
+            if (stagePath) {
+              referenced.add(stagePath);
+              decorationFiles++;
+            }
+          }
         }
       }
     } catch {
@@ -171,8 +184,47 @@ async function getReferencedFilesFromDB(): Promise<Set<string>> {
   }
   console.log(`   Decorations: ${decorationFiles} файлов`);
 
+  try {
+    const techniques = mongoose.connection.collection('techniques');
+    const techniquesList = await techniques
+      .find({}, { projection: { iconUrl: 1 } })
+      .toArray();
+    let techniqueFiles = 0;
+    for (const t of techniquesList) {
+      const path = normalizeImagePath(t.iconUrl);
+      if (path) {
+        referenced.add(path);
+        techniqueFiles++;
+      }
+    }
+    console.log(`   Techniques: ${techniquesList.length} записей, ${techniqueFiles} файлов`);
+  } catch {
+    // collection might not exist
+  }
+
+  try {
+    const achievements = mongoose.connection.collection('achievements');
+    const achievementsList = await achievements.find({}, { projection: { icon: 1 } }).toArray();
+    let achievementFiles = 0;
+    for (const a of achievementsList) {
+      const path = normalizeImagePath(a.icon);
+      if (path) {
+        referenced.add(path);
+        achievementFiles++;
+      }
+    }
+    console.log(
+      `   Achievements: ${achievementsList.length} записей, ${achievementFiles} файлов`,
+    );
+  } catch {
+    // collection might not exist
+  }
+
   const Character = mongoose.connection.collection('characters');
-  const characters = await Character.find({}, { projection: { avatar: 1 } }).toArray();
+  const characters = await Character.find(
+    {},
+    { projection: { avatar: 1, pendingImage: 1 } },
+  ).toArray();
   let characterFiles = 0;
   for (const char of characters) {
     const path = normalizeImagePath(char.avatar);
@@ -180,8 +232,78 @@ async function getReferencedFilesFromDB(): Promise<Set<string>> {
       referenced.add(path);
       characterFiles++;
     }
+    const pendingPath = normalizeImagePath(char.pendingImage);
+    if (pendingPath) {
+      referenced.add(pendingPath);
+      characterFiles++;
+    }
   }
   console.log(`   Characters: ${characters.length} записей, ${characterFiles} файлов`);
+
+  const SuggestedDecoration = mongoose.connection.collection('suggesteddecorations');
+  const suggestedDecorations = await SuggestedDecoration.find(
+    {},
+    { projection: { imageUrl: 1 } },
+  ).toArray();
+  let suggestedDecorationFiles = 0;
+  for (const doc of suggestedDecorations) {
+    const path = normalizeImagePath(doc.imageUrl);
+    if (path) {
+      referenced.add(path);
+      suggestedDecorationFiles++;
+    }
+  }
+  console.log(
+    `   Suggested decorations: ${suggestedDecorations.length} записей, ${suggestedDecorationFiles} файлов`,
+  );
+
+  const GameItem = mongoose.connection.collection('gameitems');
+  const gameItems = await GameItem.find({}, { projection: { icon: 1 } }).toArray();
+  let gameItemFiles = 0;
+  for (const item of gameItems) {
+    const path = normalizeImagePath(item.icon);
+    if (path) {
+      referenced.add(path);
+      gameItemFiles++;
+    }
+  }
+  console.log(`   Game items: ${gameItems.length} записей, ${gameItemFiles} файлов`);
+
+  const CardDeck = mongoose.connection.collection('carddecks');
+  const cardDecks = await CardDeck.find({}, { projection: { imageUrl: 1 } }).toArray();
+  let cardDeckFiles = 0;
+  for (const deck of cardDecks) {
+    const path = normalizeImagePath(deck.imageUrl);
+    if (path) {
+      referenced.add(path);
+      cardDeckFiles++;
+    }
+  }
+  console.log(`   Card decks: ${cardDecks.length} записей, ${cardDeckFiles} файлов`);
+
+  const TranslatorTeam = mongoose.connection.collection('translatorteams');
+  const translatorTeams = await TranslatorTeam.find(
+    {},
+    { projection: { avatar: 1, 'members.avatar': 1 } },
+  ).toArray();
+  let translatorTeamFiles = 0;
+  for (const team of translatorTeams) {
+    const path = normalizeImagePath(team.avatar);
+    if (path) {
+      referenced.add(path);
+      translatorTeamFiles++;
+    }
+    if (team.members && Array.isArray(team.members)) {
+      for (const m of team.members) {
+        const memberPath = normalizeImagePath(m.avatar);
+        if (memberPath) {
+          referenced.add(memberPath);
+          translatorTeamFiles++;
+        }
+      }
+    }
+  }
+  console.log(`   Translator teams: ${translatorTeams.length} записей, ${translatorTeamFiles} файлов`);
 
   return referenced;
 }
@@ -189,6 +311,7 @@ async function getReferencedFilesFromDB(): Promise<Set<string>> {
 function categorizeFile(relativePath: string): string {
   if (relativePath.startsWith('users/')) return 'avatars';
   if (relativePath.startsWith('avatars/')) return 'avatars (legacy)';
+  if (relativePath.startsWith('translator-teams/')) return 'translator teams';
   if (relativePath.startsWith('announcements/')) return 'announcements';
   if (relativePath.match(/^titles\/[^/]+\/chapters\//)) return 'chapters';
   if (relativePath.startsWith('titles/')) return 'title covers';
@@ -196,6 +319,8 @@ function categorizeFile(relativePath: string): string {
   if (relativePath.startsWith('covers/')) return 'covers (legacy)';
   if (relativePath.startsWith('decorations/')) return 'decorations';
   if (relativePath.startsWith('collections/')) return 'collections';
+  if (relativePath.startsWith('characters/')) return 'characters';
+  if (relativePath.startsWith('game-items/')) return 'game items';
   return 'other';
 }
 
