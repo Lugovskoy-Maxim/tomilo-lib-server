@@ -31,6 +31,23 @@ import { UsersService } from '../users/users.service';
 import { LoggerService } from '../common/logger/logger.service';
 import { CardsService } from '../game-items/cards.service';
 
+/** Фиксированные цены декораций по редкости (в монетах). */
+export const DECORATION_PRICE_BY_RARITY: Record<
+  'common' | 'rare' | 'epic' | 'legendary',
+  number
+> = {
+  common: 800,
+  rare: 1200,
+  epic: 1800,
+  legendary: 4000,
+};
+
+function getPriceByRarity(
+  rarity: 'common' | 'rare' | 'epic' | 'legendary',
+): number {
+  return DECORATION_PRICE_BY_RARITY[rarity] ?? DECORATION_PRICE_BY_RARITY.common;
+}
+
 @Injectable()
 export class ShopService {
   private readonly logger = new LoggerService();
@@ -94,6 +111,10 @@ export class ShopService {
         .lean(),
     ]);
 
+    await this.enrichDecorationsImageUrlFromSuggestions(avatars);
+    await this.enrichDecorationsImageUrlFromSuggestions(frames);
+    await this.enrichDecorationsImageUrlFromSuggestions(backgrounds);
+    await this.enrichDecorationsImageUrlFromSuggestions(cards);
     const result = {
       avatars,
       frames,
@@ -108,12 +129,50 @@ export class ShopService {
   async getAllDecorationsAdmin() {
     this.logger.log('Fetching all decorations (admin)');
     const [avatars, frames, backgrounds, cards] = await Promise.all([
-      this.avatarDecorationModel.find({}),
-      this.avatarFrameDecorationModel.find({}),
-      this.backgroundDecorationModel.find({}),
-      this.cardDecorationModel.find({}),
+      this.avatarDecorationModel.find({}).lean(),
+      this.avatarFrameDecorationModel.find({}).lean(),
+      this.backgroundDecorationModel.find({}).lean(),
+      this.cardDecorationModel.find({}).lean(),
     ]);
+    await this.enrichDecorationsImageUrlFromSuggestions(avatars);
+    await this.enrichDecorationsImageUrlFromSuggestions(frames);
+    await this.enrichDecorationsImageUrlFromSuggestions(backgrounds);
+    await this.enrichDecorationsImageUrlFromSuggestions(cards);
     return { avatars, frames, backgrounds, cards };
+  }
+
+  /**
+   * Для декораций с пустым imageUrl подставляет URL из принятого предложения (acceptedDecorationId).
+   * Восстанавливает картинки у старых принятых декораций, созданных до фикса маппинга image_url.
+   */
+  private async enrichDecorationsImageUrlFromSuggestions(
+    decorations: Array<{ _id: unknown; imageUrl?: string }>,
+  ): Promise<void> {
+    const withoutImage = decorations.filter((d) => !d.imageUrl?.trim());
+    if (withoutImage.length === 0) return;
+    const ids = withoutImage
+      .map((d) => d._id)
+      .filter((id): id is Types.ObjectId => id != null);
+    if (ids.length === 0) return;
+    const suggestions = await this.suggestedDecorationModel
+      .find({ status: 'accepted', acceptedDecorationId: { $in: ids } })
+      .select('acceptedDecorationId imageUrl image_url')
+      .lean()
+      .exec();
+    const map = new Map<string, string>();
+    for (const s of suggestions) {
+      const id = (s as any).acceptedDecorationId?.toString();
+      const url =
+        (s as any).imageUrl ?? (s as any).image_url ?? '';
+      if (id && url) map.set(id, url);
+    }
+    for (const d of decorations) {
+      if (d.imageUrl?.trim()) continue;
+      const id = d._id?.toString();
+      if (!id) continue;
+      const url = map.get(id);
+      if (url) (d as any).imageUrl = url;
+    }
   }
 
   // Get decorations by type
@@ -163,6 +222,7 @@ export class ShopService {
         throw new BadRequestException('Invalid decoration type');
     }
 
+    await this.enrichDecorationsImageUrlFromSuggestions(decorations);
     await this.cacheManager.set(cacheKey, decorations);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return decorations;
@@ -457,11 +517,12 @@ export class ShopService {
 
     const imageUrl = `/uploads/decorations/${file.filename}`;
 
+    const rarity = payload.rarity;
     const doc: Record<string, unknown> = {
       name: payload.name,
       imageUrl,
-      price: Number(payload.price),
-      rarity: payload.rarity,
+      price: getPriceByRarity(rarity),
+      rarity,
       description: payload.description ?? '',
       isAvailable: payload.isAvailable !== false,
     };
@@ -506,11 +567,11 @@ export class ShopService {
     return decoration;
   }
 
-  /** Admin: create decoration from JSON (no file). */
+  /** Admin: create decoration from JSON (no file). Цена задаётся по редкости (фиксированные цены). */
   async createDecoration(payload: {
     name: string;
     description?: string;
-    price: number;
+    price?: number;
     imageUrl: string;
     type: 'avatar' | 'frame' | 'background' | 'card';
     rarity?: 'common' | 'rare' | 'epic' | 'legendary';
@@ -518,11 +579,12 @@ export class ShopService {
     quantity?: number | null;
     authorId?: Types.ObjectId;
   }) {
+    const rarity = payload.rarity ?? 'common';
     const doc: Record<string, unknown> = {
       name: payload.name,
       imageUrl: payload.imageUrl,
-      price: Number(payload.price),
-      rarity: payload.rarity ?? 'common',
+      price: getPriceByRarity(rarity),
+      rarity,
       description: payload.description ?? '',
       isAvailable: payload.isAvailable !== false,
     };
@@ -662,7 +724,6 @@ export class ShopService {
     }
     if (updates.name !== undefined) decoration.name = updates.name;
     if (updates.imageUrl !== undefined) decoration.imageUrl = updates.imageUrl;
-    if (updates.price !== undefined) decoration.price = updates.price;
     if (updates.rarity !== undefined) decoration.rarity = updates.rarity;
     if (updates.description !== undefined)
       decoration.description = updates.description;
@@ -671,6 +732,9 @@ export class ShopService {
     if (updates.quantity !== undefined)
       decoration.quantity =
         updates.quantity === null ? undefined : updates.quantity;
+    decoration.price = getPriceByRarity(
+      decoration.rarity as 'common' | 'rare' | 'epic' | 'legendary',
+    );
     await decoration.save();
 
     await this.cacheManager.set('shop:decorations:all', undefined as unknown);
@@ -834,18 +898,14 @@ export class ShopService {
 
   // --- Suggested decorations (user proposals + voting) ---
 
-  /** Цена в магазине по количеству голосов: 0–4 голоса = бесплатно, иначе 50 + votes*15 (макс 500). */
-  private priceByVotes(votesCount: number): number {
-    if (votesCount < 5) return 0;
-    return Math.min(500, 50 + votesCount * 15);
-  }
-
   async getSuggestedDecorations(
-    status: 'pending' | 'accepted' | 'rejected' = 'pending',
+    status: 'pending' | 'accepted' | 'rejected' | 'all' = 'pending',
   ) {
+    const pipeline: any[] =
+      status === 'all' ? [] : [{ $match: { status } }];
     const list = await this.suggestedDecorationModel
       .aggregate([
-        { $match: { status } },
+        ...pipeline,
         {
           $addFields: {
             votesCount: { $size: { $ifNull: ['$votedUserIds', []] } },
@@ -865,12 +925,13 @@ export class ShopService {
     return list.map((s: any) => {
       const author =
         Array.isArray(s.authorDoc) && s.authorDoc[0] ? s.authorDoc[0] : null;
+      const imageUrl = s.imageUrl ?? s.image_url ?? '';
       return {
         id: s._id.toString(),
         type: s.type,
         name: s.name,
         description: s.description ?? '',
-        imageUrl: s.imageUrl,
+        imageUrl: typeof imageUrl === 'string' ? imageUrl : '',
         authorId: s.authorId?.toString(),
         authorUsername: author?.username ?? undefined,
         authorLevel: author?.level != null ? Number(author.level) : undefined,
@@ -1065,12 +1126,28 @@ export class ShopService {
     const votesCount = Array.isArray(winner.votedUserIds)
       ? winner.votedUserIds.length
       : 0;
-    const price = this.priceByVotes(votesCount);
     const authorId = winner.authorId;
+    const price = getPriceByRarity('common');
+
+    // imageUrl из агрегата может прийти как imageUrl или image_url; путь должен начинаться с /
+    const rawImageUrl =
+      winner.imageUrl ?? (winner as { image_url?: string }).image_url ?? '';
+    const imageUrl =
+      typeof rawImageUrl === 'string' && rawImageUrl.trim()
+        ? rawImageUrl.startsWith('/')
+          ? rawImageUrl.trim()
+          : `/${rawImageUrl.trim()}`
+        : '';
+    if (!imageUrl) {
+      this.logger.warn(
+        `Accept weekly winner: suggestion ${suggestionId} has no imageUrl, skipping`,
+      );
+      return null;
+    }
 
     const doc: Record<string, unknown> = {
       name: winner.name,
-      imageUrl: winner.imageUrl,
+      imageUrl,
       price,
       rarity: 'common',
       description: winner.description ?? '',

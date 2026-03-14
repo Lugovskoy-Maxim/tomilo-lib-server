@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { ShopService } from './shop.service';
 import { LoggerService } from '../common/logger/logger.service';
 
@@ -11,8 +11,12 @@ export class ShopSchedulerService {
     this.logger.setContext(ShopSchedulerService.name);
   }
 
-  /** Каждое воскресенье в 00:00 — принять предложение с наибольшим числом голосов и добавить в магазин */
-  @Cron(CronExpression.EVERY_WEEK)
+  /**
+   * Каждый понедельник в 00:00 (по времени сервера) — принять предложение с наибольшим числом голосов.
+   * Совпадает с таймером на клиенте («следующий понедельник 00:00»). Рекомендуется TZ сервера = Europe/Moscow (или основной ЧП пользователей).
+   * EVERY_WEEK = воскресенье 00:00, поэтому задаём понедельник явно: 0 0 * * 1
+   */
+  @Cron('0 0 * * 1')
   async acceptWeeklyWinnerJob() {
     this.logger.log('Running weekly suggested decoration winner job');
     try {

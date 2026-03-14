@@ -7,6 +7,7 @@ import {
   Delete,
   Param,
   Body,
+  Query,
   Req,
   UseGuards,
   Request,
@@ -142,14 +143,28 @@ export class ShopController {
     }
   }
 
-  // Suggested decorations (user proposals + voting)
+  // Suggested decorations (user proposals + voting). Для админа: ?status=all|accepted|rejected — список по статусу (с картинками).
   @Get('suggestions')
   @UseGuards(OptionalJwtAuthGuard)
-  async getSuggestions(@Request() req): Promise<ApiResponseDto<any>> {
+  async getSuggestions(
+    @Request() req,
+    @Query('status') status?: string,
+  ): Promise<ApiResponseDto<any>> {
     try {
       const userId = req.user?.userId ?? null;
-      const data =
-        await this.shopService.getSuggestedDecorationsWithUserVote(userId);
+      const isAdmin = req.user?.role === 'admin';
+      let data: any;
+      if (
+        isAdmin &&
+        (status === 'all' || status === 'accepted' || status === 'rejected')
+      ) {
+        data = await this.shopService.getSuggestedDecorations(
+          status as 'all' | 'accepted' | 'rejected',
+        );
+      } else {
+        data =
+          await this.shopService.getSuggestedDecorationsWithUserVote(userId);
+      }
       return {
         success: true,
         data,
