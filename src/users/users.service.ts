@@ -1959,6 +1959,7 @@ export class UsersService {
       likesReceivedCount: user.likesReceivedCount ?? 0,
       titlesReadCount: user.titlesReadCount ?? 0,
       reportsCount: user.reportsCount ?? 0,
+      charactersAcceptedCount: user.charactersAcceptedCount ?? 0,
     });
 
     if (newUnlocked.length > 0) {
@@ -3005,6 +3006,7 @@ export class UsersService {
       likesReceivedCount: user.likesReceivedCount ?? 0,
       titlesReadCount: user.titlesReadCount ?? 0,
       reportsCount: user.reportsCount ?? 0,
+      charactersAcceptedCount: user.charactersAcceptedCount ?? 0,
     });
 
     if (newUnlocked.length === 0) {
@@ -3069,7 +3071,7 @@ export class UsersService {
     const user = await this.userModel
       .findById(new Types.ObjectId(userId))
       .select(
-        'achievements level bookmarks emailVerified oauthProviders commentsCount ratingsCount longestStreak completedTitlesCount readingTimeMinutes balance ownedDecorations likesReceivedCount titlesReadCount reportsCount chaptersReadCount createdAt',
+        'achievements level bookmarks emailVerified oauthProviders commentsCount ratingsCount longestStreak completedTitlesCount readingTimeMinutes balance ownedDecorations likesReceivedCount titlesReadCount reportsCount chaptersReadCount charactersAcceptedCount createdAt',
       )
       .lean()
       .exec();
@@ -3104,6 +3106,7 @@ export class UsersService {
         likesReceivedCount: u.likesReceivedCount ?? 0,
         titlesReadCount: u.titlesReadCount ?? 0,
         reportsCount: u.reportsCount ?? 0,
+        charactersAcceptedCount: u.charactersAcceptedCount ?? 0,
       },
     );
   }
@@ -3630,6 +3633,46 @@ export class UsersService {
       `Added ${amount} balance to user ${userId}. New balance: ${user.balance}`,
     );
     return user;
+  }
+
+  /** Рейтинг вкладчиков: пользователи с хотя бы одним принятым предложением персонажа. */
+  async findCharacterContributors(limit: number = 100): Promise<
+    { _id: string; username: string; avatar?: string; charactersAcceptedCount: number }[]
+  > {
+    const cap = Math.min(200, Math.max(1, limit));
+    const list = await this.userModel
+      .find({ charactersAcceptedCount: { $gt: 0 } })
+      .sort({ charactersAcceptedCount: -1 })
+      .limit(cap)
+      .select('_id username avatar charactersAcceptedCount')
+      .lean()
+      .exec();
+    return list.map((u: any) => ({
+      _id: u._id.toString(),
+      username: u.username,
+      avatar: u.avatar,
+      charactersAcceptedCount: u.charactersAcceptedCount ?? 0,
+    }));
+  }
+
+  /** Начисляет награду за принятый предложенный персонаж: 50 монет, 100 опыта, +1 в счётчик вклада. Проверяет достижение «Вкладчик». */
+  async rewardCharacterAccepted(
+    userId: string,
+    coins: number = 50,
+    exp: number = 100,
+  ): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) return;
+    await this.addBalance(userId, coins);
+    await this.addExperience(userId, exp);
+    await this.userModel
+      .findByIdAndUpdate(new Types.ObjectId(userId), {
+        $inc: { charactersAcceptedCount: 1 },
+      })
+      .exec();
+    this.logger.log(
+      `User ${userId} rewarded for accepted character: +${coins} coins, +${exp} XP`,
+    );
+    void this.checkAchievementsForUser(userId);
   }
 
   /**

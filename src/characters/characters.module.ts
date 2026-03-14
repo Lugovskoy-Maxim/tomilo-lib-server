@@ -5,6 +5,7 @@ import { CharactersController } from './characters.controller';
 import { CharactersService } from './characters.service';
 import { TitlesModule } from '../titles/titles.module';
 import { FilesModule } from '../files/files.module';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -13,6 +14,7 @@ import { FilesModule } from '../files/files.module';
     ]),
     TitlesModule,
     FilesModule,
+    UsersModule,
   ],
   controllers: [CharactersController],
   providers: [CharactersService],

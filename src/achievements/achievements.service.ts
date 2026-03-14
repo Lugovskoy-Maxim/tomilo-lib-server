@@ -330,6 +330,20 @@ export class AchievementsService {
         },
       ],
     },
+    {
+      id: 'contributor',
+      name: 'Вкладчик',
+      description: 'Предлагайте персонажей — за принятые предложения начисляются монеты и опыт',
+      icon: 'user-plus',
+      type: 'social',
+      levels: [
+        { level: 1, threshold: 1, name: 'Первый персонаж', rarity: 'common' },
+        { level: 2, threshold: 3, name: 'Помощник каталога', rarity: 'common' },
+        { level: 3, threshold: 5, name: 'Вкладчик', rarity: 'uncommon' },
+        { level: 4, threshold: 10, name: 'Пополняющий галерею', rarity: 'rare' },
+        { level: 5, threshold: 25, name: 'Мастер персонажей', rarity: 'epic' },
+      ],
+    },
   ];
 
   getAchievementDefinitions(): AchievementDefinition[] {
@@ -362,6 +376,7 @@ export class AchievementsService {
       likesReceivedCount?: number;
       titlesReadCount?: number;
       reportsCount?: number;
+      charactersAcceptedCount?: number;
     },
   ): {
     updatedAchievements: UserAchievementData[];
@@ -388,6 +403,7 @@ export class AchievementsService {
       popular: stats.likesReceivedCount ?? 0,
       explorer: stats.titlesReadCount ?? 0,
       reporter: stats.reportsCount ?? 0,
+      contributor: stats.charactersAcceptedCount ?? 0,
     };
 
     for (const achDef of this.achievements) {
@@ -475,6 +491,7 @@ export class AchievementsService {
       likesReceivedCount?: number;
       titlesReadCount?: number;
       reportsCount?: number;
+      charactersAcceptedCount?: number;
     },
   ): UnlockedAchievement[] {
     const result: UnlockedAchievement[] = [];
@@ -495,6 +512,7 @@ export class AchievementsService {
       popular: stats.likesReceivedCount ?? 0,
       explorer: stats.titlesReadCount ?? 0,
       reporter: stats.reportsCount ?? 0,
+      contributor: stats.charactersAcceptedCount ?? 0,
     };
 
     for (const achDef of this.achievements) {
@@ -554,6 +572,7 @@ export class AchievementsService {
       likesReceivedCount?: number;
       titlesReadCount?: number;
       reportsCount?: number;
+      charactersAcceptedCount?: number;
     },
   ): ProfileAchievementDto[] {
     const statsMap: Record<string, number> = {
@@ -572,6 +591,7 @@ export class AchievementsService {
       popular: stats.likesReceivedCount ?? 0,
       explorer: stats.titlesReadCount ?? 0,
       reporter: stats.reportsCount ?? 0,
+      contributor: stats.charactersAcceptedCount ?? 0,
     };
 
     return this.achievements.map((achDef) => {

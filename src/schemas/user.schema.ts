@@ -88,6 +88,10 @@ export class User {
   @Prop({ default: 0 })
   reportsCount: number;
 
+  /** Количество принятых предложений персонажей (для рейтинга вклада и страницы благодарностей) */
+  @Prop({ default: 0 })
+  charactersAcceptedCount: number;
+
   // Кастомизация профиля
 
   /** Краткое описание / статус */

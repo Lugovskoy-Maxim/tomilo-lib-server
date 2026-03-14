@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
@@ -15,14 +16,21 @@ import { CreateCharacterDto } from './dto/create-character.dto';
 import { UpdateCharacterDto } from './dto/update-character.dto';
 import { TitlesService } from '../titles/titles.service';
 import { FilesService } from '../files/files.service';
+import { UsersService } from '../users/users.service';
+
+const CHARACTER_ACCEPTED_REWARD_COINS = 50;
+const CHARACTER_ACCEPTED_REWARD_EXP = 100;
 
 @Injectable()
 export class CharactersService {
+  private readonly logger = new Logger(CharactersService.name);
+
   constructor(
     @InjectModel(Character.name)
     private characterModel: Model<CharacterDocument>,
     private titlesService: TitlesService,
     private filesService: FilesService,
+    private usersService: UsersService,
   ) {}
 
   /** Список персонажей на модерации (для админов). */
@@ -293,12 +301,18 @@ export class CharactersService {
     return this.findById(id);
   }
 
-  /** Одобрить персонажа или правки (только админ). */
+  /** Одобрить персонажа или правки (только админ). При одобрении нового предложенного персонажа начисляем автору 50 монет и 100 опыта. */
   async approve(id: string): Promise<CharacterDocument> {
     const doc = await this.characterModel.findById(id).exec();
     if (!doc) {
       throw new NotFoundException('Character not found');
     }
+    const isNewCharacterApproval =
+      doc.status === CharacterModerationStatus.PENDING &&
+      !doc.pendingUpdate &&
+      !doc.pendingImage &&
+      doc.proposedBy;
+
     const setPayload: Record<string, unknown> = {
       status: CharacterModerationStatus.APPROVED,
     };
@@ -324,6 +338,22 @@ export class CharactersService {
     await this.characterModel
       .findByIdAndUpdate(id, { $set: setPayload, $unset: unsetPayload })
       .exec();
+
+    if (isNewCharacterApproval && doc.proposedBy) {
+      const proposerId = doc.proposedBy.toString();
+      this.usersService
+        .rewardCharacterAccepted(
+          proposerId,
+          CHARACTER_ACCEPTED_REWARD_COINS,
+          CHARACTER_ACCEPTED_REWARD_EXP,
+        )
+        .catch((err) => {
+          this.logger.warn(
+            `Failed to reward user ${proposerId} for accepted character: ${err?.message}`,
+          );
+        });
+    }
+
     return this.findById(id);
   }
 

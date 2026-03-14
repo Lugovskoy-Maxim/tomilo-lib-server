@@ -1947,6 +1947,32 @@ export class UsersController {
     }
   }
 
+  // 🙏 Рейтинг вкладчиков (принятые предложения персонажей) — для страницы благодарностей
+  @Get('character-contributors')
+  async getCharacterContributors(
+    @Query('limit') limit?: string,
+  ): Promise<ApiResponseDto<{ users: { _id: string; username: string; avatar?: string; charactersAcceptedCount: number }[] }>> {
+    try {
+      const users = await this.usersService.findCharacterContributors(
+        limit != null ? parseInt(String(limit), 10) : 100,
+      );
+      return {
+        success: true,
+        data: { users },
+        timestamp: new Date().toISOString(),
+        path: 'users/character-contributors',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch character contributors',
+        errors: [error.message],
+        timestamp: new Date().toISOString(),
+        path: 'users/character-contributors',
+      };
+    }
+  }
+
   // 🏠 Пользователи для главной страницы (активные за последнюю неделю)
   @Get('homepage/active')
   async getHomepageActiveUsers(
