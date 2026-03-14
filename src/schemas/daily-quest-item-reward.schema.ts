@@ -9,6 +9,7 @@ export const DAILY_QUEST_TYPES = [
   'leave_comment',
   'rate_title',
   'daily_login',
+  'like_comment',
 ] as const;
 
 @Schema({ timestamps: true })
