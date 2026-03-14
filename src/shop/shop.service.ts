@@ -42,10 +42,31 @@ export const DECORATION_PRICE_BY_RARITY: Record<
   legendary: 4000,
 };
 
+/** Минимальное число голосов у победителя недели для получения ранга (должно совпадать с клиентом). */
+export const VOTES_FOR_RARITY: Record<
+  'common' | 'rare' | 'epic' | 'legendary',
+  number
+> = {
+  common: 1,
+  rare: 5,
+  epic: 15,
+  legendary: 30,
+};
+
+/** Монеты активности за один голос по предложению (должно совпадать с клиентом). */
+export const VOTE_REWARD_COINS = 25;
+
 function getPriceByRarity(
   rarity: 'common' | 'rare' | 'epic' | 'legendary',
 ): number {
   return DECORATION_PRICE_BY_RARITY[rarity] ?? DECORATION_PRICE_BY_RARITY.common;
+}
+
+function getRarityByVotes(votesCount: number): 'common' | 'rare' | 'epic' | 'legendary' {
+  if (votesCount >= VOTES_FOR_RARITY.legendary) return 'legendary';
+  if (votesCount >= VOTES_FOR_RARITY.epic) return 'epic';
+  if (votesCount >= VOTES_FOR_RARITY.rare) return 'rare';
+  return 'common';
 }
 
 @Injectable()
@@ -987,6 +1008,11 @@ export class ShopService {
       imageUrl: string;
     },
   ) {
+    if (payload.type === 'card') {
+      throw new BadRequestException(
+        'Предложения карточек не принимаются',
+      );
+    }
     await this.checkUserCanSuggest(userId);
 
     const suggestion = await this.suggestedDecorationModel.create({
@@ -1045,7 +1071,10 @@ export class ShopService {
     }
     suggestion.votedUserIds.push(userOid);
     await suggestion.save();
-    this.logger.log(`User ${userId} voted for suggestion ${suggestionId}`);
+    await this.usersService.addBalance(userId, VOTE_REWARD_COINS);
+    this.logger.log(
+      `User ${userId} voted for suggestion ${suggestionId} (+${VOTE_REWARD_COINS} coins)`,
+    );
     return {
       votesCount: suggestion.votedUserIds.length,
       userHasVoted: true,
@@ -1127,7 +1156,8 @@ export class ShopService {
       ? winner.votedUserIds.length
       : 0;
     const authorId = winner.authorId;
-    const price = getPriceByRarity('common');
+    const rarity = getRarityByVotes(votesCount);
+    const price = getPriceByRarity(rarity);
 
     // imageUrl из агрегата может прийти как imageUrl или image_url; путь должен начинаться с /
     const rawImageUrl =
@@ -1149,7 +1179,7 @@ export class ShopService {
       name: winner.name,
       imageUrl,
       price,
-      rarity: 'common',
+      rarity,
       description: winner.description ?? '',
       isAvailable: true,
       authorId: authorId ?? undefined,

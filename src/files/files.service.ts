@@ -380,6 +380,11 @@ export class FilesService {
     if (!file.mimetype.startsWith('image/')) {
       throw new BadRequestException('Файл должен быть изображением');
     }
+    if (!file.mimetype.match(/^image\/(jpeg|png)$/)) {
+      throw new BadRequestException(
+        'Аватары можно загружать только в форматах JPG и PNG',
+      );
+    }
 
     const fileExtension = file.originalname.split('.').pop() || 'jpg';
     const fileName = `avatar.${fileExtension}`;

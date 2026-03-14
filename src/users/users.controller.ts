@@ -1741,7 +1741,7 @@ export class UsersController {
   @UseInterceptors(
     FileUploadInterceptor.create('avatar', {
       destination: './uploads/avatars',
-      fileTypes: /\/(jpg|jpeg|png|webp)$/,
+      fileTypes: /\/(jpg|jpeg|png)$/, // только JPG и PNG для аватаров
       fileSize: 2 * 1024 * 1024, // 2MB limit for avatars
       filenamePrefix: 'avatar',
     }),
@@ -1785,7 +1785,7 @@ export class UsersController {
   @UseInterceptors(
     FileUploadInterceptor.create('avatar', {
       destination: './uploads/avatars',
-      fileTypes: /\/(jpg|jpeg|png|webp)$/,
+      fileTypes: /\/(jpg|jpeg|png)$/, // только JPG и PNG для аватаров
       fileSize: 2 * 1024 * 1024, // 2MB limit for avatars
       filenamePrefix: 'avatar',
     }),
@@ -1831,7 +1831,7 @@ export class UsersController {
   @UseInterceptors(
     FileUploadInterceptor.create('avatar', {
       destination: './uploads/avatars',
-      fileTypes: /\/(jpg|jpeg|png|webp)$/,
+      fileTypes: /\/(jpg|jpeg|png)$/, // только JPG и PNG для аватаров
       fileSize: 2 * 1024 * 1024, // 2MB limit for avatars
       filenamePrefix: 'avatar',
     }),
