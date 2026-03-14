@@ -54,7 +54,7 @@ export const VOTES_FOR_RARITY: Record<
 };
 
 /** Монеты активности за один голос по предложению (должно совпадать с клиентом). */
-export const VOTE_REWARD_COINS = 25;
+export const VOTE_REWARD_COINS = 100;
 
 function getPriceByRarity(
   rarity: 'common' | 'rare' | 'epic' | 'legendary',
@@ -1071,10 +1071,15 @@ export class ShopService {
     }
     suggestion.votedUserIds.push(userOid);
     await suggestion.save();
-    await this.usersService.addBalance(userId, VOTE_REWARD_COINS);
-    this.logger.log(
-      `User ${userId} voted for suggestion ${suggestionId} (+${VOTE_REWARD_COINS} coins)`,
+    const { added } = await this.usersService.addBalanceIfFirstVoteThisWeek(
+      userId,
+      VOTE_REWARD_COINS,
     );
+    if (added) {
+      this.logger.log(
+        `User ${userId} voted for suggestion ${suggestionId} (+${VOTE_REWARD_COINS} coins, first vote this week)`,
+      );
+    }
     return {
       votesCount: suggestion.votedUserIds.length,
       userHasVoted: true,

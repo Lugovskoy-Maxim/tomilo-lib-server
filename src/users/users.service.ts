@@ -38,7 +38,7 @@ import { AlchemyService } from '../game-items/alchemy.service';
 import { WheelService } from '../game-items/wheel.service';
 import { GameItemsService } from '../game-items/game-items.service';
 import { CardsService } from '../game-items/cards.service';
-import { Cron, CronExpression } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 /** Категории закладок: читаю, в планах, прочитано, избранное, брошено */
 export const BOOKMARK_CATEGORIES = [
   'reading',
@@ -57,8 +57,6 @@ const CAN_VIEW_ADULT_CACHE_PREFIX = 'user:canViewAdult:';
 const CAN_VIEW_ADULT_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 /** Кеш таблицы лидеров: 6 часов (синхронно с текстом на клиенте «Данные обновляются каждые 6 часов») */
 const LEADERBOARD_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-/** Ключ поколения кеша лидерборда: при инкременте все старые ключи перестают использоваться */
-const LEADERBOARD_CACHE_GEN_KEY = 'leaderboard:gen';
 /** Кеш лидерборда за период (неделя/месяц): короче, чтобы неделя/месяц/всё время не расходились из-за устаревания */
 const LEADERBOARD_PERIOD_CACHE_TTL_MS = 15 * 60 * 1000; // 15 мин
 
@@ -310,22 +308,6 @@ export class UsersService {
   }
 
   /**
-   * Текущее поколение кеша лидерборда. При запуске крона каждые 6ч инкрементируется — старые ключи перестают использоваться.
-   */
-  private async getLeaderboardCacheGen(): Promise<number> {
-    const v = await this.cacheManager.get(LEADERBOARD_CACHE_GEN_KEY);
-    return typeof v === 'number' ? v : 0;
-  }
-
-  /** Каждые 6 часов (0:00, 6:00, 12:00, 18:00) инвалидируем кеш таблицы лидеров. */
-  @Cron(CronExpression.EVERY_6_HOURS)
-  async invalidateLeaderboardCache() {
-    const gen = await this.getLeaderboardCacheGen();
-    await this.cacheManager.set(LEADERBOARD_CACHE_GEN_KEY, gen + 1);
-    this.logger.log(`Leaderboard cache invalidated (gen ${gen} -> ${gen + 1})`);
-  }
-
-  /**
    * Получить лидерборд пользователей по заданной категории.
    * Кеширует результат на 6 часов (LEADERBOARD_CACHE_TTL_MS).
    */
@@ -343,8 +325,7 @@ export class UsersService {
     const page = Math.max(1, Number(options.page) || 1);
     const skip = (page - 1) * limit;
 
-    const gen = await this.getLeaderboardCacheGen();
-    const cacheKey = `leaderboard:${gen}:${category}:${period}:limit:${limit}:page:${page}`;
+    const cacheKey = `leaderboard:${category}:${period}:limit:${limit}:page:${page}`;
     const cached = await this.cacheManager.get(cacheKey);
     if (cached) {
       return cached as LeaderboardResponse;
@@ -522,8 +503,7 @@ export class UsersService {
     const limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
     const page = Math.max(1, Number(options.page) || 1);
 
-    const gen = await this.getLeaderboardCacheGen();
-    const cacheKey = `leaderboard:${gen}:${category}:allPeriods:limit:${limit}:page:${page}`;
+    const cacheKey = `leaderboard:${category}:allPeriods:limit:${limit}:page:${page}`;
     const cached = await this.cacheManager.get(cacheKey);
     if (cached) {
       return cached as LeaderboardAllPeriodsResponse;
@@ -3139,7 +3119,7 @@ export class UsersService {
   }[] = [
     {
       type: 'read_chapters',
-      name: 'Старт дня',
+      name: 'Читатель дня',
       description: 'Прочитайте 3 главы',
       target: 3,
       rewardExp: 5,
@@ -3162,22 +3142,6 @@ export class UsersService {
       rewardCoins: 5,
     },
     {
-      type: 'read_chapters',
-      name: 'Спринт на дистанции',
-      description: 'Прочитайте 15 глав',
-      target: 15,
-      rewardExp: 25,
-      rewardCoins: 8,
-    },
-    {
-      type: 'read_chapters',
-      name: 'Рекорд дня',
-      description: 'Прочитайте 20 глав',
-      target: 20,
-      rewardExp: 35,
-      rewardCoins: 12,
-    },
-    {
       type: 'add_bookmark',
       name: 'В закладки',
       description: 'Добавьте мангу в закладки',
@@ -3186,68 +3150,28 @@ export class UsersService {
       rewardCoins: 2,
     },
     {
-      type: 'add_bookmark',
-      name: 'Коллекция растёт',
-      description: 'Добавьте 2 манги в закладки',
-      target: 2,
-      rewardExp: 8,
-      rewardCoins: 4,
-    },
-    {
       type: 'leave_comment',
-      name: 'Ваше слово',
+      name: 'Ваше мнение',
       description: 'Оставьте комментарий',
       target: 1,
       rewardExp: 5,
       rewardCoins: 2,
     },
     {
-      type: 'leave_comment',
-      name: 'Два слова в ленту',
-      description: 'Оставьте 2 комментария',
-      target: 2,
-      rewardExp: 10,
-      rewardCoins: 4,
-    },
-    {
       type: 'rate_title',
-      name: 'Ваша оценка',
+      name: 'Оценка',
       description: 'Поставьте оценку тайтлу или главе',
       target: 1,
       rewardExp: 5,
       rewardCoins: 2,
     },
     {
-      type: 'rate_title',
-      name: 'Строгий взгляд',
-      description: 'Поставьте 2 оценки тайтлам или главам',
-      target: 2,
-      rewardExp: 10,
-      rewardCoins: 4,
-    },
-    {
       type: 'daily_login',
-      name: 'Заглянуть в гости',
+      name: 'Ежедневный вход',
       description: 'Зайдите на сайт',
       target: 1,
       rewardExp: 5,
       rewardCoins: 2,
-    },
-    {
-      type: 'like_comment',
-      name: 'Поддержать автора',
-      description: 'Поставьте лайк комментарию',
-      target: 1,
-      rewardExp: 5,
-      rewardCoins: 2,
-    },
-    {
-      type: 'like_comment',
-      name: 'Щедрый на лайки',
-      description: 'Поставьте 3 лайка комментариям',
-      target: 3,
-      rewardExp: 12,
-      rewardCoins: 5,
     },
   ];
 
@@ -3329,10 +3253,10 @@ export class UsersService {
       };
     }
 
-    // Создаём 6 случайных квестов на сегодня
+    // Создаём 3 случайных квеста на сегодня
     const pool = [...UsersService.DAILY_QUEST_POOL];
     const shuffled = pool.sort(() => Math.random() - 0.5);
-    const selected = shuffled.slice(0, 6).map((def, i) => ({
+    const selected = shuffled.slice(0, 3).map((def, i) => ({
       id: `daily_${today.getTime()}_${i}`,
       type: def.type,
       name: def.name,
@@ -3706,6 +3630,49 @@ export class UsersService {
       `Added ${amount} balance to user ${userId}. New balance: ${user.balance}`,
     );
     return user;
+  }
+
+  /**
+   * Начисляет монеты за голос по предложению только раз в неделю (первый голос за неделю).
+   * Неделя — понедельник 00:00 по локальному времени сервера.
+   */
+  async addBalanceIfFirstVoteThisWeek(
+    userId: string,
+    amount: number,
+  ): Promise<{ added: boolean }> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (amount < 0) {
+      throw new BadRequestException('Amount must be positive');
+    }
+    const now = new Date();
+    const day = now.getDay();
+    const daysToMonday = day === 0 ? 6 : day - 1;
+    const weekStart = new Date(now);
+    weekStart.setDate(now.getDate() - daysToMonday);
+    weekStart.setHours(0, 0, 0, 0);
+
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('lastSuggestionVoteRewardAt')
+      .lean();
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const lastAt = (user as any).lastSuggestionVoteRewardAt as Date | undefined;
+    if (lastAt && new Date(lastAt) >= weekStart) {
+      return { added: false };
+    }
+
+    await this.userModel.findByIdAndUpdate(new Types.ObjectId(userId), {
+      $inc: { balance: amount },
+      $set: { lastSuggestionVoteRewardAt: new Date() },
+    });
+    this.logger.log(
+      `Added ${amount} vote-reward balance to user ${userId} (first vote this week)`,
+    );
+    return { added: true };
   }
 
   async deductBalance(userId: string, amount: number): Promise<User> {

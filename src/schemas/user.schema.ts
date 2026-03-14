@@ -76,6 +76,10 @@ export class User {
   @Prop()
   lastLoginExpDate: Date;
 
+  /** Дата последнего начисления монет за голос по предложению (раз в неделю) */
+  @Prop()
+  lastSuggestionVoteRewardAt: Date;
+
   /** Количество завершённых тайтлов (из закладок "completed") */
   @Prop({ default: 0 })
   completedTitlesCount: number;
