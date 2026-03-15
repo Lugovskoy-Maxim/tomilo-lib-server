@@ -3214,77 +3214,88 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID');
     }
 
-    const user = await this.userModel.findById(new Types.ObjectId(userId));
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
     const today = UsersService.getStartOfDayUTC();
     const resetAt = new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString();
-    const existing = user.dailyQuests;
-    const existingDate = existing?.date
-      ? UsersService.getStartOfDayUTC(new Date(existing.date))
-      : null;
-    const rewardPreviewByQuestType = this.dropsService
-      ? await this.dropsService.getDailyQuestRewardPreviews(
-          (existing?.quests ?? UsersService.DAILY_QUEST_POOL).map((quest) => quest.type),
-        )
-      : {};
+    const maxAttempts = 3;
 
-    if (
-      existingDate &&
-      existingDate.getTime() === today.getTime() &&
-      existing?.quests?.length
-    ) {
-      return {
-        date: today.toISOString(),
-        serverNow: new Date().toISOString(),
-        resetAt,
-        quests: existing.quests.map((q) => ({
-          id: q.id,
-          type: q.type,
-          name: q.name,
-          description: q.description,
-          target: q.target,
-          progress: q.progress,
-          rewardExp: q.rewardExp,
-          rewardCoins: q.rewardCoins,
-          rewardItems: rewardPreviewByQuestType[q.type] ?? [],
-          completed: q.completed,
-          claimedAt: q.claimedAt ? new Date(q.claimedAt).toISOString() : null,
-        })),
-      };
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const user = await this.userModel.findById(new Types.ObjectId(userId));
+        if (!user) {
+          throw new NotFoundException('User not found');
+        }
+
+        const existing = user.dailyQuests;
+        const existingDate = existing?.date
+          ? UsersService.getStartOfDayUTC(new Date(existing.date))
+          : null;
+        const rewardPreviewByQuestType = this.dropsService
+          ? await this.dropsService.getDailyQuestRewardPreviews(
+              (existing?.quests ?? UsersService.DAILY_QUEST_POOL).map((quest) => quest.type),
+            )
+          : {};
+
+        if (
+          existingDate &&
+          existingDate.getTime() === today.getTime() &&
+          existing?.quests?.length
+        ) {
+          return {
+            date: today.toISOString(),
+            serverNow: new Date().toISOString(),
+            resetAt,
+            quests: existing.quests.map((q) => ({
+              id: q.id,
+              type: q.type,
+              name: q.name,
+              description: q.description,
+              target: q.target,
+              progress: q.progress,
+              rewardExp: q.rewardExp,
+              rewardCoins: q.rewardCoins,
+              rewardItems: rewardPreviewByQuestType[q.type] ?? [],
+              completed: q.completed,
+              claimedAt: q.claimedAt ? new Date(q.claimedAt).toISOString() : null,
+            })),
+          };
+        }
+
+        // Создаём 3 случайных квеста на сегодня
+        const pool = [...UsersService.DAILY_QUEST_POOL];
+        const shuffled = pool.sort(() => Math.random() - 0.5);
+        const selected = shuffled.slice(0, 3).map((def, i) => ({
+          id: `daily_${today.getTime()}_${i}`,
+          type: def.type,
+          name: def.name,
+          description: def.description,
+          target: def.target,
+          progress: 0,
+          rewardExp: def.rewardExp,
+          rewardCoins: def.rewardCoins,
+          completed: false,
+          claimedAt: null as Date | null,
+        }));
+
+        user.dailyQuests = { date: today, quests: selected } as any;
+        await user.save();
+
+        return {
+          date: today.toISOString(),
+          serverNow: new Date().toISOString(),
+          resetAt,
+          quests: selected.map((q) => ({
+            ...q,
+            rewardItems: rewardPreviewByQuestType[q.type] ?? [],
+            claimedAt: null,
+          })),
+        };
+      } catch (err: any) {
+        if (err?.name === 'VersionError' && attempt < maxAttempts - 1) continue;
+        throw err;
+      }
     }
 
-    // Создаём 3 случайных квеста на сегодня
-    const pool = [...UsersService.DAILY_QUEST_POOL];
-    const shuffled = pool.sort(() => Math.random() - 0.5);
-    const selected = shuffled.slice(0, 3).map((def, i) => ({
-      id: `daily_${today.getTime()}_${i}`,
-      type: def.type,
-      name: def.name,
-      description: def.description,
-      target: def.target,
-      progress: 0,
-      rewardExp: def.rewardExp,
-      rewardCoins: def.rewardCoins,
-      completed: false,
-      claimedAt: null as Date | null,
-    }));
-
-    user.dailyQuests = { date: today, quests: selected } as any;
-    await user.save();
-
-    return {
-      date: today.toISOString(),
-      serverNow: new Date().toISOString(),
-      resetAt,
-      quests: selected.map((q) => ({
-        ...q,
-        rewardItems: rewardPreviewByQuestType[q.type] ?? [],
-        claimedAt: null,
-      })),
-    };
+    return null;
   }
 
   /** Увеличивает прогресс по типу квеста для сегодняшних заданий. */
@@ -3298,25 +3309,35 @@ export class UsersService {
     // Сначала создаём задания на сегодня, если их ещё нет (иначе прогресс чтения глав и др. не засчитается)
     await this.getOrCreateDailyQuests(userId);
 
-    const user = await this.userModel.findById(new Types.ObjectId(userId));
-    if (!user?.dailyQuests?.quests?.length) return;
-
     const today = UsersService.getStartOfDayUTC();
-    const questDate = user.dailyQuests.date
-      ? UsersService.getStartOfDayUTC(new Date(user.dailyQuests.date))
-      : null;
-    if (!questDate || questDate.getTime() !== today.getTime()) return;
+    const maxAttempts = 3;
 
-    let changed = false;
-    for (const q of user.dailyQuests.quests) {
-      if (q.type === questType && !q.completed) {
-        const before = q.progress;
-        q.progress = Math.min((q.progress ?? 0) + delta, q.target);
-        if (q.progress >= q.target) q.completed = true;
-        if (q.progress !== before) changed = true;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const user = await this.userModel.findById(new Types.ObjectId(userId));
+        if (!user?.dailyQuests?.quests?.length) return;
+
+        const questDate = user.dailyQuests.date
+          ? UsersService.getStartOfDayUTC(new Date(user.dailyQuests.date))
+          : null;
+        if (!questDate || questDate.getTime() !== today.getTime()) return;
+
+        let changed = false;
+        for (const q of user.dailyQuests.quests) {
+          if (q.type === questType && !q.completed) {
+            const before = q.progress;
+            q.progress = Math.min((q.progress ?? 0) + delta, q.target);
+            if (q.progress >= q.target) q.completed = true;
+            if (q.progress !== before) changed = true;
+          }
+        }
+        if (changed) await user.save();
+        return;
+      } catch (err: any) {
+        if (err?.name === 'VersionError' && attempt < maxAttempts - 1) continue;
+        throw err;
       }
     }
-    if (changed) await user.save();
   }
 
   /** Забрать награду за выполненное задание. */
