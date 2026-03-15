@@ -97,7 +97,7 @@ export class ChaptersController {
       fileTypes: /\/(jpg|jpeg|png|webp|gif)$/,
       fileSize: 50 * 1024 * 1024, // 50MB limit for chapter pages
       filenamePrefix: 'chapter-page',
-      maxFiles: 50,
+      maxFiles: 200,
     }),
   )
   @UsePipes(new ValidationPipe({ transform: true }))
