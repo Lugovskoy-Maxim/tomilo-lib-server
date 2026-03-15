@@ -31,7 +31,14 @@ export class AutoParsingService implements OnModuleInit {
   ) {}
 
   async onModuleInit() {
-    await this.backfillMissingScheduleHours();
+    try {
+      await this.backfillMissingScheduleHours();
+    } catch (error) {
+      this.logger.error(
+        `Backfill scheduleHour failed (server will continue): ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+      // Не пробрасываем ошибку — сервер должен стартовать даже при временной недоступности БД
+    }
   }
 
   private getDeterministicScheduleHour(seed: string): number {
@@ -519,62 +526,86 @@ export class AutoParsingService implements OnModuleInit {
   /** Jobs without scheduleHour: run at 0, 6, 12, 18 (unchanged for existing jobs). */
   @Cron(CronExpression.EVERY_6_HOURS)
   async handleDailyJobs() {
-    this.logger.log('Starting daily auto-parsing jobs (legacy schedule)');
-    await this.processJobsByFrequency(ParsingFrequency.DAILY, {
-      onlyWithoutScheduleHour: true,
-    });
-    this.logger.log('Completed daily auto-parsing jobs (legacy schedule)');
+    try {
+      this.logger.log('Starting daily auto-parsing jobs (legacy schedule)');
+      await this.processJobsByFrequency(ParsingFrequency.DAILY, {
+        onlyWithoutScheduleHour: true,
+      });
+      this.logger.log('Completed daily auto-parsing jobs (legacy schedule)');
+    } catch (error) {
+      this.logger.error(
+        `Daily auto-parsing jobs failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
   }
 
   @Cron(CronExpression.EVERY_WEEK)
   async handleWeeklyJobs() {
-    await this.processJobsByFrequency(ParsingFrequency.WEEKLY, {
-      onlyWithoutScheduleHour: true,
-    });
+    try {
+      await this.processJobsByFrequency(ParsingFrequency.WEEKLY, {
+        onlyWithoutScheduleHour: true,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Weekly auto-parsing jobs failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
   }
 
   @Cron(CronExpression.EVERY_1ST_DAY_OF_MONTH_AT_MIDNIGHT)
   async handleMonthlyJobs() {
-    await this.processJobsByFrequency(ParsingFrequency.MONTHLY, {
-      onlyWithoutScheduleHour: true,
-    });
+    try {
+      await this.processJobsByFrequency(ParsingFrequency.MONTHLY, {
+        onlyWithoutScheduleHour: true,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Monthly auto-parsing jobs failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
   }
 
   /** Every 10 minutes: run jobs that have scheduleHour + scheduleMinute set to current slot. */
   @Cron('*/10 * * * *')
   async handleScheduledByHourAndMinuteJobs() {
-    const now = new Date();
-    const hour = now.getUTCHours();
-    const minuteSlot = (Math.floor(now.getUTCMinutes() / 10) * 10) as
-      | 0
-      | 10
-      | 20
-      | 30
-      | 40
-      | 50;
-    const dayOfWeek = now.getUTCDay(); // 0 = Sunday
-    const dayOfMonth = now.getUTCDate();
+    try {
+      const now = new Date();
+      const hour = now.getUTCHours();
+      const minuteSlot = (Math.floor(now.getUTCMinutes() / 10) * 10) as
+        | 0
+        | 10
+        | 20
+        | 30
+        | 40
+        | 50;
+      const dayOfWeek = now.getUTCDay(); // 0 = Sunday
+      const dayOfMonth = now.getUTCDate();
 
-    // Daily: run at scheduleHour:scheduleMinute every day
-    await this.processJobsByFrequency(ParsingFrequency.DAILY, {
-      scheduleHour: hour,
-      scheduleMinute: minuteSlot,
-    });
-
-    // Weekly: run at scheduleHour:scheduleMinute on Sunday (same day as EVERY_WEEK)
-    if (dayOfWeek === 0) {
-      await this.processJobsByFrequency(ParsingFrequency.WEEKLY, {
+      // Daily: run at scheduleHour:scheduleMinute every day
+      await this.processJobsByFrequency(ParsingFrequency.DAILY, {
         scheduleHour: hour,
         scheduleMinute: minuteSlot,
       });
-    }
 
-    // Monthly: run at scheduleHour:scheduleMinute on 1st
-    if (dayOfMonth === 1) {
-      await this.processJobsByFrequency(ParsingFrequency.MONTHLY, {
-        scheduleHour: hour,
-        scheduleMinute: minuteSlot,
-      });
+      // Weekly: run at scheduleHour:scheduleMinute on Sunday (same day as EVERY_WEEK)
+      if (dayOfWeek === 0) {
+        await this.processJobsByFrequency(ParsingFrequency.WEEKLY, {
+          scheduleHour: hour,
+          scheduleMinute: minuteSlot,
+        });
+      }
+
+      // Monthly: run at scheduleHour:scheduleMinute on 1st
+      if (dayOfMonth === 1) {
+        await this.processJobsByFrequency(ParsingFrequency.MONTHLY, {
+          scheduleHour: hour,
+          scheduleMinute: minuteSlot,
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `Scheduled-by-slot auto-parsing jobs failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
     }
   }
 

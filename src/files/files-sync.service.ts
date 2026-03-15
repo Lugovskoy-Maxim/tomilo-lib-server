@@ -41,12 +41,18 @@ export class FilesSyncService {
       return;
     }
 
-    this.logger.log('Запуск ежедневной синхронизации файлов...');
-    const result = await this.fullSync();
-    this.logger.log(
-      `Синхронизация завершена: загружено ${result.uploaded}, удалено из S3 ${result.deleted}, ` +
-        `осиротевших удалено ${result.orphansDeleted}, ошибок ${result.errors.length}`,
-    );
+    try {
+      this.logger.log('Запуск ежедневной синхронизации файлов...');
+      const result = await this.fullSync();
+      this.logger.log(
+        `Синхронизация завершена: загружено ${result.uploaded}, удалено из S3 ${result.deleted}, ` +
+          `осиротевших удалено ${result.orphansDeleted}, ошибок ${result.errors.length}`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Ежедневная синхронизация файлов завершилась с ошибкой: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
   }
 
   /**

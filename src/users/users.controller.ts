@@ -1889,6 +1889,8 @@ export class UsersController {
         'comments',
         'streak',
         'chaptersRead',
+        'likesReceived',
+        'balance',
       ];
       const safeCategory = validCategories.includes(category || '')
         ? (category as
@@ -1897,7 +1899,9 @@ export class UsersController {
             | 'ratings'
             | 'comments'
             | 'streak'
-            | 'chaptersRead')
+            | 'chaptersRead'
+            | 'likesReceived'
+            | 'balance')
         : 'level';
 
       const wantAllPeriods =
