@@ -279,65 +279,80 @@ export class DisciplesService {
   }
 
   private async ensureDefaultTechniqueSeeded(): Promise<void> {
-    const count = await this.techniqueModel.countDocuments({}).exec();
-    if (count > 0) return;
-    await this.techniqueModel.create([
-      {
-        id: 'basic_strike',
-        name: 'Базовый удар',
-        description: 'Простой удар ци.',
-        type: 'attack',
-        power: 12,
-        cooldownTurns: 0,
-        requiredLevel: 1,
-        requiredRank: 'F',
-        learnCostCoins: 0,
-      },
-      {
-        id: 'swift_step',
-        name: 'Стремительный шаг',
-        description: 'Уклонение и рывок.',
-        type: 'movement',
-        power: 6,
-        cooldownTurns: 2,
-        requiredLevel: 5,
-        requiredRank: 'E',
-        learnCostCoins: 60,
-      },
-      {
-        id: 'healing_breath',
-        name: 'Дыхание восстановления',
-        description: 'Лечит ученика в бою.',
-        type: 'heal',
-        power: 18,
-        cooldownTurns: 3,
-        requiredLevel: 10,
-        requiredRank: 'D',
-        learnCostCoins: 120,
-      },
-      {
-        id: 'piercing_technique',
-        name: 'Пробивающая техника',
-        description: 'Сильная атака.',
-        type: 'attack',
-        power: 26,
-        cooldownTurns: 2,
-        requiredLevel: 15,
-        requiredRank: 'C',
-        learnCostCoins: 220,
-      },
-      {
-        id: 'domain_burst',
-        name: 'Вспышка домена',
-        description: 'Ульта: мощный выброс энергии.',
-        type: 'ultimate',
-        power: 45,
-        cooldownTurns: 5,
-        requiredLevel: 25,
-        requiredRank: 'B',
-        learnCostCoins: 400,
-      },
-    ]);
+    const defaults: Array<{
+      id: string;
+      name: string;
+      description: string;
+      type: 'attack' | 'movement' | 'heal' | 'buff' | 'debuff' | 'ultimate';
+      power: number;
+      cooldownTurns: number;
+      requiredLevel: number;
+      requiredRank: string;
+      learnCostCoins: number;
+    }> = [
+      { id: 'basic_strike', name: 'Базовый удар', description: 'Простой удар ци.', type: 'attack', power: 12, cooldownTurns: 0, requiredLevel: 1, requiredRank: 'F', learnCostCoins: 0 },
+      { id: 'swift_step', name: 'Стремительный шаг', description: 'Уклонение и рывок.', type: 'movement', power: 6, cooldownTurns: 2, requiredLevel: 5, requiredRank: 'E', learnCostCoins: 60 },
+      { id: 'healing_breath', name: 'Дыхание восстановления', description: 'Лечит ученика в бою.', type: 'heal', power: 18, cooldownTurns: 3, requiredLevel: 10, requiredRank: 'D', learnCostCoins: 120 },
+      { id: 'piercing_technique', name: 'Пробивающая техника', description: 'Сильная атака.', type: 'attack', power: 26, cooldownTurns: 2, requiredLevel: 15, requiredRank: 'C', learnCostCoins: 220 },
+      { id: 'domain_burst', name: 'Вспышка домена', description: 'Ульта: мощный выброс энергии.', type: 'ultimate', power: 45, cooldownTurns: 5, requiredLevel: 25, requiredRank: 'B', learnCostCoins: 400 },
+      // Атакующие
+      { id: 'flame_palm', name: 'Ладонь пламени', description: 'Огненная атака, поджигает противника.', type: 'attack', power: 22, cooldownTurns: 1, requiredLevel: 3, requiredRank: 'F', learnCostCoins: 40 },
+      { id: 'ice_needle', name: 'Ледяная игла', description: 'Пробивающий удар холодом.', type: 'attack', power: 20, cooldownTurns: 0, requiredLevel: 4, requiredRank: 'F', learnCostCoins: 50 },
+      { id: 'thunder_fist', name: 'Громовой кулак', description: 'Удар, насыщенный молнией.', type: 'attack', power: 28, cooldownTurns: 2, requiredLevel: 8, requiredRank: 'E', learnCostCoins: 90 },
+      { id: 'shadow_strike', name: 'Удар тени', description: 'Атака из тени, сложно предугадать.', type: 'attack', power: 24, cooldownTurns: 1, requiredLevel: 6, requiredRank: 'E', learnCostCoins: 70 },
+      { id: 'bone_crusher', name: 'Костолом', description: 'Сокрушительный удар по корпусу.', type: 'attack', power: 32, cooldownTurns: 3, requiredLevel: 12, requiredRank: 'D', learnCostCoins: 150 },
+      { id: 'spirit_slash', name: 'Духовный рассекатель', description: 'Удар оружием духа.', type: 'attack', power: 30, cooldownTurns: 2, requiredLevel: 11, requiredRank: 'D', learnCostCoins: 140 },
+      { id: 'dragon_roar', name: 'Рёв дракона', description: 'Оглушающий выброс ци.', type: 'attack', power: 38, cooldownTurns: 4, requiredLevel: 18, requiredRank: 'C', learnCostCoins: 260 },
+      { id: 'phoenix_dive', name: 'Пике феникса', description: 'Падение с неба, охваченное пламенем.', type: 'attack', power: 42, cooldownTurns: 4, requiredLevel: 20, requiredRank: 'C', learnCostCoins: 300 },
+      { id: 'void_rend', name: 'Разрыв пустоты', description: 'Разрушающий удар пространством.', type: 'attack', power: 48, cooldownTurns: 5, requiredLevel: 28, requiredRank: 'B', learnCostCoins: 450 },
+      { id: 'soul_harvest', name: 'Жатва душ', description: 'Тёмная атака, забирает силу врага.', type: 'attack', power: 44, cooldownTurns: 4, requiredLevel: 22, requiredRank: 'C', learnCostCoins: 340 },
+      { id: 'starfall', name: 'Падение звезды', description: 'Призыв небесной энергии на врага.', type: 'attack', power: 36, cooldownTurns: 3, requiredLevel: 16, requiredRank: 'D', learnCostCoins: 200 },
+      { id: 'thousand_cuts', name: 'Тысяча порезов', description: 'Серия быстрых ударов.', type: 'attack', power: 34, cooldownTurns: 2, requiredLevel: 14, requiredRank: 'D', learnCostCoins: 180 },
+      // Защитные / движение
+      { id: 'iron_skin', name: 'Железная кожа', description: 'Укрепление тела, снижает входящий урон.', type: 'buff', power: 8, cooldownTurns: 3, requiredLevel: 5, requiredRank: 'E', learnCostCoins: 65 },
+      { id: 'wind_dash', name: 'Порыв ветра', description: 'Мгновенный рывок в сторону.', type: 'movement', power: 10, cooldownTurns: 2, requiredLevel: 7, requiredRank: 'E', learnCostCoins: 80 },
+      { id: 'mirror_step', name: 'Зеркальный шаг', description: 'Уклонение с отражением траектории атаки.', type: 'movement', power: 12, cooldownTurns: 3, requiredLevel: 9, requiredRank: 'D', learnCostCoins: 100 },
+      { id: 'earth_wall', name: 'Стена земли', description: 'Призыв барьера из ци земли.', type: 'buff', power: 14, cooldownTurns: 4, requiredLevel: 13, requiredRank: 'D', learnCostCoins: 160 },
+      { id: 'blink', name: 'Мерцание', description: 'Краткое телепортационное смещение.', type: 'movement', power: 6, cooldownTurns: 4, requiredLevel: 17, requiredRank: 'C', learnCostCoins: 240 },
+      { id: 'counter_stance', name: 'Стойка контратаки', description: 'Готовность отразить удар и ответить.', type: 'buff', power: 18, cooldownTurns: 3, requiredLevel: 21, requiredRank: 'C', learnCostCoins: 320 },
+      { id: 'golden_bell', name: 'Золотой колокол', description: 'Защитная оболочка ци вокруг тела.', type: 'buff', power: 22, cooldownTurns: 5, requiredLevel: 26, requiredRank: 'B', learnCostCoins: 420 },
+      { id: 'phantom_dodge', name: 'Призрачное уклонение', description: 'Тело становится полупрозрачным, атаки проходят мимо.', type: 'movement', power: 16, cooldownTurns: 5, requiredLevel: 24, requiredRank: 'B', learnCostCoins: 380 },
+      // Лечение
+      { id: 'vitality_stream', name: 'Поток жизненной силы', description: 'Восстановление за счёт внутренней энергии.', type: 'heal', power: 22, cooldownTurns: 2, requiredLevel: 6, requiredRank: 'E', learnCostCoins: 75 },
+      { id: 'herb_mastery', name: 'Искусство трав', description: 'Быстрое применение лечебных свойств трав.', type: 'heal', power: 26, cooldownTurns: 3, requiredLevel: 11, requiredRank: 'D', learnCostCoins: 130 },
+      { id: 'spirit_well', name: 'Колодец духа', description: 'Черпание силы из духовного источника.', type: 'heal', power: 32, cooldownTurns: 4, requiredLevel: 16, requiredRank: 'D', learnCostCoins: 190 },
+      { id: 'rejuvenation', name: 'Омоложение', description: 'Ускоренная регенерация тканей.', type: 'heal', power: 38, cooldownTurns: 4, requiredLevel: 20, requiredRank: 'C', learnCostCoins: 290 },
+      { id: 'life_bloom', name: 'Цветение жизни', description: 'Всплеск целительной энергии.', type: 'heal', power: 44, cooldownTurns: 5, requiredLevel: 25, requiredRank: 'B', learnCostCoins: 410 },
+      { id: 'soul_mend', name: 'Починка души', description: 'Глубокое исцеление духа и тела.', type: 'heal', power: 50, cooldownTurns: 5, requiredLevel: 30, requiredRank: 'A', learnCostCoins: 500 },
+      // Дебаффы (в бою дают урон по текущей логике)
+      { id: 'poison_sting', name: 'Ядовитое жало', description: 'Отравление, ослабляет противника.', type: 'debuff', power: 18, cooldownTurns: 2, requiredLevel: 4, requiredRank: 'F', learnCostCoins: 45 },
+      { id: 'weakness_strike', name: 'Удар по слабости', description: 'Снижает защиту врага на время.', type: 'debuff', power: 20, cooldownTurns: 2, requiredLevel: 8, requiredRank: 'E', learnCostCoins: 85 },
+      { id: 'curse_mark', name: 'Печать проклятия', description: 'Накладывает метку, усиливающую получаемый урон.', type: 'debuff', power: 26, cooldownTurns: 3, requiredLevel: 12, requiredRank: 'D', learnCostCoins: 155 },
+      { id: 'spirit_drain', name: 'Вытягивание духа', description: 'Забирает часть силы противника.', type: 'debuff', power: 30, cooldownTurns: 3, requiredLevel: 15, requiredRank: 'D', learnCostCoins: 210 },
+      { id: 'binding_chains', name: 'Оковы ци', description: 'Сковывает движения и ослабляет.', type: 'debuff', power: 34, cooldownTurns: 4, requiredLevel: 19, requiredRank: 'C', learnCostCoins: 270 },
+      { id: 'fear_gaze', name: 'Взгляд страха', description: 'Психологическая атака, снижает боевой дух.', type: 'debuff', power: 28, cooldownTurns: 3, requiredLevel: 17, requiredRank: 'C', learnCostCoins: 230 },
+      // Баффы (в бою дают урон по текущей логике, можно трактовать как усиленный удар)
+      { id: 'battle_rage', name: 'Боевая ярость', description: 'Всплеск ярости, увеличивает урон следующей атаки.', type: 'buff', power: 24, cooldownTurns: 2, requiredLevel: 10, requiredRank: 'D', learnCostCoins: 125 },
+      { id: 'sharp_edge', name: 'Острое лезвие', description: 'Ци усиливает оружие, повышая пробитие.', type: 'buff', power: 28, cooldownTurns: 2, requiredLevel: 14, requiredRank: 'D', learnCostCoins: 175 },
+      { id: 'berserker', name: 'Режим берсерка', description: 'Рискованное усиление атаки ценой защиты.', type: 'buff', power: 36, cooldownTurns: 4, requiredLevel: 22, requiredRank: 'C', learnCostCoins: 330 },
+      { id: 'divine_favor', name: 'Благоволение небес', description: 'Временное усиление всех параметров.', type: 'buff', power: 32, cooldownTurns: 4, requiredLevel: 18, requiredRank: 'C', learnCostCoins: 250 },
+      { id: 'overdrive', name: 'Перегрузка', description: 'Краткий выброс всей накопленной ци.', type: 'buff', power: 40, cooldownTurns: 5, requiredLevel: 27, requiredRank: 'B', learnCostCoins: 440 },
+      // Ультимейты
+      { id: 'heavenly_wrath', name: 'Гнев небес', description: 'Призыв карающей небесной силы.', type: 'ultimate', power: 52, cooldownTurns: 6, requiredLevel: 28, requiredRank: 'B', learnCostCoins: 460 },
+      { id: 'inferno', name: 'Инферно', description: 'Огненная буря вокруг противника.', type: 'ultimate', power: 55, cooldownTurns: 6, requiredLevel: 30, requiredRank: 'A', learnCostCoins: 500 },
+      { id: 'void_annihilation', name: 'Аннигиляция пустоты', description: 'Полное уничтожение в области пустоты.', type: 'ultimate', power: 58, cooldownTurns: 6, requiredLevel: 32, requiredRank: 'A', learnCostCoins: 520 },
+      { id: 'celestial_slash', name: 'Небесный удар', description: 'Один сокрушительный удар свыше.', type: 'ultimate', power: 50, cooldownTurns: 5, requiredLevel: 26, requiredRank: 'B', learnCostCoins: 430 },
+      { id: 'soul_devour', name: 'Пожирание души', description: 'Тёмная ульта, забирает жизнь врага.', type: 'ultimate', power: 54, cooldownTurns: 6, requiredLevel: 29, requiredRank: 'A', learnCostCoins: 480 },
+      { id: 'eternal_flame', name: 'Вечное пламя', description: 'Пламя, которое не гаснет, пока цель не падёт.', type: 'ultimate', power: 56, cooldownTurns: 6, requiredLevel: 31, requiredRank: 'A', learnCostCoins: 510 },
+      { id: 'supreme_sword', name: 'Меч верховного', description: 'Воплощение абсолютного меча.', type: 'ultimate', power: 60, cooldownTurns: 6, requiredLevel: 33, requiredRank: 'S', learnCostCoins: 550 },
+    ];
+    for (const t of defaults) {
+      await this.techniqueModel.updateOne(
+        { id: t.id },
+        { $set: { ...t, characterId: null } },
+        { upsert: true },
+      );
+    }
   }
 
   private rankValue(rank: string): number {
@@ -462,6 +477,75 @@ export class DisciplesService {
       return 'basic_strike';
     };
 
+    let userBuffShield = 0;
+    let oppBuffShield = 0;
+    let userDodgeNext = false;
+    let oppDodgeNext = false;
+    let oppDamageTakenMultiplier = 1;
+    let userDamageTakenMultiplier = 1;
+
+    const applyUserDamageToOpponent = (
+      dmg: number,
+      turnNum: number,
+      techniqueId: string,
+      techniqueName: string,
+    ) => {
+      let total = Math.max(1, Math.round(dmg * oppDamageTakenMultiplier));
+      oppDamageTakenMultiplier = 1;
+      const absorbedByShield = Math.min(oppBuffShield, total);
+      oppBuffShield = Math.max(0, oppBuffShield - total);
+      total -= absorbedByShield;
+      hpOpp = Math.max(0, hpOpp - total);
+      log.push({
+        turn: turnNum,
+        actor: 'user',
+        action: 'damage',
+        techniqueId,
+        techniqueName,
+        value: total + absorbedByShield,
+        absorbedByShield: absorbedByShield || undefined,
+        hpUser,
+        hpOpp,
+      });
+    };
+    const applyOpponentDamageToUser = (
+      dmg: number,
+      turnNum: number,
+      techniqueId: string,
+      techniqueName: string,
+    ) => {
+      let total = Math.max(1, Math.round(dmg * userDamageTakenMultiplier));
+      userDamageTakenMultiplier = 1;
+      if (userDodgeNext) {
+        total = Math.max(1, Math.floor(total * 0.35));
+        userDodgeNext = false;
+      }
+      let absorbed = 0;
+      if (userBuffShield > 0) {
+        absorbed = Math.min(userBuffShield, total);
+        userBuffShield = Math.max(0, userBuffShield - total);
+        total -= absorbed;
+      }
+      if (support.shield > 0 && total > 0) {
+        const s = Math.min(support.shield, total);
+        support.shield -= s;
+        absorbed += s;
+        total -= s;
+      }
+      hpUser = Math.max(0, hpUser - total);
+      log.push({
+        turn: turnNum,
+        actor: 'opponent',
+        action: 'damage',
+        techniqueId,
+        techniqueName,
+        value: total + absorbed,
+        absorbed: absorbed || undefined,
+        hpUser,
+        hpOpp,
+      });
+    };
+
     for (let turn = 1; turn <= 6; turn++) {
       for (const k of Object.keys(cd)) cd[k] = Math.max(0, (cd[k] ?? 0) - 1);
 
@@ -485,21 +569,57 @@ export class DisciplesService {
           hpUser,
           hpOpp,
         });
-      } else {
-        const base = (uT.power ?? 10) + userSide.stats.attack * 1.2;
-        const mitigation = Math.max(1, opponentSide.stats.defense * 0.9);
-        const dmg = Math.max(4, Math.round(base - mitigation));
-        hpOpp = Math.max(0, hpOpp - dmg);
+      } else if (uT?.type === 'buff') {
+        const shieldGain = Math.round((uT.power ?? 10) * 2 + userSide.stats.defense * 0.5);
+        userBuffShield += Math.max(5, shieldGain);
         log.push({
           turn,
           actor: 'user',
-          action: 'damage',
+          action: 'buff',
           techniqueId: uId,
           techniqueName: uT?.name,
-          value: dmg,
+          value: shieldGain,
+          shieldTotal: userBuffShield,
           hpUser,
           hpOpp,
         });
+      } else if (uT?.type === 'debuff') {
+        oppDamageTakenMultiplier = 1 + (uT.power ?? 10) / 80;
+        log.push({
+          turn,
+          actor: 'user',
+          action: 'debuff',
+          techniqueId: uId,
+          techniqueName: uT?.name,
+          value: oppDamageTakenMultiplier,
+          hpUser,
+          hpOpp,
+        });
+        const base = (uT.power ?? 10) * 0.6 + userSide.stats.attack * 0.8;
+        const mitigation = Math.max(1, opponentSide.stats.defense * 0.9);
+        const dmg = Math.max(2, Math.round(base - mitigation));
+        applyUserDamageToOpponent(dmg, turn, uId, uT?.name);
+      } else if (uT?.type === 'movement') {
+        userDodgeNext = true;
+        log.push({
+          turn,
+          actor: 'user',
+          action: 'movement',
+          techniqueId: uId,
+          techniqueName: uT?.name,
+          dodgeNext: true,
+          hpUser,
+          hpOpp,
+        });
+      } else {
+        const base = (uT.power ?? 10) + userSide.stats.attack * 1.2;
+        let mitigation = Math.max(1, opponentSide.stats.defense * 0.9);
+        if (oppDodgeNext) {
+          mitigation *= 1.6;
+          oppDodgeNext = false;
+        }
+        const dmg = Math.max(4, Math.round(base - mitigation));
+        applyUserDamageToOpponent(dmg, turn, uId, uT?.name);
       }
       if (hpOpp <= 0) break;
 
@@ -523,28 +643,57 @@ export class DisciplesService {
           hpUser,
           hpOpp,
         });
-      } else {
-        const base = (oT.power ?? 10) + opponentSide.stats.attack * 1.2;
-        const mitigation = Math.max(1, userSide.stats.defense * 0.9);
-        let dmg = Math.max(4, Math.round(base - mitigation));
-        let absorbed = 0;
-        if (support.shield > 0) {
-          absorbed = Math.min(support.shield, dmg);
-          support.shield -= absorbed;
-          dmg -= absorbed;
-        }
-        hpUser = Math.max(0, hpUser - dmg);
+      } else if (oT?.type === 'buff') {
+        const shieldGain = Math.round((oT.power ?? 10) * 2 + opponentSide.stats.defense * 0.5);
+        oppBuffShield += Math.max(5, shieldGain);
         log.push({
           turn,
           actor: 'opponent',
-          action: 'damage',
+          action: 'buff',
           techniqueId: oId,
           techniqueName: oT?.name,
-          value: dmg,
-          absorbed,
+          value: shieldGain,
+          shieldTotal: oppBuffShield,
           hpUser,
           hpOpp,
         });
+      } else if (oT?.type === 'debuff') {
+        userDamageTakenMultiplier = 1 + (oT.power ?? 10) / 80;
+        log.push({
+          turn,
+          actor: 'opponent',
+          action: 'debuff',
+          techniqueId: oId,
+          techniqueName: oT?.name,
+          value: userDamageTakenMultiplier,
+          hpUser,
+          hpOpp,
+        });
+        const base = (oT.power ?? 10) * 0.6 + opponentSide.stats.attack * 0.8;
+        const mitigation = Math.max(1, userSide.stats.defense * 0.9);
+        const dmg = Math.max(2, Math.round(base - mitigation));
+        applyOpponentDamageToUser(dmg, turn, oId, oT?.name);
+      } else if (oT?.type === 'movement') {
+        oppDodgeNext = true;
+        log.push({
+          turn,
+          actor: 'opponent',
+          action: 'movement',
+          techniqueId: oId,
+          techniqueName: oT?.name,
+          dodgeNext: true,
+          hpUser,
+          hpOpp,
+        });
+      } else {
+        const base = (oT.power ?? 10) + opponentSide.stats.attack * 1.2;
+        let mitigation = Math.max(1, userSide.stats.defense * 0.9);
+        if (userDodgeNext) {
+          mitigation *= 1.6;
+          userDodgeNext = false;
+        }
+        let dmg = Math.max(4, Math.round(base - mitigation));
+        applyOpponentDamageToUser(dmg, turn, oId, oT?.name);
       }
       if (
         hpUser > 0 &&
@@ -618,7 +767,8 @@ export class DisciplesService {
     if (!user) throw new NotFoundException('User not found');
 
     const config = await this.getConfig();
-    const maxDisciples = Math.min(3, user.maxDisciples ?? config.maxDisciples ?? 3);
+    // Лимита по количеству нет: только первые 3 считаются активными (логика на клиенте).
+    const maxDisciples = 0; // 0 = без лимита для обратной совместимости с клиентом
     const today = getStartOfDayUTC();
     const lastTrainingAt = user.lastTrainingAt
       ? new Date(user.lastTrainingAt)
@@ -832,11 +982,6 @@ export class DisciplesService {
     if (!user) throw new NotFoundException('User not found');
 
     const config = await this.getConfig();
-    const rawMax = user.maxDisciples ?? config.maxDisciples ?? 3;
-    const maxDisciples = Math.min(3, rawMax);
-    if ((user.disciples?.length ?? 0) >= maxDisciples) {
-      throw new BadRequestException('Достигнут лимит учеников (макс. 3)');
-    }
 
     const candidate = user.lastRerollCandidate;
     if (!candidate)

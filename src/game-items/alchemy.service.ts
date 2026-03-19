@@ -35,6 +35,192 @@ export class AlchemyService {
     private gameItemsService: GameItemsService,
   ) {}
 
+  private async ensureDefaultRecipes(): Promise<void> {
+    const count = await this.recipeModel.countDocuments({}).exec();
+    if (count > 0) return;
+
+    const defaults: Array<{
+      name: string;
+      description: string;
+      icon: string;
+      coinCost: number;
+      ingredients: { itemId: string; count: number }[];
+      resultType: string;
+      element?: 'fire' | 'water' | 'earth' | 'wood' | 'metal' | null;
+      qualityWeights: { common: number; quality: number; legendary: number };
+      mishapChancePercent: number;
+      isActive: boolean;
+      sortOrder: number;
+    }> = [
+      {
+        name: 'Пилюля ци (базовая)',
+        description: 'Простая пилюля из духовной травы. Восстанавливает ци.',
+        icon: '',
+        coinCost: 5,
+        ingredients: [{ itemId: 'spirit_grass', count: 2 }],
+        resultType: 'pill_common',
+        element: null,
+        qualityWeights: { common: 75, quality: 20, legendary: 5 },
+        mishapChancePercent: 5,
+        isActive: true,
+        sortOrder: 0,
+      },
+      {
+        name: 'Пилюля исцеления',
+        description: 'Травяной отвар для заживления ран.',
+        icon: '',
+        coinCost: 15,
+        ingredients: [
+          { itemId: 'spirit_grass', count: 3 },
+          { itemId: 'hundred_year_herb', count: 1 },
+        ],
+        resultType: 'pill_healing',
+        element: 'wood',
+        qualityWeights: { common: 70, quality: 25, legendary: 5 },
+        mishapChancePercent: 10,
+        isActive: true,
+        sortOrder: 1,
+      },
+      {
+        name: 'Пилюля восстановления ци',
+        description: 'Быстро восполняет духовную силу.',
+        icon: '',
+        coinCost: 12,
+        ingredients: [
+          { itemId: 'spirit_grass', count: 2 },
+          { itemId: 'spirit_stone_fragment', count: 1 },
+        ],
+        resultType: 'pill_energy',
+        element: 'water',
+        qualityWeights: { common: 72, quality: 23, legendary: 5 },
+        mishapChancePercent: 8,
+        isActive: true,
+        sortOrder: 2,
+      },
+      {
+        name: 'Пилюля сгущения ци',
+        description: 'Помогает уплотнить ци в даньтяне.',
+        icon: '',
+        coinCost: 25,
+        ingredients: [
+          { itemId: 'hundred_year_herb', count: 2 },
+          { itemId: 'beast_core_low', count: 1 },
+          { itemId: 'spirit_stone_fragment', count: 1 },
+        ],
+        resultType: 'pill_condensation',
+        element: 'earth',
+        qualityWeights: { common: 65, quality: 28, legendary: 7 },
+        mishapChancePercent: 15,
+        isActive: true,
+        sortOrder: 3,
+      },
+      {
+        name: 'Отвар закалки тела',
+        description: 'Укрепляет плоть и кости.',
+        icon: '',
+        coinCost: 30,
+        ingredients: [
+          { itemId: 'iron_ore', count: 2 },
+          { itemId: 'beast_core_low', count: 2 },
+          { itemId: 'hundred_year_herb', count: 1 },
+        ],
+        resultType: 'pill_tempering',
+        element: 'metal',
+        qualityWeights: { common: 68, quality: 26, legendary: 6 },
+        mishapChancePercent: 18,
+        isActive: true,
+        sortOrder: 4,
+      },
+      {
+        name: 'Пилюля прорыва',
+        description: 'Увеличивает шанс прорыва в следующий слой.',
+        icon: '',
+        coinCost: 50,
+        ingredients: [
+          { itemId: 'thousand_year_ginseng', count: 1 },
+          { itemId: 'wolf_king_core', count: 1 },
+          { itemId: 'hundred_year_herb', count: 2 },
+          { itemId: 'spirit_stone_fragment', count: 2 },
+        ],
+        resultType: 'pill_breakthrough',
+        element: 'fire',
+        qualityWeights: { common: 60, quality: 30, legendary: 10 },
+        mishapChancePercent: 25,
+        isActive: true,
+        sortOrder: 5,
+      },
+      {
+        name: 'Укрепляющая пилюля',
+        description: 'Базовая поддержка организма духом зверя.',
+        icon: '',
+        coinCost: 20,
+        ingredients: [
+          { itemId: 'beast_core_low', count: 2 },
+          { itemId: 'spirit_grass', count: 2 },
+        ],
+        resultType: 'pill_common',
+        element: null,
+        qualityWeights: { common: 74, quality: 21, legendary: 5 },
+        mishapChancePercent: 12,
+        isActive: true,
+        sortOrder: 6,
+      },
+      {
+        name: 'Духовный эликсир',
+        description: 'Смесь камня и травы для усиления восприятия ци.',
+        icon: '',
+        coinCost: 35,
+        ingredients: [
+          { itemId: 'spirit_stone_fragment', count: 2 },
+          { itemId: 'hundred_year_herb', count: 2 },
+          { itemId: 'wolf_king_core', count: 1 },
+        ],
+        resultType: 'pill_condensation',
+        element: null,
+        qualityWeights: { common: 66, quality: 28, legendary: 6 },
+        mishapChancePercent: 20,
+        isActive: true,
+        sortOrder: 7,
+      },
+      {
+        name: 'Пилюля ядра зверя',
+        description: 'Концентрированная сила зверя в пилюле.',
+        icon: '',
+        coinCost: 40,
+        ingredients: [
+          { itemId: 'wolf_king_core', count: 2 },
+          { itemId: 'beast_core_low', count: 2 },
+          { itemId: 'hundred_year_herb', count: 1 },
+        ],
+        resultType: 'pill_tempering',
+        element: null,
+        qualityWeights: { common: 64, quality: 29, legendary: 7 },
+        mishapChancePercent: 22,
+        isActive: true,
+        sortOrder: 8,
+      },
+      {
+        name: 'Высшая пилюля ци',
+        description: 'Мощная пилюля с женьшенем и пером феникса.',
+        icon: '',
+        coinCost: 80,
+        ingredients: [
+          { itemId: 'thousand_year_ginseng', count: 1 },
+          { itemId: 'phoenix_feather', count: 1 },
+          { itemId: 'wolf_king_core', count: 1 },
+          { itemId: 'spirit_stone_fragment', count: 2 },
+        ],
+        resultType: 'pill_breakthrough',
+        element: null,
+        qualityWeights: { common: 55, quality: 32, legendary: 13 },
+        mishapChancePercent: 30,
+        isActive: true,
+        sortOrder: 9,
+      },
+    ];
+    await this.recipeModel.insertMany(defaults);
+  }
+
   async getRecipes(userId: string): Promise<{
     recipes: Array<{
       _id: string;
@@ -61,6 +247,10 @@ export class AlchemyService {
       canCraft: boolean;
     }>;
   }> {
+    await this.gameItemsService.ensureDefaultAlchemyMaterials();
+    await this.gameItemsService.ensureDefaultAlchemyResultItems();
+    await this.ensureDefaultRecipes();
+
     const user = await this.userModel
       .findById(new Types.ObjectId(userId))
       .select(
@@ -520,17 +710,24 @@ export class AlchemyService {
       icon: resultItem?.icon || undefined,
     });
 
-    const rewards: { exp?: number; coins?: number } = {};
-    if (quality === 'common') {
-      rewards.exp = 5;
-      rewards.coins = 3;
-    } else if (quality === 'quality') {
-      rewards.exp = 15;
-      rewards.coins = 10;
-    } else {
-      rewards.exp = 50;
-      rewards.coins = 30;
-    }
+    const baseRewards =
+      quality === 'legendary'
+        ? { exp: 50, coins: 30 }
+        : quality === 'quality'
+          ? { exp: 15, coins: 10 }
+          : { exp: 5, coins: 3 };
+    const resultMultiplier =
+      resultBase === 'pill_breakthrough'
+        ? 1.5
+        : resultBase === 'pill_tempering' || resultBase === 'pill_condensation'
+          ? 1.2
+          : resultBase === 'pill_healing' || resultBase === 'pill_energy'
+            ? 1.1
+            : 1;
+    const rewards: { exp?: number; coins?: number } = {
+      exp: Math.max(1, Math.round(baseRewards.exp * resultMultiplier)),
+      coins: Math.max(1, Math.round(baseRewards.coins * resultMultiplier)),
+    };
     user.experience = (user.experience ?? 0) + (rewards.exp ?? 0);
     user.balance = (user.balance ?? 0) + (rewards.coins ?? 0);
     // алхимия: попытка + мастерство

@@ -128,6 +128,92 @@ export class GameItemsService {
   }
 
   /**
+   * Создаёт базовые материалы для алхимии, если их ещё нет (ингредиенты рецептов).
+   */
+  async ensureDefaultAlchemyMaterials(): Promise<void> {
+    const materials: Array<{
+      id: string;
+      name: string;
+      description: string;
+      rarity: string;
+    }> = [
+      { id: 'spirit_grass', name: 'Духовная трава', description: 'Базовая трава с духом ци', rarity: 'common' },
+      { id: 'hundred_year_herb', name: 'Столетняя трава', description: 'Трава, вобравшая ци за сто лет', rarity: 'uncommon' },
+      { id: 'beast_core_low', name: 'Ядро зверя (низшее)', description: 'Ядро обычного духозверя', rarity: 'common' },
+      { id: 'spirit_stone_fragment', name: 'Осколок духовного камня', description: 'Обломок камня с духом ци', rarity: 'uncommon' },
+      { id: 'iron_ore', name: 'Железная руда', description: 'Руда для закалки', rarity: 'common' },
+      { id: 'wolf_king_core', name: 'Ядро Короля волков', description: 'Ядро вожака стаи', rarity: 'uncommon' },
+      { id: 'thousand_year_ginseng', name: 'Тысячелетний женьшень', description: 'Редкий корень', rarity: 'rare' },
+      { id: 'phoenix_feather', name: 'Перо феникса', description: 'Остаток священной птицы', rarity: 'rare' },
+    ];
+    for (const m of materials) {
+      await this.gameItemModel.updateOne(
+        { id: m.id },
+        {
+          $setOnInsert: {
+            id: m.id,
+            name: m.name,
+            description: m.description,
+            icon: '',
+            type: 'material',
+            rarity: m.rarity,
+            stackable: true,
+            maxStack: 99,
+            usedInRecipes: true,
+            sortOrder: 0,
+            isActive: true,
+          },
+        },
+        { upsert: true },
+      );
+    }
+  }
+
+  /**
+   * Создаёт предметы результата алхимии (base_common, base_quality, base_legendary), если их ещё нет.
+   * Вызывается перед показом рецептов, чтобы варка не падала из-за отсутствия предмета.
+   */
+  async ensureDefaultAlchemyResultItems(): Promise<void> {
+    const bases: { base: string; nameBase: string }[] = [
+      { base: 'pill_common', nameBase: 'Пилюля ци' },
+      { base: 'pill_healing', nameBase: 'Пилюля исцеления' },
+      { base: 'pill_energy', nameBase: 'Пилюля восстановления ци' },
+      { base: 'pill_condensation', nameBase: 'Пилюля сгущения ци' },
+      { base: 'pill_tempering', nameBase: 'Отвар закалки' },
+      { base: 'pill_breakthrough', nameBase: 'Пилюля прорыва' },
+    ];
+    const qualities: { suffix: string; nameSuffix: string; rarity: string }[] = [
+      { suffix: 'common', nameSuffix: ' (обычная)', rarity: 'common' },
+      { suffix: 'quality', nameSuffix: ' (улучшенная)', rarity: 'uncommon' },
+      { suffix: 'legendary', nameSuffix: ' (легендарная)', rarity: 'rare' },
+    ];
+    for (const { base, nameBase } of bases) {
+      for (const q of qualities) {
+        const id = `${base}_${q.suffix}`;
+        await this.gameItemModel.updateOne(
+          { id },
+          {
+            $setOnInsert: {
+              id,
+              name: nameBase + q.nameSuffix,
+              description: `Результат алхимической варки. Качество: ${q.suffix}.`,
+              icon: '',
+              type: 'consumable',
+              rarity: q.rarity,
+              stackable: true,
+              maxStack: 99,
+              usedInRecipes: false,
+              sortOrder: 0,
+              isActive: true,
+            },
+          },
+          { upsert: true },
+        );
+      }
+    }
+  }
+
+  /**
    * Проверить наличие предметов в инвентаре.
    */
   async hasItems(
