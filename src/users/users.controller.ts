@@ -1941,10 +1941,12 @@ export class UsersController {
         path: 'users/leaderboard',
       };
     } catch (error) {
+      const message =
+        error instanceof Error ? error.message : String(error ?? 'Unknown error');
       return {
         success: false,
         message: 'Failed to fetch leaderboard',
-        errors: [error.message],
+        errors: [message],
         timestamp: new Date().toISOString(),
         path: 'users/leaderboard',
       };

@@ -495,9 +495,15 @@ export class UsersService {
       period,
     };
 
-    await this.cacheManager.set(cacheKey, result, {
-      ttl: LEADERBOARD_CACHE_TTL_MS,
-    });
+    try {
+      await this.cacheManager.set(cacheKey, result, {
+        ttl: LEADERBOARD_CACHE_TTL_MS,
+      });
+    } catch (cacheErr) {
+      this.logger.warn(
+        `Leaderboard cache set failed: ${cacheErr instanceof Error ? cacheErr.message : String(cacheErr)}`,
+      );
+    }
 
     this.logger.log(
       `Leaderboard fetched: category=${category}, period=${period}, limit=${limit}, page=${page}, total=${total}`,
@@ -532,9 +538,15 @@ export class UsersService {
     ]);
 
     const result: LeaderboardAllPeriodsResponse = { week, month, all };
-    await this.cacheManager.set(cacheKey, result, {
-      ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS,
-    });
+    try {
+      await this.cacheManager.set(cacheKey, result, {
+        ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS,
+      });
+    } catch (cacheErr) {
+      this.logger.warn(
+        `Leaderboard cache set failed: ${cacheErr instanceof Error ? cacheErr.message : String(cacheErr)}`,
+      );
+    }
     this.logger.log(
       `Leaderboard (all periods) fetched: category=${category}, limit=${limit}, page=${page}`,
     );
@@ -585,12 +597,18 @@ export class UsersService {
       ];
       const allCounts = await this.userModel.aggregate(pipeline).exec();
       totalCount = allCounts.length;
-      aggregationResult = allCounts.slice(skip, skip + limit).map((r: any) => ({
-        userId: r._id.toString(),
-        count: r.count,
-      }));
+      aggregationResult = allCounts
+        .slice(skip, skip + limit)
+        .map((r: any) => ({
+          userId: r._id?.toString?.() ?? '',
+          count: r.count,
+        }))
+        .filter(
+          (r) => r.userId && Types.ObjectId.isValid(r.userId),
+        );
     } else if (category === 'comments') {
       const commentModel = this.userModel.db.collection('comments');
+      /** $facet: корректный total + пагинация (раньше total был длиной страницы и ломал пагинацию) */
       const pipeline: any[] = [
         {
           $match: isAllTime
@@ -599,14 +617,30 @@ export class UsersService {
         },
         { $group: { _id: '$userId', count: { $sum: 1 } } },
         { $sort: { count: -1 as const } },
-        { $skip: skip },
-        { $limit: limit + 50 },
+        {
+          $facet: {
+            meta: [{ $count: 'total' }],
+            data: [{ $skip: skip }, { $limit: limit }],
+          },
+        },
       ];
-      const results = await commentModel.aggregate(pipeline).toArray();
-      aggregationResult = results.map((r: any) => ({
-        userId: r._id.toString(),
-        count: r.count,
-      }));
+      const facetRows = await commentModel.aggregate(pipeline).toArray();
+      const facet = facetRows[0] as {
+        meta?: { total: number }[];
+        data?: { _id: unknown; count: number }[];
+      };
+      totalCount = facet?.meta?.[0]?.total ?? 0;
+      aggregationResult = (facet?.data ?? [])
+        .map((r) => ({
+          userId:
+            r._id != null && typeof (r._id as { toString?: () => string }).toString === 'function'
+              ? (r._id as { toString: () => string }).toString()
+              : String(r._id ?? ''),
+          count: r.count,
+        }))
+        .filter(
+          (r) => r.userId && Types.ObjectId.isValid(r.userId),
+        );
     } else {
       const titleModel = this.userModel.db.collection('titles');
       const chapterModel = this.userModel.db.collection('chapters');
@@ -646,6 +680,7 @@ export class UsersService {
       }
       const fullRatingsList = [...countByUser.entries()]
         .map(([userId, count]) => ({ userId, count }))
+        .filter((e) => e.userId && Types.ObjectId.isValid(e.userId))
         .sort((a, b) => b.count - a.count);
       totalCount = fullRatingsList.length;
       aggregationResult = fullRatingsList.slice(skip, skip + limit);
@@ -658,9 +693,15 @@ export class UsersService {
         category,
         period,
       };
-      await this.cacheManager.set(cacheKey, result, {
-        ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS,
-      });
+      try {
+        await this.cacheManager.set(cacheKey, result, {
+          ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS,
+        });
+      } catch (cacheErr) {
+        this.logger.warn(
+          `Leaderboard cache set failed: ${cacheErr instanceof Error ? cacheErr.message : String(cacheErr)}`,
+        );
+      }
       return result;
     }
 
@@ -669,6 +710,7 @@ export class UsersService {
     // Получаем данные пользователей
     const userIds = aggregationResult
       .slice(0, limit)
+      .filter((r) => r.userId && Types.ObjectId.isValid(r.userId))
       .map((r) => new Types.ObjectId(r.userId));
     const countMap = new Map(aggregationResult.map((r) => [r.userId, r.count]));
 
@@ -693,10 +735,17 @@ export class UsersService {
       .slice(0, limit)
       .map((r) => r.userId);
 
-    const transformedUsers: LeaderboardUser[] = sortedUserIds.map((userId) => {
+    const transformedUsers: LeaderboardUser[] = [];
+    for (const userId of sortedUserIds) {
       const user = usersMap.get(userId);
+      if (!user) {
+        this.logger.warn(
+          `Leaderboard (${category}/${period}): user ${userId} missing after load, skipping`,
+        );
+        continue;
+      }
       const periodCount = countMap.get(userId) ?? 0;
-      return {
+      transformedUsers.push({
         _id: user._id.toString(),
         username: user.username,
         avatar: user.avatar,
@@ -731,8 +780,8 @@ export class UsersService {
               card: user.equippedDecorations.card?.imageUrl ?? null,
             }
           : null,
-      };
-    });
+      });
+    }
 
     const result: LeaderboardResponse = {
       users: transformedUsers,
@@ -741,9 +790,15 @@ export class UsersService {
       period,
     };
 
-    await this.cacheManager.set(cacheKey, result, {
-      ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS,
-    });
+    try {
+      await this.cacheManager.set(cacheKey, result, {
+        ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS,
+      });
+    } catch (cacheErr) {
+      this.logger.warn(
+        `Leaderboard cache set failed: ${cacheErr instanceof Error ? cacheErr.message : String(cacheErr)}`,
+      );
+    }
 
     this.logger.log(
       `Leaderboard (period) fetched: category=${category}, period=${period}, limit=${limit}, page=${page}, total=${result.total}`,
