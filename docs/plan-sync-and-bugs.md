@@ -38,7 +38,7 @@
 
 ### 2.2 WebSocket
 
-- **NotificationsGateway** (`/api/notifications`): JWT из cookie/query/header, комната `user:${userId}`. События: `unread_count`, `progress`, `notification`. Клиенту нужно подключаться с тем же токеном, что и для REST.
+- **NotificationsGateway** (`/api/notifications`): JWT из `auth.token` / query `token` / заголовок `Authorization`, комната `user:${userId}`. События: `unread_count` (всегда после успешной проверки JWT; при сбое БД приходит `count: 0`), `progress`, `notification`. Перед отключением из‑за авторизации сервер шлёт **`notifications_error`**: `{ code: 'no_token' | 'invalid_token' | 'invalid_payload', message: string }` — клиент может обновить токен вместо общего текста «ошибка синхронизации». Ping Socket.IO увеличен (60 c / 25 c), чтобы реже рвать соединение на слабой сети.
 - **ParsingGateway** (`/api/parsing`): без авторизации; события прогресса импорта. Риск: прогресс реализован через перезапись методов `MangaParserService` (monkey-patch). При двух одновременных сессиях вторая перезапишет обработчики — прогресс первой сессии может «сломаться».
 - **Действие:** Документировать для клиента: имена событий, формат payload, способ передачи JWT для notifications. Для ParsingGateway — вынести прогресс в отдельный слой (например, callback/observer или отдельный сервис с привязкой по `sessionId`), чтобы не мутировать общий сервис.
 

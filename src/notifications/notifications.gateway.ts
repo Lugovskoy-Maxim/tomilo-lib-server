@@ -11,10 +11,19 @@ import { NotificationsService } from './notifications.service';
 
 const USER_ROOM_PREFIX = 'user:';
 
+/** Событие для клиента: явная причина до disconnect (не «непонятная синхронизация»). */
+export type NotificationsWsErrorPayload = {
+  code: 'no_token' | 'invalid_token' | 'invalid_payload';
+  message: string;
+};
+
 @Injectable()
 @WebSocketGateway({
   namespace: '/api/notifications',
   cors: { origin: true, credentials: true },
+  /** Меньше ложных обрывов на медленных сетях / фоне вкладки (по умолчанию ~20 c). */
+  pingTimeout: 60000,
+  pingInterval: 25000,
 })
 export class NotificationsGateway
   implements OnGatewayConnection, OnGatewayDisconnect
@@ -46,6 +55,11 @@ export class NotificationsGateway
     const token = this.getTokenFromHandshake(client);
     if (!token) {
       this.logger.warn('Notifications WS: no token, disconnecting');
+      const payload: NotificationsWsErrorPayload = {
+        code: 'no_token',
+        message: 'Требуется токен для уведомлений',
+      };
+      client.emit('notifications_error', payload);
       client.disconnect(true);
       return;
     }
@@ -55,12 +69,22 @@ export class NotificationsGateway
       const payload = this.jwtService.verify(token);
       if (!payload?.userId) {
         this.logger.warn('Notifications WS: invalid payload');
+        const err: NotificationsWsErrorPayload = {
+          code: 'invalid_payload',
+          message: 'В токене нет идентификатора пользователя',
+        };
+        client.emit('notifications_error', err);
         client.disconnect(true);
         return;
       }
       userId = String(payload.userId);
     } catch {
       this.logger.warn('Notifications WS: invalid or expired token');
+      const err: NotificationsWsErrorPayload = {
+        code: 'invalid_token',
+        message: 'Токен недействителен или срок действия истёк',
+      };
+      client.emit('notifications_error', err);
       client.disconnect(true);
       return;
     }
@@ -69,15 +93,21 @@ export class NotificationsGateway
     const room = `${USER_ROOM_PREFIX}${userId}`;
     client.join(room);
 
+    let count = 0;
     try {
-      const { count } = await this.notificationsService.getUnreadCount(userId);
-      client.emit('unread_count', { count });
+      const res = await this.notificationsService.getUnreadCount(userId);
+      count = res.count;
     } catch (e) {
       this.logger.warn(
-        `Notifications WS: getUnreadCount failed for ${userId}`,
+        `Notifications WS: getUnreadCount failed for ${userId}, sending count=0`,
         e,
       );
+      /** Не оставляем клиент без события — иначе таймаут на стороне клиента часто показывается как «ошибка синхронизации». */
+      count = 0;
     }
+
+    /** Прямой emit надёжнее, чем только broadcast в комнату сразу после join. */
+    client.emit('unread_count', { count });
 
     this.logger.log(
       `Notifications WS: client ${client.id} joined room ${room}`,

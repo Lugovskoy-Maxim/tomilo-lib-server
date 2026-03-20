@@ -1,4 +1,4 @@
-import { Model, Types, PipelineStage } from 'mongoose';
+import mongoose, { Model, Types, PipelineStage } from 'mongoose';
 import {
   Injectable,
   Inject,
@@ -3343,8 +3343,15 @@ export class UsersService {
       claimedAt: null as Date | null,
     }));
 
-    user.dailyQuests = { date: today, quests: selected } as any;
-    await user.save();
+    const dailyQuestsDoc = { date: today, quests: selected } as any;
+    const updated = await this.userModel.findOneAndUpdate(
+      { _id: new Types.ObjectId(userId) },
+      { $set: { dailyQuests: dailyQuestsDoc } },
+      { new: true },
+    );
+    if (!updated) {
+      throw new NotFoundException('User not found');
+    }
 
     return {
       date: today.toISOString(),
@@ -3369,25 +3376,41 @@ export class UsersService {
     // Сначала создаём задания на сегодня, если их ещё нет (иначе прогресс чтения глав и др. не засчитается)
     await this.getOrCreateDailyQuests(userId);
 
-    const user = await this.userModel.findById(new Types.ObjectId(userId));
-    if (!user?.dailyQuests?.quests?.length) return;
+    const oid = new Types.ObjectId(userId);
+    const maxAttempts = 5;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const user = await this.userModel.findById(oid);
+      if (!user?.dailyQuests?.quests?.length) return;
 
-    const today = UsersService.getStartOfDayUTC();
-    const questDate = user.dailyQuests.date
-      ? UsersService.getStartOfDayUTC(new Date(user.dailyQuests.date))
-      : null;
-    if (!questDate || questDate.getTime() !== today.getTime()) return;
+      const today = UsersService.getStartOfDayUTC();
+      const questDate = user.dailyQuests.date
+        ? UsersService.getStartOfDayUTC(new Date(user.dailyQuests.date))
+        : null;
+      if (!questDate || questDate.getTime() !== today.getTime()) return;
 
-    let changed = false;
-    for (const q of user.dailyQuests.quests) {
-      if (q.type === questType && !q.completed) {
-        const before = q.progress;
-        q.progress = Math.min((q.progress ?? 0) + delta, q.target);
-        if (q.progress >= q.target) q.completed = true;
-        if (q.progress !== before) changed = true;
+      let changed = false;
+      for (const q of user.dailyQuests.quests) {
+        if (q.type === questType && !q.completed) {
+          const before = q.progress;
+          q.progress = Math.min((q.progress ?? 0) + delta, q.target);
+          if (q.progress >= q.target) q.completed = true;
+          if (q.progress !== before) changed = true;
+        }
+      }
+      if (!changed) return;
+      try {
+        await user.save();
+        return;
+      } catch (err: unknown) {
+        if (
+          err instanceof mongoose.Error.VersionError &&
+          attempt < maxAttempts - 1
+        ) {
+          continue;
+        }
+        throw err;
       }
     }
-    if (changed) await user.save();
   }
 
   /** Забрать награду за выполненное задание. */
