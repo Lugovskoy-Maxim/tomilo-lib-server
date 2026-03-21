@@ -35,6 +35,82 @@ function expToNextLevel(level: number): number {
   return 30 + level * 20;
 }
 
+function libraryExpToNext(level: number): number {
+  return 25 + level * 20;
+}
+
+/** Доля опыта основного ученика при тренировке (остальное делится между всеми остальными) */
+const TRAINING_PRIMARY_EXP_SHARE = 0.42;
+/** Доля опыта основного в вылазках, боях, колесе */
+const GAME_PRIMARY_EXP_SHARE = 0.55;
+
+type DiscipleGameShopOffer =
+  | {
+      offerId: string;
+      label: string;
+      priceCoins: number;
+      kind: 'item';
+      itemId: string;
+      count: number;
+    }
+  | {
+      offerId: string;
+      label: string;
+      priceCoins: number;
+      kind: 'library_exp';
+      libraryExp: number;
+    };
+
+const DISCIPLE_GAME_SHOP_OFFERS: DiscipleGameShopOffer[] = [
+  {
+    offerId: 'stabilizer_2',
+    kind: 'item',
+    label: 'Стабилизаторы алхимии ×2',
+    itemId: 'stabilizing_talisman',
+    count: 2,
+    priceCoins: 70,
+  },
+  {
+    offerId: 'fragment_2',
+    kind: 'item',
+    label: 'Загадочные осколки ×2',
+    itemId: 'mysterious_fragment',
+    count: 2,
+    priceCoins: 100,
+  },
+  {
+    offerId: 'healing_pill_4',
+    kind: 'item',
+    label: 'Пилюли исцеления ×4',
+    itemId: 'healing_pill',
+    count: 4,
+    priceCoins: 55,
+  },
+  {
+    offerId: 'basic_talisman_2',
+    kind: 'item',
+    label: 'Базовые талисманы ×2',
+    itemId: 'basic_talisman',
+    count: 2,
+    priceCoins: 48,
+  },
+  {
+    offerId: 'expedition_talisman_1',
+    kind: 'item',
+    label: 'Талисман вылазки ×1',
+    itemId: 'expedition_talisman',
+    count: 1,
+    priceCoins: 85,
+  },
+  {
+    offerId: 'library_scroll',
+    kind: 'library_exp',
+    label: 'Свиток знаний (опыт библиотеки)',
+    libraryExp: 45,
+    priceCoins: 130,
+  },
+];
+
 function rankFromLevel(level: number): string {
   if (level >= 41) return 'S';
   if (level >= 31) return 'A';
@@ -247,6 +323,153 @@ export class DisciplesService {
     return min + Math.floor(Math.random() * (max - min + 1));
   }
 
+  private discipleCharId(d: any): string {
+    const c = d?.characterId;
+    if (c == null) return '';
+    if (typeof c === 'object' && c !== null && 'toString' in c) {
+      return (c as { toString(): string }).toString();
+    }
+    return String(c);
+  }
+
+  /** Ученики в активном отряде (не на складе) */
+  private activeDisciples(user: UserDocument): any[] {
+    return (user.disciples ?? []).filter((d: any) => !d.inWarehouse);
+  }
+
+  private resolvePrimaryCharacterId(user: UserDocument): string | null {
+    const active = this.activeDisciples(user);
+    if (active.length === 0) return null;
+    const pref = user.primaryDiscipleCharacterId;
+    const prefStr = pref?.toString?.() ?? (pref ? String(pref) : '');
+    if (prefStr) {
+      const hit = active.find((d) => this.discipleCharId(d) === prefStr);
+      if (hit) return prefStr;
+    }
+    return this.discipleCharId(active[0]);
+  }
+
+  private getLeadActiveDisciple(user: UserDocument): any | null {
+    const active = this.activeDisciples(user);
+    if (active.length === 0) return null;
+    const primary = this.resolvePrimaryCharacterId(user);
+    if (primary) {
+      const d = active.find((x) => this.discipleCharId(x) === primary);
+      if (d) return d;
+    }
+    return active[0];
+  }
+
+  private recomputeCombatRating(
+    user: UserDocument,
+    formula: { attack: number; defense: number; speed: number; hp: number },
+  ): void {
+    let totalCp = 0;
+    for (const d of this.activeDisciples(user)) {
+      totalCp += this.cp(
+        { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
+        formula,
+      );
+    }
+    user.combatRating = Math.round(totalCp);
+  }
+
+  private applyExpPoolToMembers(
+    members: any[],
+    primaryCid: string | null,
+    totalExp: number,
+    primaryShare: number,
+  ): string[] {
+    const logs: string[] = [];
+    const n = members.length;
+    if (n === 0 || totalExp <= 0) return logs;
+
+    let primaryIdx = 0;
+    if (primaryCid) {
+      const idx = members.findIndex(
+        (m) => this.discipleCharId(m) === primaryCid,
+      );
+      if (idx >= 0) primaryIdx = idx;
+    }
+
+    let primaryExp: number;
+    let rest: number;
+    if (n === 1) {
+      primaryExp = totalExp;
+      rest = 0;
+    } else {
+      primaryExp = Math.max(1, Math.floor(totalExp * primaryShare));
+      rest = totalExp - primaryExp;
+    }
+    const otherIdx = members.map((_, i) => i).filter((i) => i !== primaryIdx);
+    const k = otherIdx.length;
+    const perOther = k > 0 ? Math.floor(rest / k) : 0;
+    const distributed = primaryExp + perOther * k;
+    const remainder = totalExp - distributed;
+    const amounts: number[] = new Array(n).fill(0);
+    amounts[primaryIdx] = primaryExp + remainder;
+    for (const i of otherIdx) {
+      amounts[i] = perOther;
+    }
+
+    for (let i = 0; i < n; i++) {
+      const add = amounts[i];
+      if (add <= 0) continue;
+      const d = members[i];
+      let lvl = d.level ?? 1;
+      let exp = d.exp ?? 0;
+      exp += add;
+      while (exp >= expToNextLevel(lvl)) {
+        exp -= expToNextLevel(lvl);
+        lvl += 1;
+      }
+      d.level = lvl;
+      d.exp = exp;
+      d.rank = rankFromLevel(lvl);
+      logs.push(`Опыт ученика +${add} (ур. ${lvl})`);
+    }
+    return logs;
+  }
+
+  private applyGameExpToUser(
+    user: UserDocument,
+    totalExp: number,
+    mode: 'active' | 'all',
+    primaryShare: number,
+  ): string[] {
+    const list =
+      mode === 'active'
+        ? this.activeDisciples(user)
+        : [...(user.disciples ?? [])];
+    const primary = this.resolvePrimaryCharacterId(user);
+    return this.applyExpPoolToMembers(list, primary, totalExp, primaryShare);
+  }
+
+  private addLibraryExp(user: UserDocument, amount: number): string[] {
+    const logs: string[] = [];
+    if (amount <= 0) return logs;
+    let lvl = user.libraryLevel ?? 1;
+    let exp = user.libraryExp ?? 0;
+    exp += amount;
+    while (exp >= libraryExpToNext(lvl)) {
+      exp -= libraryExpToNext(lvl);
+      lvl += 1;
+      logs.push(`Библиотека: новый уровень ${lvl}`);
+    }
+    user.libraryLevel = lvl;
+    user.libraryExp = exp;
+    user.markModified('libraryLevel');
+    user.markModified('libraryExp');
+    return logs;
+  }
+
+  /** Опыт учеников с колеса (документ уже загружен, save снаружи) */
+  applyWheelXpToLoadedUser(user: UserDocument, amount: number): void {
+    if (amount <= 0) return;
+    this.applyGameExpToUser(user, amount, 'active', GAME_PRIMARY_EXP_SHARE);
+    user.markModified('disciples');
+  }
+
   private async resolveCardMedia(
     characterId: string,
     level: number,
@@ -346,10 +569,28 @@ export class DisciplesService {
       { id: 'eternal_flame', name: 'Вечное пламя', description: 'Пламя, которое не гаснет, пока цель не падёт.', type: 'ultimate', power: 56, cooldownTurns: 6, requiredLevel: 31, requiredRank: 'A', learnCostCoins: 510 },
       { id: 'supreme_sword', name: 'Меч верховного', description: 'Воплощение абсолютного меча.', type: 'ultimate', power: 60, cooldownTurns: 6, requiredLevel: 33, requiredRank: 'S', learnCostCoins: 550 },
     ];
+    const techniqueLibraryRequirement: Record<string, number> = {
+      swift_step: 2,
+      thunder_fist: 2,
+      iron_skin: 2,
+      bone_crusher: 3,
+      dragon_roar: 3,
+      domain_burst: 4,
+      void_annihilation: 5,
+      heavenly_wrath: 5,
+      soul_mend: 6,
+      supreme_sword: 7,
+    };
     for (const t of defaults) {
       await this.techniqueModel.updateOne(
         { id: t.id },
-        { $set: { ...t, characterId: null } },
+        {
+          $set: {
+            ...t,
+            characterId: null,
+            requiredLibraryLevel: techniqueLibraryRequirement[t.id] ?? 1,
+          },
+        },
         { upsert: true },
       );
     }
@@ -372,9 +613,11 @@ export class DisciplesService {
     characterId: string,
     level: number,
     rank: string,
+    libraryLevel: number,
   ) {
     await this.ensureDefaultTechniqueSeeded();
     const rankVal = this.rankValue(rank);
+    const lib = Math.max(1, libraryLevel);
     const all = await this.techniqueModel
       .find({
         $or: [
@@ -384,12 +627,16 @@ export class DisciplesService {
         requiredLevel: { $lte: level },
       })
       .select(
-        'id name description type power cooldownTurns requiredLevel requiredRank learnCostCoins iconUrl',
+        'id name description type power cooldownTurns requiredLevel requiredRank requiredLibraryLevel learnCostCoins iconUrl',
       )
       .lean()
       .exec();
-    const filtered = (all as Array<{ requiredRank?: string }>).filter(
-      (t) => this.rankValue(t.requiredRank ?? 'F') <= rankVal,
+    const filtered = (
+      all as Array<{ requiredRank?: string; requiredLibraryLevel?: number }>
+    ).filter(
+      (t) =>
+        this.rankValue(t.requiredRank ?? 'F') <= rankVal &&
+        (t.requiredLibraryLevel ?? 1) <= lib,
     );
     return filtered;
   }
@@ -760,15 +1007,15 @@ export class DisciplesService {
         { path: 'disciples.titleId', model: 'Title', select: 'name' },
       ])
       .select(
-        'disciples maxDisciples lastTrainingAt combatRating lastBattleAt lastRerollCandidate balance lastWeeklyBattleAt weeklyRating weeklyWins weeklyLosses',
+        'disciples maxDisciples primaryDiscipleCharacterId libraryLevel libraryExp lastTrainingAt combatRating lastBattleAt lastRerollCandidate balance lastWeeklyBattleAt weeklyRating weeklyWins weeklyLosses',
       )
       .lean()
       .exec();
     if (!user) throw new NotFoundException('User not found');
 
     const config = await this.getConfig();
-    // Лимита по количеству нет: только первые 3 считаются активными (логика на клиенте).
-    const maxDisciples = 0; // 0 = без лимита для обратной совместимости с клиентом
+    const maxDisciples =
+      config.maxDisciples && config.maxDisciples > 0 ? config.maxDisciples : 3;
     const today = getStartOfDayUTC();
     const lastTrainingAt = user.lastTrainingAt
       ? new Date(user.lastTrainingAt)
@@ -804,6 +1051,7 @@ export class DisciplesService {
           avatar: d.characterId?.avatar,
           titleName: d.titleId?.name,
           recruitedAt: d.recruitedAt,
+          inWarehouse: d.inWarehouse === true,
           level: lvl,
           exp,
           expToNext: expNext,
@@ -832,9 +1080,25 @@ export class DisciplesService {
       }),
     );
 
+    const u = user as {
+      primaryDiscipleCharacterId?: Types.ObjectId | null;
+      libraryLevel?: number;
+      libraryExp?: number;
+    };
+    const primaryDiscipleCharacterId =
+      u.primaryDiscipleCharacterId?.toString?.() ?? null;
+    const libraryLevel = u.libraryLevel ?? 1;
+    const libraryExp = u.libraryExp ?? 0;
+
     return {
       disciples,
       maxDisciples,
+      primaryDiscipleCharacterId,
+      library: {
+        level: libraryLevel,
+        exp: libraryExp,
+        expToNext: libraryExpToNext(libraryLevel),
+      },
       combatRating: user.combatRating ?? 0,
       canTrain,
       canBattle,
@@ -1011,6 +1275,11 @@ export class DisciplesService {
     if (alreadyHas) {
       throw new BadRequestException('Этот персонаж уже в отряде');
     }
+    const maxActive =
+      config.maxDisciples && config.maxDisciples > 0 ? config.maxDisciples : 99;
+    const activeRecruitCount = disciples.filter((d: any) => !d.inWarehouse)
+      .length;
+    const inWarehouse = activeRecruitCount >= maxActive;
     disciples.push({
       characterId: candidate.characterId,
       titleId: candidate.titleId,
@@ -1022,9 +1291,14 @@ export class DisciplesService {
       level: 1,
       exp: 0,
       rank: 'F',
+      inWarehouse,
     });
     user.disciples = disciples;
     user.lastRerollCandidate = undefined;
+    if (!user.primaryDiscipleCharacterId && !inWarehouse) {
+      user.primaryDiscipleCharacterId = candidate.characterId;
+      user.markModified('primaryDiscipleCharacterId');
+    }
     const formula = config.cpFormula ?? {
       attack: 1.2,
       defense: 1,
@@ -1033,6 +1307,7 @@ export class DisciplesService {
     };
     let totalCp = 0;
     for (const d of user.disciples) {
+      if (d.inWarehouse) continue;
       totalCp += this.cp(
         { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
         formula,
@@ -1055,6 +1330,8 @@ export class DisciplesService {
     if (!user) throw new NotFoundException('User not found');
 
     const before = user.disciples?.length ?? 0;
+    const dismissedWasPrimary =
+      user.primaryDiscipleCharacterId?.toString() === characterId;
     user.disciples = (user.disciples ?? []).filter(
       (d: any) =>
         (d.characterId?.toString?.() ?? d.characterId?.toString()) !==
@@ -1062,6 +1339,13 @@ export class DisciplesService {
     );
     if (user.disciples.length === before) {
       throw new BadRequestException('Ученик не найден в команде');
+    }
+    if (dismissedWasPrimary) {
+      const lead = this.activeDisciples(user)[0];
+      user.primaryDiscipleCharacterId = lead
+        ? new Types.ObjectId(this.discipleCharId(lead))
+        : null;
+      user.markModified('primaryDiscipleCharacterId');
     }
     const config = await this.getConfig();
     const formula = config.cpFormula ?? {
@@ -1072,6 +1356,7 @@ export class DisciplesService {
     };
     let totalCp = 0;
     for (const d of user.disciples) {
+      if (d.inWarehouse) continue;
       totalCp += this.cp(
         { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
         formula,
@@ -1149,17 +1434,8 @@ export class DisciplesService {
       }
     }
 
-    let lvl = d.level ?? 1;
-    let exp = d.exp ?? 0;
     const expGain = 5 + Math.floor(Math.random() * 11);
-    exp += expGain;
-    while (exp >= expToNextLevel(lvl)) {
-      exp -= expToNextLevel(lvl);
-      lvl += 1;
-    }
-    d.level = lvl;
-    d.exp = exp;
-    d.rank = rankFromLevel(lvl);
+    this.applyGameExpToUser(user, expGain, 'all', TRAINING_PRIMARY_EXP_SHARE);
 
     user.balance = (user.balance ?? 0) - cost;
     user.lastTrainingAt = new Date();
@@ -1171,6 +1447,7 @@ export class DisciplesService {
     };
     let totalCp = 0;
     for (const d of user.disciples) {
+      if (d.inWarehouse) continue;
       totalCp += this.cp(
         { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
         formula,
@@ -1215,7 +1492,10 @@ export class DisciplesService {
       .select('combatRating disciples')
       .lean()
       .exec();
-    if (!user || (user.disciples?.length ?? 0) === 0) return null;
+    const hasActiveBattle = (user?.disciples ?? []).some(
+      (d: any) => !d.inWarehouse,
+    );
+    if (!user || !hasActiveBattle) return null;
 
     const rating = user.combatRating ?? 0;
     const delta = Math.max(20, Math.floor(rating * 0.15));
@@ -1294,8 +1574,8 @@ export class DisciplesService {
     const config = await this.getConfig();
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) throw new NotFoundException('User not found');
-    if ((user.disciples?.length ?? 0) === 0) {
-      throw new BadRequestException('Недостаточно учеников для боя');
+    if (this.activeDisciples(user).length === 0) {
+      throw new BadRequestException('Нужен хотя бы один ученик в активном отряде');
     }
 
     const formula = config.cpFormula ?? {
@@ -1310,7 +1590,7 @@ export class DisciplesService {
       supportItemIds,
     );
     let cpUser = 0;
-    for (const d of user.disciples) {
+    for (const d of this.activeDisciples(user)) {
       cpUser += this.cp(
         { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
         formula,
@@ -1354,14 +1634,14 @@ export class DisciplesService {
         : null;
     }
 
-    const userEquipped = (user.disciples ?? []).flatMap(
+    const userEquipped = this.activeDisciples(user).flatMap(
       (d: { techniquesEquipped?: string[] }) => d.techniquesEquipped ?? [],
     );
 
+    const lead = this.getLeadActiveDisciple(user);
     const sim = await this.simulateBattleWithTechniques(
       {
-        characterId:
-          (user.disciples?.[0] as any)?.characterId?.toString?.() ?? '',
+        characterId: lead ? this.discipleCharId(lead) : '',
         equipped: userEquipped,
         stats: { attack: cpUser / 10, defense: cpUser / 12, speed: 10, hp: 30 },
       },
@@ -1383,14 +1663,17 @@ export class DisciplesService {
     const coinsGained = win ? 25 : 5;
     user.balance = (user.balance ?? 0) + coinsGained;
     user.lastBattleAt = new Date();
+    const battleExp = win ? 10 : 2;
+    this.applyGameExpToUser(user, battleExp, 'active', GAME_PRIMARY_EXP_SHARE);
     user.markModified('balance');
     user.markModified('lastBattleAt');
+    user.markModified('disciples');
     await user.save();
 
-    const userCard = (user.disciples?.[0] as any)?.characterId
+    const userCard = lead?.characterId
       ? await this.resolveCardMedia(
-          (user.disciples?.[0] as any).characterId.toString(),
-          (user.disciples?.[0] as any).level ?? 1,
+          this.discipleCharId(lead),
+          (lead as { level?: number }).level ?? 1,
           userId,
         )
       : null;
@@ -1398,7 +1681,7 @@ export class DisciplesService {
     return {
       win,
       coinsGained,
-      expGained: win ? 10 : 2,
+      expGained: battleExp,
       consumedItems: supportState.consumed,
       resultScreen: {
         outcome: win ? 'win' : 'lose',
@@ -1432,7 +1715,10 @@ export class DisciplesService {
       .select('disciples lastWeeklyBattleAt weeklyRating')
       .lean()
       .exec();
-    if (!user || (user.disciples?.length ?? 0) === 0) return null;
+    const hasActiveWeekly = (user?.disciples ?? []).some(
+      (d: any) => !d.inWarehouse,
+    );
+    if (!user || !hasActiveWeekly) return null;
 
     const lastWeekly = (user as any).lastWeeklyBattleAt
       ? new Date((user as any).lastWeeklyBattleAt)
@@ -1533,8 +1819,8 @@ export class DisciplesService {
     const config = await this.getConfig();
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) throw new NotFoundException('User not found');
-    if ((user.disciples?.length ?? 0) === 0) {
-      throw new BadRequestException('Недостаточно учеников для боя');
+    if (this.activeDisciples(user).length === 0) {
+      throw new BadRequestException('Нужен хотя бы один ученик в активном отряде');
     }
 
     const lastWeekly = user.lastWeeklyBattleAt
@@ -1558,7 +1844,7 @@ export class DisciplesService {
       supportItemIds,
     );
     let cpUser = 0;
-    for (const d of user.disciples) {
+    for (const d of this.activeDisciples(user)) {
       cpUser += this.cp(
         { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
         formula,
@@ -1603,13 +1889,13 @@ export class DisciplesService {
           )
         : null;
     }
-    const userEquipped = (user.disciples ?? []).flatMap(
+    const userEquipped = this.activeDisciples(user).flatMap(
       (d: { techniquesEquipped?: string[] }) => d.techniquesEquipped ?? [],
     );
+    const weeklyLead = this.getLeadActiveDisciple(user);
     const sim = await this.simulateBattleWithTechniques(
       {
-        characterId:
-          (user.disciples?.[0] as any)?.characterId?.toString?.() ?? '',
+        characterId: weeklyLead ? this.discipleCharId(weeklyLead) : '',
         equipped: userEquipped,
         stats: { attack: cpUser / 10, defense: cpUser / 12, speed: 10, hp: 30 },
       },
@@ -1641,17 +1927,20 @@ export class DisciplesService {
     const delta = Math.round(kRating * ((win ? 1 : 0) - expected));
     user.weeklyRating = Math.max(0, myRating + delta);
 
+    const weeklyExp = win ? 15 : 5;
+    this.applyGameExpToUser(user, weeklyExp, 'active', GAME_PRIMARY_EXP_SHARE);
     user.markModified('balance');
     user.markModified('lastWeeklyBattleAt');
     user.markModified('weeklyWins');
     user.markModified('weeklyLosses');
     user.markModified('weeklyRating');
+    user.markModified('disciples');
     await user.save();
 
-    const userCard = (user.disciples?.[0] as any)?.characterId
+    const userCard = weeklyLead?.characterId
       ? await this.resolveCardMedia(
-          (user.disciples?.[0] as any).characterId.toString(),
-          (user.disciples?.[0] as any).level ?? 1,
+          this.discipleCharId(weeklyLead),
+          (weeklyLead as { level?: number }).level ?? 1,
           userId,
         )
       : null;
@@ -1659,7 +1948,7 @@ export class DisciplesService {
     return {
       win,
       coinsGained,
-      expGained: win ? 15 : 5,
+      expGained: weeklyExp,
       weeklyRatingDelta: delta,
       consumedItems: supportState.consumed,
       resultScreen: {
@@ -1705,6 +1994,10 @@ export class DisciplesService {
       .lean()
       .exec();
     if (!user) throw new NotFoundException('User not found');
+
+    const hasActiveExpedition = (user.disciples ?? []).some(
+      (d: any) => !d.inWarehouse,
+    );
 
     const config = await this.getConfig();
     const now = Date.now();
@@ -1752,7 +2045,7 @@ export class DisciplesService {
         hard: (config as any).expeditionCostCoinsHard ?? 60,
       },
       lastResult,
-      hasDisciples: (user.disciples?.length ?? 0) > 0,
+      hasDisciples: hasActiveExpedition,
       balance,
       ambushRiskPercent: 12,
     };
@@ -1792,7 +2085,8 @@ export class DisciplesService {
     user: UserDocument,
     difficulty: 'easy' | 'normal' | 'hard',
   ): Promise<Record<string, unknown>> {
-    const levels = (user.disciples ?? []).map(
+    const expeditionActives = this.activeDisciples(user);
+    const levels = expeditionActives.map(
       (d: { level?: number }) => d.level ?? 1,
     );
     const avgLevel =
@@ -1860,19 +2154,20 @@ export class DisciplesService {
     user.balance = (user.balance ?? 0) + coinsGained;
     user.markModified('balance');
 
-    const first = (user.disciples ?? [])[0] as any;
-    if (first) {
-      let lvl = first.level ?? 1;
-      let exp = first.exp ?? 0;
-      exp += expGained;
-      while (exp >= expToNextLevel(lvl)) {
-        exp -= expToNextLevel(lvl);
-        lvl += 1;
-      }
-      first.level = lvl;
-      first.exp = exp;
-      first.rank = rankFromLevel(lvl);
-      log.push(`Опыт первого ученика в отряде: +${expGained} (ур. ${lvl})`);
+    const expLogs = this.applyGameExpToUser(
+      user,
+      expGained,
+      'active',
+      GAME_PRIMARY_EXP_SHARE,
+    );
+    for (const line of expLogs) log.push(line);
+
+    const libAmt =
+      (success ? 3 : 1) +
+      (difficulty === 'hard' ? 2 : difficulty === 'normal' ? 1 : 0);
+    const libLogs = this.addLibraryExp(user, libAmt);
+    for (const line of libLogs) log.push(line);
+    if (expLogs.length > 0 || libLogs.length > 0) {
       user.markModified('disciples');
     }
 
@@ -1916,10 +2211,13 @@ export class DisciplesService {
   async getDiscipleTechniques(userId: string) {
     const user = await this.userModel
       .findById(new Types.ObjectId(userId))
-      .select('disciples balance')
+      .select('disciples balance libraryLevel libraryExp')
       .lean()
       .exec();
     if (!user) throw new NotFoundException('User not found');
+    const libraryLevel = (user as { libraryLevel?: number }).libraryLevel ?? 1;
+    const libraryExp = (user as { libraryExp?: number }).libraryExp ?? 0;
+    const libExpToNext = libraryExpToNext(libraryLevel);
     const disciples = (user.disciples ?? []) as Array<{
       characterId: unknown;
       level?: number;
@@ -1936,6 +2234,7 @@ export class DisciplesService {
         name?: string;
         requiredRank?: string;
         learnCostCoins?: number;
+        requiredLibraryLevel?: number;
         [key: string]: unknown;
       }>;
     }> = [];
@@ -1953,7 +2252,12 @@ export class DisciplesService {
               : '';
       const level = d.level ?? 1;
       const rank = d.rank ?? 'F';
-      const available = await this.listAvailableTechniques(cid, level, rank);
+      const available = await this.listAvailableTechniques(
+        cid,
+        level,
+        rank,
+        libraryLevel,
+      );
       result.push({
         characterId: cid,
         techniquesLearned: d.techniquesLearned ?? [],
@@ -1964,6 +2268,11 @@ export class DisciplesService {
     return {
       disciples: result,
       balance: (user as { balance?: number }).balance ?? 0,
+      library: {
+        level: libraryLevel,
+        exp: libraryExp,
+        expToNext: libExpToNext,
+      },
     };
   }
 
@@ -1983,10 +2292,12 @@ export class DisciplesService {
     const d = disciples[idx];
     const level = d.level ?? 1;
     const rank = d.rank ?? 'F';
+    const libraryLevel = user.libraryLevel ?? 1;
     const available = await this.listAvailableTechniques(
       characterId,
       level,
       rank,
+      libraryLevel,
     );
     const tech = (
       available as Array<{ id?: string; learnCostCoins?: number }>
@@ -2003,6 +2314,7 @@ export class DisciplesService {
     learned.push(techniqueId);
     d.techniquesLearned = learned;
     user.disciples = disciples;
+    this.addLibraryExp(user, 4);
     user.markModified('disciples');
     user.markModified('balance');
     await user.save();
@@ -2046,8 +2358,8 @@ export class DisciplesService {
     const config = await this.getConfig();
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) throw new NotFoundException('User not found');
-    if ((user.disciples?.length ?? 0) === 0)
-      throw new BadRequestException('Нужен хотя бы 1 ученик');
+    if (this.activeDisciples(user).length === 0)
+      throw new BadRequestException('Нужен хотя бы один ученик в активном отряде');
 
     if (user.lastExpeditionCompletesAt && Date.now() < new Date(user.lastExpeditionCompletesAt).getTime()) {
       throw new BadRequestException('Экспедиция уже в пути. Дождитесь завершения.');
@@ -2090,6 +2402,154 @@ export class DisciplesService {
       started: true,
       completesAt: completesAt.toISOString(),
       balance: user.balance ?? 0,
+    };
+  }
+
+  async setPrimaryDisciple(
+    userId: string,
+    characterId: string,
+  ): Promise<{ primaryDiscipleCharacterId: string }> {
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) throw new NotFoundException('User not found');
+    const active = this.activeDisciples(user);
+    const ok = active.some((d) => this.discipleCharId(d) === characterId);
+    if (!ok) {
+      throw new BadRequestException('Ученик должен быть в активном отряде');
+    }
+    user.primaryDiscipleCharacterId = new Types.ObjectId(characterId);
+    user.markModified('primaryDiscipleCharacterId');
+    await user.save();
+    return { primaryDiscipleCharacterId: characterId };
+  }
+
+  async setDiscipleWarehouse(
+    userId: string,
+    characterId: string,
+    inWarehouse: boolean,
+  ): Promise<{ ok: boolean }> {
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) throw new NotFoundException('User not found');
+    const config = await this.getConfig();
+    const maxActive =
+      config.maxDisciples && config.maxDisciples > 0 ? config.maxDisciples : 3;
+    const disciples = [...(user.disciples ?? [])];
+    const idx = disciples.findIndex(
+      (d: any) => this.discipleCharId(d) === characterId,
+    );
+    if (idx < 0) throw new BadRequestException('Ученик не найден');
+
+    if (inWarehouse) {
+      const activeCount = disciples.filter((d: any) => !d.inWarehouse).length;
+      if (!disciples[idx].inWarehouse && activeCount <= 1) {
+        throw new BadRequestException('Нужен хотя бы один активный ученик');
+      }
+      disciples[idx].inWarehouse = true;
+    } else {
+      if (!disciples[idx].inWarehouse) {
+        return { ok: true };
+      }
+      const activeCount = disciples.filter((d: any) => !d.inWarehouse).length;
+      if (activeCount >= maxActive) {
+        throw new BadRequestException(
+          'Активный отряд заполнен. Переместите кого-то на склад.',
+        );
+      }
+      disciples[idx].inWarehouse = false;
+    }
+
+    user.disciples = disciples;
+
+    const pri = user.primaryDiscipleCharacterId?.toString();
+    if (inWarehouse && pri === characterId) {
+      const lead = this.activeDisciples(user)[0];
+      user.primaryDiscipleCharacterId = lead
+        ? new Types.ObjectId(this.discipleCharId(lead))
+        : null;
+      user.markModified('primaryDiscipleCharacterId');
+    }
+
+    const formula = config.cpFormula ?? {
+      attack: 1.2,
+      defense: 1,
+      speed: 0.8,
+      hp: 0.3,
+    };
+    this.recomputeCombatRating(user, formula);
+    user.markModified('disciples');
+    user.markModified('combatRating');
+    await user.save();
+    return { ok: true };
+  }
+
+  getDiscipleGameShop(): {
+    offers: Array<Record<string, unknown>>;
+  } {
+    return {
+      offers: DISCIPLE_GAME_SHOP_OFFERS.map((o) =>
+        o.kind === 'item'
+          ? {
+              offerId: o.offerId,
+              label: o.label,
+              priceCoins: o.priceCoins,
+              kind: 'item',
+              itemId: o.itemId,
+              count: o.count,
+            }
+          : {
+              offerId: o.offerId,
+              label: o.label,
+              priceCoins: o.priceCoins,
+              kind: 'library_exp',
+              libraryExp: o.libraryExp,
+            },
+      ),
+    };
+  }
+
+  async buyDiscipleGameShopOffer(
+    userId: string,
+    offerId: string,
+  ): Promise<{
+    balance: number;
+    purchased: string;
+    library?: { level: number; exp: number };
+  }> {
+    const offer = DISCIPLE_GAME_SHOP_OFFERS.find((o) => o.offerId === offerId);
+    if (!offer) throw new BadRequestException('Неизвестное предложение');
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) throw new NotFoundException('User not found');
+    if ((user.balance ?? 0) < offer.priceCoins) {
+      throw new BadRequestException('Недостаточно монет');
+    }
+    user.balance = (user.balance ?? 0) - offer.priceCoins;
+    user.markModified('balance');
+    if (offer.kind === 'library_exp') {
+      this.addLibraryExp(user, offer.libraryExp);
+    }
+    await user.save();
+    if (offer.kind === 'item') {
+      await this.gameItemsService.addToInventory(
+        userId,
+        offer.itemId,
+        offer.count,
+      );
+    }
+    const fresh = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('balance libraryLevel libraryExp')
+      .lean()
+      .exec();
+    const b = (fresh as { balance?: number })?.balance ?? 0;
+    return {
+      balance: b,
+      purchased: offerId,
+      library:
+        offer.kind === 'library_exp'
+          ? {
+              level: (fresh as { libraryLevel?: number })?.libraryLevel ?? 1,
+              exp: (fresh as { libraryExp?: number })?.libraryExp ?? 0,
+            }
+          : undefined,
     };
   }
 }

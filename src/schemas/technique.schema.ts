@@ -50,6 +50,10 @@ export class Technique {
   @Prop({ type: String, default: 'F' })
   requiredRank: string;
 
+  /** Минимальный уровень библиотеки игрока для доступа к изучению */
+  @Prop({ type: Number, default: 1 })
+  requiredLibraryLevel: number;
+
   /** Стоимость изучения */
   @Prop({ type: Number, default: 50 })
   learnCostCoins: number;

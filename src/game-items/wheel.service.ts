@@ -11,6 +11,7 @@ import {
   WheelConfigDocument,
 } from '../schemas/wheel-config.schema';
 import { GameItemsService } from './game-items.service';
+import { DisciplesService } from './disciples.service';
 
 function getStartOfDayUTC(d: Date = new Date()): Date {
   const t = new Date(d);
@@ -25,6 +26,7 @@ export class WheelService {
     @InjectModel(WheelConfig.name)
     private wheelConfigModel: Model<WheelConfigDocument>,
     private gameItemsService: GameItemsService,
+    private disciplesService: DisciplesService,
   ) {}
 
   private async getConfig(): Promise<WheelConfigDocument> {
@@ -265,8 +267,7 @@ export class WheelService {
     };
 
     if (chosen.rewardType === 'xp' && typeof chosen.param === 'number') {
-      user.experience = (user.experience ?? 0) + chosen.param;
-      user.markModified('experience');
+      this.disciplesService.applyWheelXpToLoadedUser(user, chosen.param);
       result.expGained = chosen.param;
     } else if (
       chosen.rewardType === 'coins' &&

@@ -572,6 +572,8 @@ export class User {
         rank: { type: String, default: 'F' },
         techniquesLearned: { type: [String], default: [] },
         techniquesEquipped: { type: [String], default: [] },
+        /** На складе: не в активном отряде, не получают опыт из вылазок/боёв/колеса */
+        inWarehouse: { type: Boolean, default: false },
       },
     ],
     default: [],
@@ -589,7 +591,19 @@ export class User {
     rank?: string;
     techniquesLearned?: string[];
     techniquesEquipped?: string[];
+    inWarehouse?: boolean;
   }[];
+
+  /** Основной ученик: большая доля общего опыта в играх; должен быть в активном отряде */
+  @Prop({ type: Types.ObjectId, ref: 'Character', default: null })
+  primaryDiscipleCharacterId?: Types.ObjectId | null;
+
+  /** Уровень библиотеки (разблокировка техник по requiredLibraryLevel) */
+  @Prop({ default: 1 })
+  libraryLevel?: number;
+
+  @Prop({ default: 0 })
+  libraryExp?: number;
 
   @Prop({ default: 5 })
   maxDisciples?: number;

@@ -825,6 +825,154 @@ export class UsersController {
     }
   }
 
+  @Post('profile/disciples/primary')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesSetPrimary(
+    @Request() req,
+    @Body() body: { characterId: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      if (!body?.characterId) {
+        return {
+          success: false,
+          message: 'characterId обязателен',
+          errors: ['characterId обязателен'],
+          timestamp: new Date().toISOString(),
+          path: 'users/profile/disciples/primary',
+          method: 'POST',
+        };
+      }
+      const data = await this.usersService.disciplesSetPrimary(
+        req.user.userId,
+        body.characterId,
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/primary',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/primary',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Post('profile/disciples/warehouse')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesSetWarehouse(
+    @Request() req,
+    @Body() body: { characterId: string; inWarehouse: boolean },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      if (!body?.characterId) {
+        return {
+          success: false,
+          message: 'characterId обязателен',
+          errors: ['characterId обязателен'],
+          timestamp: new Date().toISOString(),
+          path: 'users/profile/disciples/warehouse',
+          method: 'POST',
+        };
+      }
+      const data = await this.usersService.disciplesSetWarehouse(
+        req.user.userId,
+        body.characterId,
+        body?.inWarehouse ?? true,
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/warehouse',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/warehouse',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Get('profile/disciples/game-shop')
+  @UseGuards(JwtAuthGuard)
+  async disciplesGameShop(): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesGameShop();
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/game-shop',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/game-shop',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('profile/disciples/game-shop/buy')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesGameShopBuy(
+    @Request() req,
+    @Body() body: { offerId: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      if (!body?.offerId) {
+        return {
+          success: false,
+          message: 'offerId обязателен',
+          errors: ['offerId обязателен'],
+          timestamp: new Date().toISOString(),
+          path: 'users/profile/disciples/game-shop/buy',
+          method: 'POST',
+        };
+      }
+      const data = await this.usersService.disciplesGameShopBuy(
+        req.user.userId,
+        body.offerId,
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/game-shop/buy',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/game-shop/buy',
+        method: 'POST',
+      };
+    }
+  }
+
   // 🧪 Алхимия
   @Get('profile/alchemy/recipes')
   @UseGuards(JwtAuthGuard)

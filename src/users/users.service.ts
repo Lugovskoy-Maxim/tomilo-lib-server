@@ -3609,6 +3609,38 @@ export class UsersService {
     return this.disciplesService.startExpedition(userId, difficulty);
   }
 
+  async disciplesSetPrimary(userId: string, characterId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.setPrimaryDisciple(userId, characterId);
+  }
+
+  async disciplesSetWarehouse(
+    userId: string,
+    characterId: string,
+    inWarehouse: boolean,
+  ) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.setDiscipleWarehouse(
+      userId,
+      characterId,
+      inWarehouse,
+    );
+  }
+
+  async disciplesGameShop() {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.getDiscipleGameShop();
+  }
+
+  async disciplesGameShopBuy(userId: string, offerId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.buyDiscipleGameShopOffer(userId, offerId);
+  }
+
   async getAlchemyRecipes(userId: string) {
     if (!this.alchemyService)
       throw new BadRequestException('Alchemy not available');
