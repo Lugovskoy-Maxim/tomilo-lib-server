@@ -128,6 +128,77 @@ export class GameItemsService {
   }
 
   /**
+   * Атомарно списать несколько стеков и выдать награду (обмен предметов).
+   */
+  async exchangeItemsAtomic(
+    userId: string,
+    consume: { itemId: string; count: number }[],
+    grant: { itemId: string; count: number }[],
+  ): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Некорректный пользователь');
+    }
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) throw new NotFoundException('User not found');
+
+    type InvRow = { itemId: string; count: number };
+    let inventory = Array.isArray(user.inventory)
+      ? ([...user.inventory] as InvRow[])
+      : [];
+
+    const countOf = (itemId: string) =>
+      inventory.reduce(
+        (acc, e) => acc + (e.itemId === itemId ? (e.count ?? 0) : 0),
+        0,
+      );
+
+    for (const c of consume) {
+      if (!c.itemId || c.count <= 0) {
+        throw new BadRequestException('Некорректный рецепт обмена');
+      }
+      if (countOf(c.itemId) < c.count) {
+        const meta = await this.findById(c.itemId);
+        throw new BadRequestException(
+          `Недостаточно: ${meta?.name ?? c.itemId} (нужно ${c.count})`,
+        );
+      }
+    }
+
+    for (const c of consume) {
+      let remaining = c.count;
+      for (let i = inventory.length - 1; i >= 0 && remaining > 0; i--) {
+        if (inventory[i].itemId !== c.itemId) continue;
+        const take = Math.min(remaining, inventory[i].count);
+        inventory[i] = {
+          ...inventory[i],
+          count: inventory[i].count - take,
+        };
+        remaining -= take;
+        if (inventory[i].count <= 0) inventory.splice(i, 1);
+      }
+    }
+
+    for (const g of grant) {
+      if (!g.itemId || g.count <= 0) {
+        throw new BadRequestException('Некорректный результат обмена');
+      }
+      const j = inventory.findIndex((e) => e.itemId === g.itemId);
+      if (j >= 0) {
+        inventory[j] = {
+          ...inventory[j],
+          count: inventory[j].count + g.count,
+        };
+      } else {
+        inventory.push({ itemId: g.itemId, count: g.count });
+      }
+    }
+
+    user.inventory = inventory as any;
+    user.markModified('inventory');
+    await user.save();
+  }
+
+  /**
    * Создаёт базовые материалы для алхимии, если их ещё нет (ингредиенты рецептов).
    */
   async ensureDefaultAlchemyMaterials(): Promise<void> {

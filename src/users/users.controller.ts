@@ -973,6 +973,75 @@ export class UsersController {
     }
   }
 
+  @Get('profile/disciples/item-exchange/recipes')
+  @UseGuards(JwtAuthGuard)
+  async disciplesItemExchangeRecipes(
+    @Request() req,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.disciplesItemExchangeRecipes(
+        req.user.userId,
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/item-exchange/recipes',
+        method: 'GET',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/item-exchange/recipes',
+        method: 'GET',
+      };
+    }
+  }
+
+  @Post('profile/disciples/item-exchange')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async disciplesItemExchange(
+    @Request() req,
+    @Body() body: { recipeId: string },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      if (!body?.recipeId) {
+        return {
+          success: false,
+          message: 'recipeId обязателен',
+          errors: ['recipeId обязателен'],
+          timestamp: new Date().toISOString(),
+          path: 'users/profile/disciples/item-exchange',
+          method: 'POST',
+        };
+      }
+      const data = await this.usersService.disciplesItemExchange(
+        req.user.userId,
+        body.recipeId,
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/item-exchange',
+        method: 'POST',
+      };
+    } catch (e) {
+      return {
+        success: false,
+        message: (e as Error).message,
+        errors: [(e as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/profile/disciples/item-exchange',
+        method: 'POST',
+      };
+    }
+  }
+
   // 🧪 Алхимия
   @Get('profile/alchemy/recipes')
   @UseGuards(JwtAuthGuard)

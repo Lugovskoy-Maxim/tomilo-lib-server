@@ -111,6 +111,52 @@ const DISCIPLE_GAME_SHOP_OFFERS: DiscipleGameShopOffer[] = [
   },
 ];
 
+type ItemExchangeRecipeDef = {
+  recipeId: string;
+  label: string;
+  description?: string;
+  consume: { itemId: string; count: number }[];
+  grant: { itemId: string; count: number }[];
+};
+
+/** Обмен ингредиентов игры (лавка / алхимия / бои) */
+const DISCIPLE_ITEM_EXCHANGE_RECIPES: ItemExchangeRecipeDef[] = [
+  {
+    recipeId: 'fragments_to_stabilizer',
+    label: 'Стабилизатор из осколков',
+    description: '3 загадочных осколка → 1 стабилизатор алхимии',
+    consume: [{ itemId: 'mysterious_fragment', count: 3 }],
+    grant: [{ itemId: 'stabilizing_talisman', count: 1 }],
+  },
+  {
+    recipeId: 'basic_to_defense',
+    label: 'Талисман защиты',
+    description: '2 базовых талисмана → 1 талисман защиты',
+    consume: [{ itemId: 'basic_talisman', count: 2 }],
+    grant: [{ itemId: 'defense_talisman', count: 1 }],
+  },
+  {
+    recipeId: 'fragments_basic_to_expedition',
+    label: 'Талисман вылазки',
+    description: '2 осколка + 1 базовый талисман → 1 талисман вылазки',
+    consume: [
+      { itemId: 'mysterious_fragment', count: 2 },
+      { itemId: 'basic_talisman', count: 1 },
+    ],
+    grant: [{ itemId: 'expedition_talisman', count: 1 }],
+  },
+  {
+    recipeId: 'healing_basic_to_thunder',
+    label: 'Талисман небесной грозы',
+    description: '4 пилюли исцеления + 1 базовый талисман → 1 талисман грозы',
+    consume: [
+      { itemId: 'healing_pill', count: 4 },
+      { itemId: 'basic_talisman', count: 1 },
+    ],
+    grant: [{ itemId: 'heavenly_thunder_talisman', count: 1 }],
+  },
+];
+
 function rankFromLevel(level: number): string {
   if (level >= 41) return 'S';
   if (level >= 31) return 'A';
@@ -609,15 +655,14 @@ export class DisciplesService {
     return map[rank] ?? 0;
   }
 
+  /** Каталог техник по уровню/рангу персонажа (без фильтра по библиотеке — блокировка только при изучении). */
   private async listAvailableTechniques(
     characterId: string,
     level: number,
     rank: string,
-    libraryLevel: number,
   ) {
     await this.ensureDefaultTechniqueSeeded();
     const rankVal = this.rankValue(rank);
-    const lib = Math.max(1, libraryLevel);
     const all = await this.techniqueModel
       .find({
         $or: [
@@ -634,9 +679,7 @@ export class DisciplesService {
     const filtered = (
       all as Array<{ requiredRank?: string; requiredLibraryLevel?: number }>
     ).filter(
-      (t) =>
-        this.rankValue(t.requiredRank ?? 'F') <= rankVal &&
-        (t.requiredLibraryLevel ?? 1) <= lib,
+      (t) => this.rankValue(t.requiredRank ?? 'F') <= rankVal,
     );
     return filtered;
   }
@@ -645,12 +688,30 @@ export class DisciplesService {
     userSide: {
       characterId: string;
       equipped: string[];
-      stats: { attack: number; defense: number; speed: number; hp: number };
+      stats: {
+        attack: number;
+        defense: number;
+        speed: number;
+        hp: number;
+        maxHpPool: number;
+      };
+      rosterLine: string;
+      techniqueOwners: Map<string, { displayName: string; characterId: string }>;
+      sideLabel: string;
     },
     opponentSide: {
       characterId: string;
       equipped: string[];
-      stats: { attack: number; defense: number; speed: number; hp: number };
+      stats: {
+        attack: number;
+        defense: number;
+        speed: number;
+        hp: number;
+        maxHpPool: number;
+      };
+      rosterLine: string;
+      techniqueOwners: Map<string, { displayName: string; characterId: string }>;
+      sideLabel: string;
     },
     supportState?: BattleSupportState,
   ) {
@@ -665,8 +726,8 @@ export class DisciplesService {
     const techMap = new Map<string, any>();
     for (const t of techs as any[]) techMap.set(t.id, t);
 
-    const maxUser = userSide.stats.hp * 10;
-    const maxOpp = opponentSide.stats.hp * 10;
+    const maxUser = Math.max(80, Math.round(userSide.stats.maxHpPool));
+    const maxOpp = Math.max(80, Math.round(opponentSide.stats.maxHpPool));
     let hpUser = maxUser;
     let hpOpp = maxOpp;
 
@@ -683,11 +744,30 @@ export class DisciplesService {
       consumed: [],
     };
 
+    const userPerformer = (techId: string) =>
+      userSide.techniqueOwners.get(techId)?.displayName ?? userSide.sideLabel;
+    const oppPerformer = (techId: string) =>
+      opponentSide.techniqueOwners.get(techId)?.displayName ??
+      opponentSide.sideLabel;
+
+    log.push({
+      turn: 0,
+      actor: 'system',
+      action: 'battle_start',
+      message: `${userSide.sideLabel}: ${userSide.rosterLine} · ATK ${userSide.stats.attack}, DEF ${userSide.stats.defense}, SPD ${userSide.stats.speed}, запас ОЗ ${maxUser}`,
+      opponentSummary: `${opponentSide.sideLabel}: ${opponentSide.rosterLine} · ATK ${opponentSide.stats.attack}, DEF ${opponentSide.stats.defense}, SPD ${opponentSide.stats.speed}, запас ОЗ ${maxOpp}`,
+      userRosterLine: userSide.rosterLine,
+      opponentRosterLine: opponentSide.rosterLine,
+      hpUser,
+      hpOpp,
+    });
+
     if (support.consumed.length > 0) {
       log.push({
         turn: 0,
         actor: 'user',
         action: 'support_items',
+        performerName: userSide.sideLabel,
         items: support.consumed,
       });
     }
@@ -698,6 +778,7 @@ export class DisciplesService {
         turn: 0,
         actor: 'user',
         action: 'item_damage',
+        performerName: userSide.sideLabel,
         itemId: 'heavenly_thunder_talisman',
         value: support.preDamage,
         hpUser,
@@ -736,11 +817,12 @@ export class DisciplesService {
       turnNum: number,
       techniqueId: string,
       techniqueName: string,
+      performerName: string,
     ) => {
       let total = Math.max(1, Math.round(dmg * oppDamageTakenMultiplier));
       oppDamageTakenMultiplier = 1;
       const absorbedByShield = Math.min(oppBuffShield, total);
-      oppBuffShield = Math.max(0, oppBuffShield - total);
+      oppBuffShield = Math.max(0, oppBuffShield - absorbedByShield);
       total -= absorbedByShield;
       hpOpp = Math.max(0, hpOpp - total);
       log.push({
@@ -749,6 +831,7 @@ export class DisciplesService {
         action: 'damage',
         techniqueId,
         techniqueName,
+        performerName,
         value: total + absorbedByShield,
         absorbedByShield: absorbedByShield || undefined,
         hpUser,
@@ -760,6 +843,7 @@ export class DisciplesService {
       turnNum: number,
       techniqueId: string,
       techniqueName: string,
+      performerName: string,
     ) => {
       let total = Math.max(1, Math.round(dmg * userDamageTakenMultiplier));
       userDamageTakenMultiplier = 1;
@@ -769,9 +853,10 @@ export class DisciplesService {
       }
       let absorbed = 0;
       if (userBuffShield > 0) {
-        absorbed = Math.min(userBuffShield, total);
-        userBuffShield = Math.max(0, userBuffShield - total);
-        total -= absorbed;
+        const ab = Math.min(userBuffShield, total);
+        userBuffShield = Math.max(0, userBuffShield - ab);
+        absorbed += ab;
+        total -= ab;
       }
       if (support.shield > 0 && total > 0) {
         const s = Math.min(support.shield, total);
@@ -786,6 +871,7 @@ export class DisciplesService {
         action: 'damage',
         techniqueId,
         techniqueName,
+        performerName,
         value: total + absorbed,
         absorbed: absorbed || undefined,
         hpUser,
@@ -793,17 +879,21 @@ export class DisciplesService {
       });
     };
 
-    for (let turn = 1; turn <= 6; turn++) {
+    for (let turn = 1; turn <= 12; turn++) {
       for (const k of Object.keys(cd)) cd[k] = Math.max(0, (cd[k] ?? 0) - 1);
 
       const uId = pick(userSide.equipped);
       const uT = techMap.get(uId) ?? techMap.get('basic_strike');
       if (uT?.cooldownTurns) cd[uId] = uT.cooldownTurns;
+      const uPerf = userPerformer(uId);
 
       if (uT?.type === 'heal') {
         const heal = Math.max(
-          5,
-          Math.round((uT.power ?? 10) + userSide.stats.defense * 0.8),
+          6,
+          Math.round(
+            (uT.power ?? 10) * (1 + userSide.stats.defense / 58) +
+              userSide.stats.hp * 0.07,
+          ),
         );
         hpUser = Math.min(maxUser, hpUser + heal);
         log.push({
@@ -812,40 +902,51 @@ export class DisciplesService {
           action: 'heal',
           techniqueId: uId,
           techniqueName: uT?.name,
+          performerName: uPerf,
           value: heal,
           hpUser,
           hpOpp,
         });
       } else if (uT?.type === 'buff') {
-        const shieldGain = Math.round((uT.power ?? 10) * 2 + userSide.stats.defense * 0.5);
-        userBuffShield += Math.max(5, shieldGain);
+        const shieldGain = Math.round(
+          (uT.power ?? 10) * 2.1 +
+            userSide.stats.defense * 0.55 +
+            userSide.stats.speed * 0.22,
+        );
+        userBuffShield += Math.max(6, shieldGain);
         log.push({
           turn,
           actor: 'user',
           action: 'buff',
           techniqueId: uId,
           techniqueName: uT?.name,
+          performerName: uPerf,
           value: shieldGain,
           shieldTotal: userBuffShield,
           hpUser,
           hpOpp,
         });
       } else if (uT?.type === 'debuff') {
-        oppDamageTakenMultiplier = 1 + (uT.power ?? 10) / 80;
+        oppDamageTakenMultiplier = 1 + (uT.power ?? 10) / 72;
         log.push({
           turn,
           actor: 'user',
           action: 'debuff',
           techniqueId: uId,
           techniqueName: uT?.name,
+          performerName: uPerf,
           value: oppDamageTakenMultiplier,
           hpUser,
           hpOpp,
         });
-        const base = (uT.power ?? 10) * 0.6 + userSide.stats.attack * 0.8;
-        const mitigation = Math.max(1, opponentSide.stats.defense * 0.9);
-        const dmg = Math.max(2, Math.round(base - mitigation));
-        applyUserDamageToOpponent(dmg, turn, uId, uT?.name);
+        const dmg = this.computeStrikeDamage(
+          (uT.power ?? 10) * 0.62,
+          userSide.stats.attack,
+          userSide.stats.speed,
+          opponentSide.stats.defense,
+          opponentSide.stats.speed,
+        );
+        applyUserDamageToOpponent(dmg, turn, uId, uT?.name, uPerf);
       } else if (uT?.type === 'movement') {
         userDodgeNext = true;
         log.push({
@@ -854,30 +955,39 @@ export class DisciplesService {
           action: 'movement',
           techniqueId: uId,
           techniqueName: uT?.name,
+          performerName: uPerf,
           dodgeNext: true,
           hpUser,
           hpOpp,
         });
       } else {
-        const base = (uT.power ?? 10) + userSide.stats.attack * 1.2;
-        let mitigation = Math.max(1, opponentSide.stats.defense * 0.9);
+        let dmg = this.computeStrikeDamage(
+          uT.power ?? 10,
+          userSide.stats.attack,
+          userSide.stats.speed,
+          opponentSide.stats.defense,
+          opponentSide.stats.speed,
+        );
         if (oppDodgeNext) {
-          mitigation *= 1.6;
+          dmg = Math.max(2, Math.floor(dmg * 0.52));
           oppDodgeNext = false;
         }
-        const dmg = Math.max(4, Math.round(base - mitigation));
-        applyUserDamageToOpponent(dmg, turn, uId, uT?.name);
+        applyUserDamageToOpponent(dmg, turn, uId, uT?.name, uPerf);
       }
       if (hpOpp <= 0) break;
 
       const oId = pick(opponentSide.equipped);
       const oT = techMap.get(oId) ?? techMap.get('basic_strike');
       if (oT?.cooldownTurns) cd[oId] = oT.cooldownTurns;
+      const oPerf = oppPerformer(oId);
 
       if (oT?.type === 'heal') {
         const heal = Math.max(
-          5,
-          Math.round((oT.power ?? 10) + opponentSide.stats.defense * 0.8),
+          6,
+          Math.round(
+            (oT.power ?? 10) * (1 + opponentSide.stats.defense / 58) +
+              opponentSide.stats.hp * 0.07,
+          ),
         );
         hpOpp = Math.min(maxOpp, hpOpp + heal);
         log.push({
@@ -886,40 +996,51 @@ export class DisciplesService {
           action: 'heal',
           techniqueId: oId,
           techniqueName: oT?.name,
+          performerName: oPerf,
           value: heal,
           hpUser,
           hpOpp,
         });
       } else if (oT?.type === 'buff') {
-        const shieldGain = Math.round((oT.power ?? 10) * 2 + opponentSide.stats.defense * 0.5);
-        oppBuffShield += Math.max(5, shieldGain);
+        const shieldGain = Math.round(
+          (oT.power ?? 10) * 2.1 +
+            opponentSide.stats.defense * 0.55 +
+            opponentSide.stats.speed * 0.22,
+        );
+        oppBuffShield += Math.max(6, shieldGain);
         log.push({
           turn,
           actor: 'opponent',
           action: 'buff',
           techniqueId: oId,
           techniqueName: oT?.name,
+          performerName: oPerf,
           value: shieldGain,
           shieldTotal: oppBuffShield,
           hpUser,
           hpOpp,
         });
       } else if (oT?.type === 'debuff') {
-        userDamageTakenMultiplier = 1 + (oT.power ?? 10) / 80;
+        userDamageTakenMultiplier = 1 + (oT.power ?? 10) / 72;
         log.push({
           turn,
           actor: 'opponent',
           action: 'debuff',
           techniqueId: oId,
           techniqueName: oT?.name,
+          performerName: oPerf,
           value: userDamageTakenMultiplier,
           hpUser,
           hpOpp,
         });
-        const base = (oT.power ?? 10) * 0.6 + opponentSide.stats.attack * 0.8;
-        const mitigation = Math.max(1, userSide.stats.defense * 0.9);
-        const dmg = Math.max(2, Math.round(base - mitigation));
-        applyOpponentDamageToUser(dmg, turn, oId, oT?.name);
+        const dmg = this.computeStrikeDamage(
+          (oT.power ?? 10) * 0.62,
+          opponentSide.stats.attack,
+          opponentSide.stats.speed,
+          userSide.stats.defense,
+          userSide.stats.speed,
+        );
+        applyOpponentDamageToUser(dmg, turn, oId, oT?.name, oPerf);
       } else if (oT?.type === 'movement') {
         oppDodgeNext = true;
         log.push({
@@ -928,19 +1049,24 @@ export class DisciplesService {
           action: 'movement',
           techniqueId: oId,
           techniqueName: oT?.name,
+          performerName: oPerf,
           dodgeNext: true,
           hpUser,
           hpOpp,
         });
       } else {
-        const base = (oT.power ?? 10) + opponentSide.stats.attack * 1.2;
-        let mitigation = Math.max(1, userSide.stats.defense * 0.9);
+        let dmg = this.computeStrikeDamage(
+          oT.power ?? 10,
+          opponentSide.stats.attack,
+          opponentSide.stats.speed,
+          userSide.stats.defense,
+          userSide.stats.speed,
+        );
         if (userDodgeNext) {
-          mitigation *= 1.6;
+          dmg = Math.max(2, Math.floor(dmg * 0.52));
           userDodgeNext = false;
         }
-        let dmg = Math.max(4, Math.round(base - mitigation));
-        applyOpponentDamageToUser(dmg, turn, oId, oT?.name);
+        applyOpponentDamageToUser(dmg, turn, oId, oT?.name, oPerf);
       }
       if (
         hpUser > 0 &&
@@ -959,6 +1085,7 @@ export class DisciplesService {
           actor: 'user',
           action: 'item_heal',
           itemId: 'healing_pill',
+          performerName: userSide.sideLabel,
           value: heal,
           hpUser,
           hpOpp,
@@ -973,6 +1100,7 @@ export class DisciplesService {
           actor: 'user',
           action: 'item_revive',
           itemId: 'resurrection_fragment',
+          performerName: userSide.sideLabel,
           value: heal,
           hpUser,
           hpOpp,
@@ -1484,6 +1612,233 @@ export class DisciplesService {
     };
   }
 
+  /** Ученики в бою: реальные статы + имя + экипировка техник */
+  private buildBattleRosterMember(
+    d: any,
+    displayName: string,
+  ): {
+    characterId: string;
+    displayName: string;
+    attack: number;
+    defense: number;
+    speed: number;
+    hp: number;
+    level: number;
+    techniquesEquipped: string[];
+  } {
+    return {
+      characterId: this.discipleCharId(d),
+      displayName,
+      attack: Math.max(1, d.attack ?? 1),
+      defense: Math.max(1, d.defense ?? 1),
+      speed: Math.max(1, d.speed ?? 1),
+      hp: Math.max(5, d.hp ?? 10),
+      level: Math.max(1, d.level ?? 1),
+      techniquesEquipped: [...(d.techniquesEquipped ?? [])],
+    };
+  }
+
+  private async enrichBattleRosterFromDisciples(
+    disciples: any[],
+  ): Promise<
+    Array<{
+      characterId: string;
+      displayName: string;
+      attack: number;
+      defense: number;
+      speed: number;
+      hp: number;
+      level: number;
+      techniquesEquipped: string[];
+    }>
+  > {
+    if (!disciples.length) return [];
+    const ids = disciples
+      .map((d) => d.characterId)
+      .filter(Boolean)
+      .map((c) =>
+        typeof c === 'object' && c !== null && '_id' in (c as object)
+          ? (c as Types.ObjectId)
+          : new Types.ObjectId(
+              typeof c === 'object' && c !== null && 'toString' in c
+                ? (c as { toString(): string }).toString()
+                : String(c),
+            ),
+      );
+    const chars = ids.length
+      ? await this.characterModel
+          .find({ _id: { $in: ids } })
+          .select('name')
+          .lean()
+          .exec()
+      : [];
+    const nameById = new Map(
+      (chars as { _id: Types.ObjectId; name?: string }[]).map((c) => [
+        c._id.toString(),
+        c.name ?? 'Ученик',
+      ]),
+    );
+    return disciples.map((d: any) => {
+      const cid = this.discipleCharId(d);
+      return this.buildBattleRosterMember(
+        d,
+        nameById.get(cid) ?? 'Ученик',
+      );
+    });
+  }
+
+  private aggregateSquadCombatStats(
+    members: Array<{
+      attack: number;
+      defense: number;
+      speed: number;
+      hp: number;
+    }>,
+  ): {
+    attack: number;
+    defense: number;
+    speed: number;
+    hpSum: number;
+    maxHpPool: number;
+  } {
+    let attack = 0;
+    let defense = 0;
+    let speed = 0;
+    let hpSum = 0;
+    for (const m of members) {
+      attack += m.attack;
+      defense += m.defense;
+      speed += m.speed;
+      hpSum += m.hp;
+    }
+    const maxHpPool = Math.max(
+      140,
+      Math.round(hpSum * 5.2 + defense * 3.8 + attack * 1.1),
+    );
+    return { attack, defense, speed, hpSum, maxHpPool };
+  }
+
+  private buildTechniqueOwnerMap(
+    members: Array<{
+      displayName: string;
+      characterId: string;
+      techniquesEquipped: string[];
+    }>,
+  ): Map<string, { displayName: string; characterId: string }> {
+    const map = new Map<string, { displayName: string; characterId: string }>();
+    for (const m of members) {
+      for (const tid of m.techniquesEquipped ?? []) {
+        if (tid && !map.has(tid)) {
+          map.set(tid, {
+            displayName: m.displayName,
+            characterId: m.characterId,
+          });
+        }
+      }
+    }
+    return map;
+  }
+
+  private rosterLine(
+    members: Array<{ displayName: string; level: number }>,
+  ): string {
+    return members
+      .map((m) => `${m.displayName} (ур.${m.level})`)
+      .join(' · ');
+  }
+
+  /** Отряд бота: размер как у игрока, суммарная сила около targetCp */
+  private buildBotBattleRoster(
+    targetTotalCp: number,
+    formula: { attack: number; defense: number; speed: number; hp: number },
+    mirrorSize: number,
+    mode: 'casual' | 'weekly',
+  ): Array<{
+    characterId: string;
+    displayName: string;
+    attack: number;
+    defense: number;
+    speed: number;
+    hp: number;
+    level: number;
+    techniquesEquipped: string[];
+  }> {
+    const n = Math.max(1, Math.min(3, mirrorSize));
+    const target = Math.max(
+      45,
+      Math.round(
+        targetTotalCp *
+          (mode === 'weekly' ? 0.98 + Math.random() * 0.12 : 0.85 + Math.random() * 0.28),
+      ),
+    );
+    const namesCasual = ['Бродячий боец', 'Странник ци', 'Наёмник'];
+    const namesWeekly = ['Страж арены', 'Ветеран схваток', 'Элитный рейдер'];
+    const names = mode === 'weekly' ? namesWeekly : namesCasual;
+    const kits = [
+      ['basic_strike', 'flame_palm', 'iron_skin'],
+      ['basic_strike', 'swift_step', 'ice_needle'],
+      ['basic_strike', 'thunder_fist', 'vitality_stream'],
+    ];
+    const roster: Array<{
+      characterId: string;
+      displayName: string;
+      attack: number;
+      defense: number;
+      speed: number;
+      hp: number;
+      level: number;
+      techniquesEquipped: string[];
+    }> = [];
+    let cpAcc = 0;
+    for (let i = 0; i < n; i++) {
+      const chunk = Math.max(28, Math.round(target / n * (0.86 + Math.random() * 0.28)));
+      const st = this.getBotDiscipleStats(chunk);
+      const lvl =
+        mode === 'weekly'
+          ? 14 + Math.floor(Math.random() * 20)
+          : 4 + Math.floor(Math.random() * 14);
+      roster.push({
+        characterId: `bot:fighter:${mode}:${i}`,
+        displayName: names[i % names.length],
+        attack: st.attack,
+        defense: st.defense,
+        speed: st.speed,
+        hp: st.hp,
+        level: lvl,
+        techniquesEquipped: [...(kits[i % kits.length] ?? ['basic_strike'])],
+      });
+      cpAcc += this.cp(st, formula);
+    }
+    if (cpAcc > 0 && target > 0) {
+      const scale = Math.min(1.35, Math.max(0.75, target / cpAcc));
+      if (Math.abs(scale - 1) > 0.04) {
+        for (const m of roster) {
+          m.attack = Math.max(3, Math.round(m.attack * scale));
+          m.defense = Math.max(3, Math.round(m.defense * scale));
+          m.speed = Math.max(2, Math.round(m.speed * scale));
+          m.hp = Math.max(8, Math.round(m.hp * scale));
+        }
+      }
+    }
+    return roster;
+  }
+
+  /** Урон с учётом атаки/защиты/скорости сторон */
+  private computeStrikeDamage(
+    power: number,
+    attackerAtk: number,
+    attackerSpd: number,
+    defenderDef: number,
+    defenderSpd: number,
+  ): number {
+    const raw =
+      power * (1 + attackerAtk / 50) +
+      attackerAtk * 0.46 +
+      attackerSpd * 0.16;
+    const armor = defenderDef * 0.5 + defenderSpd * 0.32;
+    return Math.max(2, Math.round(raw * (100 / (100 + armor))));
+  }
+
   async battleMatch(
     userId: string,
   ): Promise<{ opponent: any; combatRating: number; isBot?: boolean } | null> {
@@ -1597,63 +1952,112 @@ export class DisciplesService {
       );
     }
 
+    const userActive = this.activeDisciples(user);
+    const userRoster = await this.enrichBattleRosterFromDisciples(userActive);
+    const userAgg = this.aggregateSquadCombatStats(userRoster);
+    const userTechniqueOwners = this.buildTechniqueOwnerMap(userRoster);
+    const userRosterLineStr = this.rosterLine(userRoster);
+    const userEquipped = userRoster.flatMap((m) => m.techniquesEquipped ?? []);
+
     const isBot = opponentUserId === 'bot:casual' || opponentUserId?.startsWith?.('bot:');
     let cpOpponent: number;
     let oppEquipped: string[];
     let oppCard: unknown = null;
+    let oppAgg: {
+      attack: number;
+      defense: number;
+      speed: number;
+      hpSum: number;
+      maxHpPool: number;
+    };
+    let oppTechniqueOwners: Map<
+      string,
+      { displayName: string; characterId: string }
+    >;
+    let oppRosterLineStr: string;
+    let oppCharacterId = '';
 
     if (isBot) {
-      const rating = user.combatRating ?? 0;
-      const botStats = this.getBotDiscipleStats(rating);
-      cpOpponent = this.cp(botStats, formula);
-      oppEquipped = [];
+      const oppRoster = this.buildBotBattleRoster(
+        cpUser,
+        formula,
+        userRoster.length,
+        'casual',
+      );
+      cpOpponent = 0;
+      for (const m of oppRoster) {
+        cpOpponent += this.cp(
+          { attack: m.attack, defense: m.defense, speed: m.speed, hp: m.hp },
+          formula,
+        );
+      }
+      oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
+      oppAgg = this.aggregateSquadCombatStats(oppRoster);
+      oppTechniqueOwners = this.buildTechniqueOwnerMap(oppRoster);
+      oppRosterLineStr = this.rosterLine(oppRoster);
     } else {
       const opponent = await this.userModel.findById(
         new Types.ObjectId(opponentUserId),
       );
       if (!opponent) throw new NotFoundException('Противник не найден');
-      if ((opponent.disciples?.length ?? 0) === 0) {
-        throw new BadRequestException('У противника нет учеников');
+      const oppActive = this.activeDisciples(opponent);
+      if (oppActive.length === 0) {
+        throw new BadRequestException(
+          'У противника нет учеников в активном отряде',
+        );
       }
+      const oppRoster = await this.enrichBattleRosterFromDisciples(oppActive);
       cpOpponent = 0;
-      for (const d of opponent.disciples) {
+      for (const d of oppActive) {
         cpOpponent += this.cp(
           { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
           formula,
         );
       }
-      oppEquipped = (opponent.disciples ?? []).flatMap(
-        (d: { techniquesEquipped?: string[] }) => d.techniquesEquipped ?? [],
-      );
-      oppCard = (opponent.disciples?.[0] as any)?.characterId
+      oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
+      oppAgg = this.aggregateSquadCombatStats(oppRoster);
+      oppTechniqueOwners = this.buildTechniqueOwnerMap(oppRoster);
+      oppRosterLineStr = this.rosterLine(oppRoster);
+      const oppLead = this.getLeadActiveDisciple(opponent);
+      oppCharacterId = oppLead ? this.discipleCharId(oppLead) : '';
+      oppCard = oppLead?.characterId
         ? await this.resolveCardMedia(
-            (opponent.disciples?.[0] as any).characterId.toString(),
-            (opponent.disciples?.[0] as any).level ?? 1,
+            this.discipleCharId(oppLead),
+            (oppLead as { level?: number }).level ?? 1,
             opponentUserId,
           )
         : null;
     }
-
-    const userEquipped = this.activeDisciples(user).flatMap(
-      (d: { techniquesEquipped?: string[] }) => d.techniquesEquipped ?? [],
-    );
 
     const lead = this.getLeadActiveDisciple(user);
     const sim = await this.simulateBattleWithTechniques(
       {
         characterId: lead ? this.discipleCharId(lead) : '',
         equipped: userEquipped,
-        stats: { attack: cpUser / 10, defense: cpUser / 12, speed: 10, hp: 30 },
+        stats: {
+          attack: userAgg.attack,
+          defense: userAgg.defense,
+          speed: userAgg.speed,
+          hp: userAgg.hpSum,
+          maxHpPool: userAgg.maxHpPool,
+        },
+        rosterLine: userRosterLineStr,
+        techniqueOwners: userTechniqueOwners,
+        sideLabel: 'Ваш отряд',
       },
       {
-        characterId: '',
+        characterId: oppCharacterId,
         equipped: oppEquipped,
         stats: {
-          attack: cpOpponent / 10,
-          defense: cpOpponent / 12,
-          speed: 10,
-          hp: 30,
+          attack: oppAgg.attack,
+          defense: oppAgg.defense,
+          speed: oppAgg.speed,
+          hp: oppAgg.hpSum,
+          maxHpPool: oppAgg.maxHpPool,
         },
+        rosterLine: oppRosterLineStr,
+        techniqueOwners: oppTechniqueOwners,
+        sideLabel: isBot ? 'Отряд бота' : 'Отряд противника',
       },
       supportState,
     );
@@ -1851,63 +2255,115 @@ export class DisciplesService {
       );
     }
 
+    const userActiveW = this.activeDisciples(user);
+    const userRosterW = await this.enrichBattleRosterFromDisciples(userActiveW);
+    const userAggW = this.aggregateSquadCombatStats(userRosterW);
+    const userTechniqueOwnersW = this.buildTechniqueOwnerMap(userRosterW);
+    const userRosterLineW = this.rosterLine(userRosterW);
+    const userEquipped = userRosterW.flatMap((m) => m.techniquesEquipped ?? []);
+
     const isBot = opponentUserId === 'bot:weekly' || opponentUserId?.startsWith?.('bot:');
     let cpOpponent: number;
     let oppRating: number;
     let oppEquipped: string[] = [];
     let oppCard: unknown = null;
+    let oppAggW: {
+      attack: number;
+      defense: number;
+      speed: number;
+      hpSum: number;
+      maxHpPool: number;
+    };
+    let oppTechniqueOwnersW: Map<
+      string,
+      { displayName: string; characterId: string }
+    >;
+    let oppRosterLineW: string;
+    let oppCharacterIdW = '';
 
     if (isBot) {
       const rating = user.weeklyRating ?? 1000;
-      const botStats = this.getBotDiscipleStats(rating);
-      cpOpponent = this.cp(botStats, formula);
+      const oppRoster = this.buildBotBattleRoster(
+        cpUser,
+        formula,
+        userRosterW.length,
+        'weekly',
+      );
+      cpOpponent = 0;
+      for (const m of oppRoster) {
+        cpOpponent += this.cp(
+          { attack: m.attack, defense: m.defense, speed: m.speed, hp: m.hp },
+          formula,
+        );
+      }
       oppRating = rating;
+      oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
+      oppAggW = this.aggregateSquadCombatStats(oppRoster);
+      oppTechniqueOwnersW = this.buildTechniqueOwnerMap(oppRoster);
+      oppRosterLineW = this.rosterLine(oppRoster);
     } else {
       const opponent = await this.userModel.findById(
         new Types.ObjectId(opponentUserId),
       );
       if (!opponent) throw new NotFoundException('Противник не найден');
-      if ((opponent.disciples?.length ?? 0) === 0) {
-        throw new BadRequestException('У противника нет учеников');
+      const oppActive = this.activeDisciples(opponent);
+      if (oppActive.length === 0) {
+        throw new BadRequestException(
+          'У противника нет учеников в активном отряде',
+        );
       }
+      const oppRoster = await this.enrichBattleRosterFromDisciples(oppActive);
       cpOpponent = 0;
-      for (const d of opponent.disciples) {
+      for (const d of oppActive) {
         cpOpponent += this.cp(
           { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
           formula,
         );
       }
       oppRating = opponent.weeklyRating ?? 1000;
-      oppEquipped = (opponent.disciples ?? []).flatMap(
-        (d: { techniquesEquipped?: string[] }) => d.techniquesEquipped ?? [],
-      );
-      oppCard = (opponent.disciples?.[0] as any)?.characterId
+      oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
+      oppAggW = this.aggregateSquadCombatStats(oppRoster);
+      oppTechniqueOwnersW = this.buildTechniqueOwnerMap(oppRoster);
+      oppRosterLineW = this.rosterLine(oppRoster);
+      const oppLeadW = this.getLeadActiveDisciple(opponent);
+      oppCharacterIdW = oppLeadW ? this.discipleCharId(oppLeadW) : '';
+      oppCard = oppLeadW?.characterId
         ? await this.resolveCardMedia(
-            (opponent.disciples?.[0] as any).characterId.toString(),
-            (opponent.disciples?.[0] as any).level ?? 1,
+            this.discipleCharId(oppLeadW),
+            (oppLeadW as { level?: number }).level ?? 1,
             opponentUserId,
           )
         : null;
     }
-    const userEquipped = this.activeDisciples(user).flatMap(
-      (d: { techniquesEquipped?: string[] }) => d.techniquesEquipped ?? [],
-    );
     const weeklyLead = this.getLeadActiveDisciple(user);
     const sim = await this.simulateBattleWithTechniques(
       {
         characterId: weeklyLead ? this.discipleCharId(weeklyLead) : '',
         equipped: userEquipped,
-        stats: { attack: cpUser / 10, defense: cpUser / 12, speed: 10, hp: 30 },
+        stats: {
+          attack: userAggW.attack,
+          defense: userAggW.defense,
+          speed: userAggW.speed,
+          hp: userAggW.hpSum,
+          maxHpPool: userAggW.maxHpPool,
+        },
+        rosterLine: userRosterLineW,
+        techniqueOwners: userTechniqueOwnersW,
+        sideLabel: 'Ваш отряд',
       },
       {
-        characterId: '',
+        characterId: oppCharacterIdW,
         equipped: oppEquipped,
         stats: {
-          attack: cpOpponent / 10,
-          defense: cpOpponent / 12,
-          speed: 10,
-          hp: 30,
+          attack: oppAggW.attack,
+          defense: oppAggW.defense,
+          speed: oppAggW.speed,
+          hp: oppAggW.hpSum,
+          maxHpPool: oppAggW.maxHpPool,
         },
+        rosterLine: oppRosterLineW,
+        techniqueOwners: oppTechniqueOwnersW,
+        sideLabel: isBot ? 'Отряд бота' : 'Отряд противника',
       },
       supportState,
     );
@@ -2252,12 +2708,7 @@ export class DisciplesService {
               : '';
       const level = d.level ?? 1;
       const rank = d.rank ?? 'F';
-      const available = await this.listAvailableTechniques(
-        cid,
-        level,
-        rank,
-        libraryLevel,
-      );
+      const available = await this.listAvailableTechniques(cid, level, rank);
       result.push({
         characterId: cid,
         techniquesLearned: d.techniquesLearned ?? [],
@@ -2297,13 +2748,22 @@ export class DisciplesService {
       characterId,
       level,
       rank,
-      libraryLevel,
     );
     const tech = (
-      available as Array<{ id?: string; learnCostCoins?: number }>
+      available as Array<{
+        id?: string;
+        learnCostCoins?: number;
+        requiredLibraryLevel?: number;
+      }>
     ).find((t) => t.id === techniqueId);
     if (!tech)
       throw new BadRequestException('Техника недоступна или уже изучена');
+    const reqLib = tech.requiredLibraryLevel ?? 1;
+    if (reqLib > libraryLevel) {
+      throw new BadRequestException(
+        `Нужен уровень библиотеки ${reqLib} (сейчас ${libraryLevel})`,
+      );
+    }
     const learned = d.techniquesLearned ?? [];
     if (learned.includes(techniqueId))
       throw new BadRequestException('Техника уже изучена');
@@ -2481,6 +2941,94 @@ export class DisciplesService {
     return { ok: true };
   }
 
+  private inventoryCount(
+    inv: Array<{ itemId?: string; count?: number }> | undefined,
+    itemId: string,
+  ): number {
+    return (inv ?? []).reduce(
+      (acc, e) => acc + (e.itemId === itemId ? (e.count ?? 0) : 0),
+      0,
+    );
+  }
+
+  async getDiscipleItemExchangeRecipes(userId: string) {
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('inventory')
+      .lean()
+      .exec();
+    if (!user) throw new NotFoundException('User not found');
+    const inv = (user as { inventory?: Array<{ itemId?: string; count?: number }> })
+      .inventory;
+    const recipes: Array<{
+      recipeId: string;
+      label: string;
+      description?: string;
+      inputs: Array<{
+        itemId: string;
+        count: number;
+        have: number;
+        name?: string;
+        icon?: string;
+      }>;
+      outputs: Array<{
+        itemId: string;
+        count: number;
+        name?: string;
+        icon?: string;
+      }>;
+      canAfford: boolean;
+    }> = [];
+    for (const r of DISCIPLE_ITEM_EXCHANGE_RECIPES) {
+      const inputs = await Promise.all(
+        r.consume.map(async (c) => {
+          const meta = await this.gameItemsService.findById(c.itemId);
+          return {
+            itemId: c.itemId,
+            count: c.count,
+            have: this.inventoryCount(inv, c.itemId),
+            name: meta?.name,
+            icon: meta?.icon || undefined,
+          };
+        }),
+      );
+      const outputs = await Promise.all(
+        r.grant.map(async (g) => {
+          const meta = await this.gameItemsService.findById(g.itemId);
+          return {
+            itemId: g.itemId,
+            count: g.count,
+            name: meta?.name,
+            icon: meta?.icon || undefined,
+          };
+        }),
+      );
+      const canAfford = inputs.every((i) => i.have >= i.count);
+      recipes.push({
+        recipeId: r.recipeId,
+        label: r.label,
+        description: r.description,
+        inputs,
+        outputs,
+        canAfford,
+      });
+    }
+    return { recipes };
+  }
+
+  async performDiscipleItemExchange(userId: string, recipeId: string) {
+    const def = DISCIPLE_ITEM_EXCHANGE_RECIPES.find(
+      (x) => x.recipeId === recipeId,
+    );
+    if (!def) throw new BadRequestException('Неизвестный рецепт обмена');
+    await this.gameItemsService.exchangeItemsAtomic(
+      userId,
+      def.consume,
+      def.grant,
+    );
+    return { ok: true as const, recipeId };
+  }
+
   getDiscipleGameShop(): {
     offers: Array<Record<string, unknown>>;
   } {
@@ -2512,7 +3060,7 @@ export class DisciplesService {
   ): Promise<{
     balance: number;
     purchased: string;
-    library?: { level: number; exp: number };
+    library?: { level: number; exp: number; expToNext: number };
   }> {
     const offer = DISCIPLE_GAME_SHOP_OFFERS.find((o) => o.offerId === offerId);
     if (!offer) throw new BadRequestException('Неизвестное предложение');
@@ -2548,6 +3096,9 @@ export class DisciplesService {
           ? {
               level: (fresh as { libraryLevel?: number })?.libraryLevel ?? 1,
               exp: (fresh as { libraryExp?: number })?.libraryExp ?? 0,
+              expToNext: libraryExpToNext(
+                (fresh as { libraryLevel?: number })?.libraryLevel ?? 1,
+              ),
             }
           : undefined,
     };

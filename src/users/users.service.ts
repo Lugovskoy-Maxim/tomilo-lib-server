@@ -3641,6 +3641,18 @@ export class UsersService {
     return this.disciplesService.buyDiscipleGameShopOffer(userId, offerId);
   }
 
+  async disciplesItemExchangeRecipes(userId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.getDiscipleItemExchangeRecipes(userId);
+  }
+
+  async disciplesItemExchange(userId: string, recipeId: string) {
+    if (!this.disciplesService)
+      throw new BadRequestException('Disciples game not available');
+    return this.disciplesService.performDiscipleItemExchange(userId, recipeId);
+  }
+
   async getAlchemyRecipes(userId: string) {
     if (!this.alchemyService)
       throw new BadRequestException('Alchemy not available');
