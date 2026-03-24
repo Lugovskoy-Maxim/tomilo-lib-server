@@ -16,9 +16,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Types } from 'mongoose';
-import { Roles } from '../auth/decorators/roles.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { RolesGuard } from '../auth/guards/roles.guard';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
@@ -187,8 +185,7 @@ export class CommentsController {
   }
 
   @Delete(':id')
-  @Roles('admin')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
   async remove(
     @Param('id') id: string,
