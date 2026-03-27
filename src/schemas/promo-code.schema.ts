@@ -76,7 +76,6 @@ export class PromoCode {
 
 export const PromoCodeSchema = SchemaFactory.createForClass(PromoCode);
 
-PromoCodeSchema.index({ code: 1 }, { unique: true });
 PromoCodeSchema.index({ status: 1 });
 PromoCodeSchema.index({ expiresAt: 1 });
 PromoCodeSchema.index({ createdAt: -1 });
