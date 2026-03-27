@@ -74,6 +74,10 @@ export class Comment {
 
   @Prop({ default: false })
   isEdited: boolean;
+
+  /** Пользователь пометил текст как спойлер */
+  @Prop({ default: false })
+  isSpoiler: boolean;
 }
 
 export const CommentSchema = SchemaFactory.createForClass(Comment);

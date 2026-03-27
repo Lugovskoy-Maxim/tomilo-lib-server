@@ -1,4 +1,9 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Report, ReportDocument, ReportType } from '../schemas/report.schema';
@@ -9,6 +14,12 @@ import {
   NotificationDocument,
   NotificationType,
 } from '../schemas/notification.schema';
+import {
+  Comment,
+  CommentDocument,
+  CommentEntityType,
+} from '../schemas/comment.schema';
+import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
 import { UsersService } from '../users/users.service';
 import { AutoParsingService } from '../auto-parsing/auto-parsing.service';
 
@@ -21,6 +32,8 @@ export class ReportsService {
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Notification.name)
     private notificationModel: Model<NotificationDocument>,
+    @InjectModel(Comment.name) private commentModel: Model<CommentDocument>,
+    @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
     private usersService: UsersService,
     private autoParsingService: AutoParsingService,
   ) {}
@@ -29,6 +42,10 @@ export class ReportsService {
     createReportDto: CreateReportDto,
     userId: string,
   ): Promise<ReportDocument> {
+    if (createReportDto.reportType === ReportType.COMMENT_REPORT) {
+      return this.createCommentReport(createReportDto, userId);
+    }
+
     const report = new this.reportModel({
       ...createReportDto,
       userId: new Types.ObjectId(userId),
@@ -82,11 +99,84 @@ export class ReportsService {
     return saved;
   }
 
+  private async createCommentReport(
+    createReportDto: CreateReportDto,
+    userId: string,
+  ): Promise<ReportDocument> {
+    if (createReportDto.entityType !== 'comment') {
+      throw new BadRequestException(
+        'Для жалобы на комментарий укажите entityType "comment"',
+      );
+    }
+    if (!createReportDto.entityId || !Types.ObjectId.isValid(createReportDto.entityId)) {
+      throw new BadRequestException('Некорректный идентификатор комментария');
+    }
+    const trimmed = createReportDto.content.trim();
+    if (trimmed.length < 10) {
+      throw new BadRequestException(
+        'Опишите причину жалобы не короче 10 символов',
+      );
+    }
+
+    const comment = await this.commentModel.findById(createReportDto.entityId);
+    if (!comment || !comment.isVisible) {
+      throw new NotFoundException('Комментарий не найден');
+    }
+
+    const commentOid = new Types.ObjectId(createReportDto.entityId);
+    const dup = await this.reportModel.findOne({
+      userId: new Types.ObjectId(userId),
+      reportType: ReportType.COMMENT_REPORT,
+      entityId: commentOid,
+      isResolved: false,
+    });
+    if (dup) {
+      throw new BadRequestException(
+        'У вас уже есть открытая жалоба на этот комментарий',
+      );
+    }
+
+    let titleId: Types.ObjectId | null = createReportDto.titleId
+      ? new Types.ObjectId(createReportDto.titleId)
+      : null;
+    if (comment.entityType === CommentEntityType.TITLE) {
+      titleId = comment.entityId as Types.ObjectId;
+    } else if (comment.entityType === CommentEntityType.CHAPTER) {
+      const chapter = await this.chapterModel
+        .findById(comment.entityId)
+        .select('titleId')
+        .lean();
+      const ref = chapter?.titleId;
+      if (ref) {
+        titleId = new Types.ObjectId(String(ref));
+      }
+    }
+
+    const report = new this.reportModel({
+      ...createReportDto,
+      content: trimmed,
+      reportType: ReportType.COMMENT_REPORT,
+      entityType: 'comment',
+      entityId: commentOid,
+      userId: new Types.ObjectId(userId),
+      creatorId: createReportDto.creatorId
+        ? new Types.ObjectId(createReportDto.creatorId)
+        : null,
+      titleId,
+      url: createReportDto.url ?? null,
+    });
+
+    const saved = await report.save();
+    void this.usersService.incrementReportsCount(userId);
+    return saved;
+  }
+
   async findAll(
     page = 1,
     limit = 20,
     reportType?: ReportType,
     isResolved?: boolean,
+    entityType?: string,
   ) {
     const skip = (page - 1) * limit;
     const query: any = {};
@@ -97,6 +187,10 @@ export class ReportsService {
 
     if (isResolved !== undefined) {
       query.isResolved = isResolved;
+    }
+
+    if (entityType) {
+      query.entityType = entityType;
     }
 
     const [reports, total] = await Promise.all([

@@ -6,8 +6,11 @@ import {
   IsMongoId,
   MinLength,
   MaxLength,
+  IsIn,
 } from 'class-validator';
 import { ReportType } from '../../schemas/report.schema';
+
+const REPORT_ENTITY_TYPES = ['title', 'chapter', 'comment'] as const;
 
 export class CreateReportDto {
   @IsEnum(ReportType)
@@ -24,9 +27,9 @@ export class CreateReportDto {
   @IsOptional()
   entityId?: string;
 
-  @IsString()
   @IsOptional()
-  entityType?: string;
+  @IsIn([...REPORT_ENTITY_TYPES])
+  entityType?: (typeof REPORT_ENTITY_TYPES)[number];
 
   @IsString()
   @IsOptional()

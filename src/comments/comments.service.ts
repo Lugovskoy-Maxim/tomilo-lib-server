@@ -312,6 +312,9 @@ export class CommentsService {
 
     comment.content = updateCommentDto.content;
     comment.isEdited = true;
+    if (updateCommentDto.isSpoiler !== undefined) {
+      comment.isSpoiler = updateCommentDto.isSpoiler;
+    }
 
     return comment.save();
   }

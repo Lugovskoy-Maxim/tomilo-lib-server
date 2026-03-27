@@ -68,6 +68,7 @@ export class ReportsController {
     @Query('limit') limit = 20,
     @Query('reportType') reportType?: ReportType,
     @Query('isResolved') isResolved?: string,
+    @Query('entityType') entityType?: string,
   ): Promise<ApiResponseDto<any>> {
     try {
       const isResolvedBool =
@@ -82,6 +83,7 @@ export class ReportsController {
         Number(limit),
         reportType,
         isResolvedBool,
+        entityType,
       );
 
       return {

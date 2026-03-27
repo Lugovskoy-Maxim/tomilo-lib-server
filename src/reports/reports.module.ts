@@ -8,6 +8,8 @@ import {
   Notification,
   NotificationSchema,
 } from '../schemas/notification.schema';
+import { Comment, CommentSchema } from '../schemas/comment.schema';
+import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
 import { UsersModule } from '../users/users.module';
 import { AutoParsingModule } from '../auto-parsing/auto-parsing.module';
 
@@ -17,6 +19,8 @@ import { AutoParsingModule } from '../auto-parsing/auto-parsing.module';
       { name: Report.name, schema: ReportSchema },
       { name: User.name, schema: UserSchema },
       { name: Notification.name, schema: NotificationSchema },
+      { name: Comment.name, schema: CommentSchema },
+      { name: Chapter.name, schema: ChapterSchema },
     ]),
     UsersModule,
     AutoParsingModule,

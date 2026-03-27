@@ -17,6 +17,8 @@ export enum ReportType {
   DUPLICATE = 'duplicate',
   /** Другое */
   OTHER = 'other',
+  /** Жалоба на комментарий пользователя */
+  COMMENT_REPORT = 'comment_report',
 }
 
 @Schema({ timestamps: true })
