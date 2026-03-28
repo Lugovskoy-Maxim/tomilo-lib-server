@@ -428,6 +428,8 @@ export class NotificationsService {
       chapterId?: string;
       entityName?: string;
       parentContentPreview?: string;
+      /** Текст нового ответа (для карточки и превью в уведомлениях) */
+      replyContentPreview?: string;
     } = {},
   ): Promise<NotificationDocument | null> {
     if (recipientUserId == null || !Types.ObjectId.isValid(recipientUserId)) {
@@ -438,7 +440,14 @@ export class NotificationsService {
     const preview = options.parentContentPreview
       ? `: «${(options.parentContentPreview || '').slice(0, 60)}${(options.parentContentPreview?.length ?? 0) > 60 ? '…' : ''}»`
       : '';
-    const message = `${replierUsername} ответил(а) на ваш комментарий${context}${preview}`;
+    const replySnippet = (options.replyContentPreview || '').trim();
+    const replyShort =
+      replySnippet.length > 0
+        ? `${replySnippet.slice(0, 120)}${replySnippet.length > 120 ? '…' : ''}`
+        : '';
+    const message = replyShort
+      ? `${replierUsername} ответил(а): «${replyShort}»${context}${preview}`
+      : `${replierUsername} ответил(а) на ваш комментарий${context}${preview}`;
     return this.create({
       userId: recipientUserId,
       type: NotificationType.COMMENT_REPLY,
@@ -451,6 +460,9 @@ export class NotificationsService {
         entityType,
         entityId,
         replierUsername,
+        ...(replyShort ? { replyPreview: replyShort } : {}),
+        ...(options.titleId ? { titleId: options.titleId } : {}),
+        ...(options.chapterId ? { chapterId: options.chapterId } : {}),
       },
     });
   }

@@ -109,6 +109,7 @@ export class CommentsService {
             chapterId: ctx?.chapterId,
             entityName: ctx?.entityName,
             parentContentPreview: parentComment.content,
+            replyContentPreview: saved.content,
           },
         );
       }
