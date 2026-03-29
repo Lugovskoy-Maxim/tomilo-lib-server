@@ -56,6 +56,9 @@ export const VOTES_FOR_RARITY: Record<
 /** Монеты активности за один голос по предложению (должно совпадать с клиентом). */
 export const VOTE_REWARD_COINS = 100;
 
+/** Сколько предложений с наибольшим числом голосов добавляется в магазин каждую неделю. */
+export const WEEKLY_SUGGESTION_WINNERS_COUNT = 3;
+
 function getPriceByRarity(
   rarity: 'common' | 'rare' | 'epic' | 'legendary',
 ): number {
@@ -1137,9 +1140,20 @@ export class ShopService {
     };
   }
 
-  /** Еженедельно: принять предложение с наибольшим числом голосов и добавить в магазин. Цена от голосов. */
-  async acceptWeeklyWinner() {
-    const pending = await this.suggestedDecorationModel
+  /**
+   * Еженедельно: принять до WEEKLY_SUGGESTION_WINNERS_COUNT предложений с наибольшим числом голосов
+   * и добавить в магазин. Цена от голосов. Остальные pending (вне топа) удаляются.
+   */
+  async acceptWeeklyWinner(): Promise<{
+    winners: Array<{
+      suggestionId: string;
+      decorationId: string;
+      type: string;
+      price: number;
+      votesCount: number;
+    }>;
+  } | null> {
+    const pendingTop = await this.suggestedDecorationModel
       .aggregate([
         { $match: { status: 'pending' } },
         {
@@ -1148,96 +1162,116 @@ export class ShopService {
           },
         },
         { $sort: { votesCount: -1, createdAt: -1 } },
-        { $limit: 1 },
+        { $limit: WEEKLY_SUGGESTION_WINNERS_COUNT },
       ])
       .exec();
-    if (pending.length === 0) {
-      this.logger.log('Accept weekly winner: no pending suggestions');
-      return null;
-    }
-    const winner = pending[0];
-    const suggestionId = winner._id.toString();
-    const votesCount = Array.isArray(winner.votedUserIds)
-      ? winner.votedUserIds.length
-      : 0;
-    const authorId = winner.authorId;
-    const rarity = getRarityByVotes(votesCount);
-    const price = getPriceByRarity(rarity);
-
-    // imageUrl из агрегата может прийти как imageUrl или image_url; путь должен начинаться с /
-    const rawImageUrl =
-      winner.imageUrl ?? (winner as { image_url?: string }).image_url ?? '';
-    const imageUrl =
-      typeof rawImageUrl === 'string' && rawImageUrl.trim()
-        ? rawImageUrl.startsWith('/')
-          ? rawImageUrl.trim()
-          : `/${rawImageUrl.trim()}`
-        : '';
-    if (!imageUrl) {
-      this.logger.warn(
-        `Accept weekly winner: suggestion ${suggestionId} has no imageUrl, skipping`,
-      );
+    if (pendingTop.length === 0) {
+      this.logger.log('Accept weekly winners: no pending suggestions');
       return null;
     }
 
-    const doc: Record<string, unknown> = {
-      name: winner.name,
-      imageUrl,
-      price,
-      rarity,
-      description: winner.description ?? '',
-      isAvailable: true,
-      authorId: authorId ?? undefined,
-    };
+    const topIds = pendingTop.map((w) => w._id);
+    const winners: Array<{
+      suggestionId: string;
+      decorationId: string;
+      type: string;
+      price: number;
+      votesCount: number;
+    }> = [];
+    const typesToInvalidate = new Set<string>();
 
-    let decoration: any;
-    switch (winner.type) {
-      case 'avatar':
-        decoration = await this.avatarDecorationModel.create(doc);
-        break;
-      case 'frame':
-        decoration = await this.avatarFrameDecorationModel.create(doc);
-        break;
-      case 'background':
-        decoration = await this.backgroundDecorationModel.create(doc);
-        break;
-      case 'card':
-        decoration = await this.cardDecorationModel.create(doc);
-        break;
-      default:
-        this.logger.warn(`Accept weekly winner: unknown type ${winner.type}`);
-        return null;
+    for (const winner of pendingTop) {
+      const suggestionId = winner._id.toString();
+      const votesCount = Array.isArray(winner.votedUserIds)
+        ? winner.votedUserIds.length
+        : 0;
+      const authorId = winner.authorId;
+      const rarity = getRarityByVotes(votesCount);
+      const price = getPriceByRarity(rarity);
+
+      const rawImageUrl =
+        winner.imageUrl ?? (winner as { image_url?: string }).image_url ?? '';
+      const imageUrl =
+        typeof rawImageUrl === 'string' && rawImageUrl.trim()
+          ? rawImageUrl.startsWith('/')
+            ? rawImageUrl.trim()
+            : `/${rawImageUrl.trim()}`
+          : '';
+      if (!imageUrl) {
+        this.logger.warn(
+          `Accept weekly winners: suggestion ${suggestionId} has no imageUrl, skipping`,
+        );
+        continue;
+      }
+
+      const doc: Record<string, unknown> = {
+        name: winner.name,
+        imageUrl,
+        price,
+        rarity,
+        description: winner.description ?? '',
+        isAvailable: true,
+        authorId: authorId ?? undefined,
+      };
+
+      let decoration: any;
+      switch (winner.type) {
+        case 'avatar':
+          decoration = await this.avatarDecorationModel.create(doc);
+          break;
+        case 'frame':
+          decoration = await this.avatarFrameDecorationModel.create(doc);
+          break;
+        case 'background':
+          decoration = await this.backgroundDecorationModel.create(doc);
+          break;
+        case 'card':
+          decoration = await this.cardDecorationModel.create(doc);
+          break;
+        default:
+          this.logger.warn(
+            `Accept weekly winners: unknown type ${winner.type}`,
+          );
+          continue;
+      }
+
+      await this.suggestedDecorationModel.findByIdAndUpdate(winner._id, {
+        status: 'accepted',
+        acceptedDecorationId: decoration._id,
+        acceptedAt: new Date(),
+      });
+
+      winners.push({
+        suggestionId,
+        decorationId: decoration._id.toString(),
+        type: winner.type,
+        price,
+        votesCount,
+      });
+      typesToInvalidate.add(winner.type);
     }
 
-    await this.suggestedDecorationModel.findByIdAndUpdate(winner._id, {
-      status: 'accepted',
-      acceptedDecorationId: decoration._id,
-      acceptedAt: new Date(),
-    });
-
-    // Удалить остальные ожидающие предложения после выбора победителя
     const deleteResult = await this.suggestedDecorationModel.deleteMany({
       status: 'pending',
-      _id: { $ne: winner._id },
+      _id: { $nin: topIds },
     });
     this.logger.log(
-      `Deleted ${deleteResult.deletedCount} other pending suggestions after accepting winner`,
+      `After weekly acceptance: deleted ${deleteResult.deletedCount} pending suggestions outside top ${WEEKLY_SUGGESTION_WINNERS_COUNT}`,
     );
 
     if (typeof this.cacheManager.del === 'function') {
       await this.cacheManager.del('shop:decorations:all');
-      await this.cacheManager.del(`shop:decorations:${winner.type}`);
+      for (const t of typesToInvalidate) {
+        await this.cacheManager.del(`shop:decorations:${t}`);
+      }
     }
 
-    this.logger.log(
-      `Accepted weekly winner suggestion ${suggestionId} -> ${winner.type} decoration ${decoration._id} (price=${price}, votes=${votesCount})`,
-    );
-    return {
-      suggestionId,
-      decorationId: decoration._id.toString(),
-      type: winner.type,
-      price,
-      votesCount,
-    };
+    for (const w of winners) {
+      this.logger.log(
+        `Accepted weekly winner suggestion ${w.suggestionId} -> ${w.type} decoration ${w.decorationId} (price=${w.price}, votes=${w.votesCount})`,
+      );
+    }
+
+    return { winners };
   }
 }
