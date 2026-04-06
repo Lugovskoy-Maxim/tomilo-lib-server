@@ -130,7 +130,9 @@ export class FilesService {
         this.logger.log(`[S3 async] Папка удалена: ${s3Prefix}`);
       })
       .catch((error) => {
-        this.logger.error(`[S3 async] Ошибка удаления папки ${s3Prefix}: ${error}`);
+        this.logger.error(
+          `[S3 async] Ошибка удаления папки ${s3Prefix}: ${error}`,
+        );
       });
   }
 
@@ -497,7 +499,9 @@ export class FilesService {
       throw new BadRequestException('Файл должен быть изображением');
     }
     const ext = file.originalname.split('.').pop()?.toLowerCase() || 'jpg';
-    const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext) ? ext : 'jpg';
+    const safeExt = ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)
+      ? ext
+      : 'jpg';
     const fileName = `icon-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${safeExt}`;
     const localPath = `game-items/${fileName}`;
     const s3Key = localPath;
@@ -567,7 +571,10 @@ export class FilesService {
     }
   }
 
-  async deleteCharacterAvatar(titleId: string, characterId: string): Promise<void> {
+  async deleteCharacterAvatar(
+    titleId: string,
+    characterId: string,
+  ): Promise<void> {
     await this.deleteFolderWithBackup(
       `characters/${titleId}/${characterId}`,
       `characters/${titleId}/${characterId}`,

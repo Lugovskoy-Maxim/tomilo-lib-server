@@ -166,7 +166,12 @@ export class NotificationsGateway
       | { type: 'achievement'; achievement: Record<string, unknown> }
       | {
           type: 'reading_drops';
-          items: { itemId: string; count: number; name?: string; icon?: string }[];
+          items: {
+            itemId: string;
+            count: number;
+            name?: string;
+            icon?: string;
+          }[];
         }
       | {
           type: 'reading_card_drops';

@@ -61,6 +61,22 @@ type DiscipleGameShopOffer =
       libraryExp: number;
     };
 
+type Disciple = {
+  characterId: Types.ObjectId;
+  titleId: Types.ObjectId;
+  recruitedAt: Date;
+  attack: number;
+  defense: number;
+  speed: number;
+  hp: number;
+  level?: number;
+  exp?: number;
+  rank?: string;
+  techniquesLearned?: string[];
+  techniquesEquipped?: string[];
+  inWarehouse?: boolean;
+};
+
 const DISCIPLE_GAME_SHOP_OFFERS: DiscipleGameShopOffer[] = [
   {
     offerId: 'stabilizer_2',
@@ -168,14 +184,16 @@ function rankFromLevel(level: number): string {
 }
 
 /** Случайная длительность экспедиции в мс: easy 20–60 с, normal 45–90 с, hard 60–120 с */
-function randomExpeditionDurationMs(difficulty: 'easy' | 'normal' | 'hard'): number {
+function randomExpeditionDurationMs(
+  difficulty: 'easy' | 'normal' | 'hard',
+): number {
   const ranges = {
     easy: [20, 60],
     normal: [45, 90],
     hard: [60, 120],
   };
   const [min, max] = ranges[difficulty];
-  return (min * 1000) + Math.floor(Math.random() * (max - min + 1) * 1000);
+  return min * 1000 + Math.floor(Math.random() * (max - min + 1) * 1000);
 }
 
 function divisionFromRating(rating: number): string {
@@ -210,10 +228,18 @@ type BattleSupportState = {
   revivePercent: number;
   usedEmergencyHeal: boolean;
   usedRevive: boolean;
-  consumed: Array<{ itemId: BattleSupportItemId; count: number; name?: string; icon?: string }>;
+  consumed: Array<{
+    itemId: BattleSupportItemId;
+    count: number;
+    name?: string;
+    icon?: string;
+  }>;
 };
 
-const BATTLE_SUPPORT_ITEMS: Record<BattleSupportItemId, BattleSupportEffectConfig> = {
+const BATTLE_SUPPORT_ITEMS: Record<
+  BattleSupportItemId,
+  BattleSupportEffectConfig
+> = {
   healing_pill: {
     label: 'Пилюля исцеления',
     emergencyHealPercent: 0.3,
@@ -264,7 +290,7 @@ export class DisciplesService {
         rerollCostCoins: 50,
         trainCostCoins: 15,
         maxDisciples: 3,
-        maxBattlesPerDay: 5,
+        maxBattlesPerDay: 3,
         rerollCandidateTtlMinutes: 10,
         characterPool: 'all',
         expeditionCooldownHours: 24,
@@ -278,6 +304,46 @@ export class DisciplesService {
         .exec()) as unknown as DisciplesConfigDocument;
     }
     return config;
+  }
+
+  /**
+   * Проверяет и увеличивает счётчик дневных боев для пользователя.
+   * Если пользователь - админ (role === 'admin'), ограничение не применяется.
+   * @param user Документ пользователя
+   * @param config Конфиг (для maxBattlesPerDay)
+   * @throws BadRequestException если превышен лимит
+   */
+  private checkAndIncrementDailyBattles(
+    user: UserDocument,
+    config: DisciplesConfigDocument,
+  ): void {
+    // Админы без ограничений
+    if (user.role === 'admin') {
+      return;
+    }
+
+    const now = new Date();
+    const todayStart = getStartOfDayUTC(now);
+    const lastReset = user.dailyBattlesDate
+      ? new Date(user.dailyBattlesDate)
+      : null;
+
+    // Если дата сброса не сегодня, сбрасываем счетчик
+    if (!lastReset || lastReset < todayStart) {
+      user.dailyBattlesCount = 0;
+      user.dailyBattlesDate = todayStart;
+    }
+
+    const maxBattles = config.maxBattlesPerDay ?? 5;
+    if ((user.dailyBattlesCount ?? 0) >= maxBattles) {
+      throw new BadRequestException(
+        `Достигнут дневной лимит боев (${maxBattles}). Завтра можно будет снова сражаться.`,
+      );
+    }
+
+    user.dailyBattlesCount = (user.dailyBattlesCount ?? 0) + 1;
+    user.markModified('dailyBattlesCount');
+    user.markModified('dailyBattlesDate');
   }
 
   private getInventoryCount(
@@ -296,6 +362,16 @@ export class DisciplesService {
     inventory: Array<{ itemId?: string; count?: number }> | undefined,
     supportItemIds?: string[],
   ): Promise<BattleSupportState> {
+    // Проверяем, что все переданные предметы являются допустимыми для боя
+    const invalidItems = (supportItemIds ?? []).filter(
+      (id) => !(id in BATTLE_SUPPORT_ITEMS),
+    );
+    if (invalidItems.length > 0) {
+      throw new BadRequestException(
+        `Следующие предметы нельзя использовать в бою: ${invalidItems.join(', ')}`,
+      );
+    }
+
     const requested = Array.from(
       new Set(
         (supportItemIds ?? []).filter(
@@ -328,7 +404,9 @@ export class DisciplesService {
         1,
       );
       if (!consumed) {
-        throw new BadRequestException(`Не удалось использовать предмет: ${itemId}`);
+        throw new BadRequestException(
+          `Не удалось использовать предмет: ${itemId}`,
+        );
       }
       const meta = await this.gameItemsService.findById(itemId);
       const effect = BATTLE_SUPPORT_ITEMS[itemId];
@@ -379,7 +457,7 @@ export class DisciplesService {
   }
 
   /** Ученики в активном отряде (не на складе) */
-  private activeDisciples(user: UserDocument): any[] {
+  private activeDisciples(user: UserDocument): Disciple[] {
     return (user.disciples ?? []).filter((d: any) => !d.inWarehouse);
   }
 
@@ -395,7 +473,7 @@ export class DisciplesService {
     return this.discipleCharId(active[0]);
   }
 
-  private getLeadActiveDisciple(user: UserDocument): any | null {
+  private getLeadActiveDisciple(user: UserDocument): Disciple | null {
     const active = this.activeDisciples(user);
     if (active.length === 0) return null;
     const primary = this.resolvePrimaryCharacterId(user);
@@ -559,61 +637,551 @@ export class DisciplesService {
       requiredRank: string;
       learnCostCoins: number;
     }> = [
-      { id: 'basic_strike', name: 'Базовый удар', description: 'Простой удар ци.', type: 'attack', power: 12, cooldownTurns: 0, requiredLevel: 1, requiredRank: 'F', learnCostCoins: 0 },
-      { id: 'swift_step', name: 'Стремительный шаг', description: 'Уклонение и рывок.', type: 'movement', power: 6, cooldownTurns: 2, requiredLevel: 5, requiredRank: 'E', learnCostCoins: 60 },
-      { id: 'healing_breath', name: 'Дыхание восстановления', description: 'Лечит ученика в бою.', type: 'heal', power: 18, cooldownTurns: 3, requiredLevel: 10, requiredRank: 'D', learnCostCoins: 120 },
-      { id: 'piercing_technique', name: 'Пробивающая техника', description: 'Сильная атака.', type: 'attack', power: 26, cooldownTurns: 2, requiredLevel: 15, requiredRank: 'C', learnCostCoins: 220 },
-      { id: 'domain_burst', name: 'Вспышка домена', description: 'Ульта: мощный выброс энергии.', type: 'ultimate', power: 45, cooldownTurns: 5, requiredLevel: 25, requiredRank: 'B', learnCostCoins: 400 },
+      {
+        id: 'basic_strike',
+        name: 'Базовый удар',
+        description: 'Простой удар ци.',
+        type: 'attack',
+        power: 12,
+        cooldownTurns: 0,
+        requiredLevel: 1,
+        requiredRank: 'F',
+        learnCostCoins: 0,
+      },
+      {
+        id: 'swift_step',
+        name: 'Стремительный шаг',
+        description: 'Уклонение и рывок.',
+        type: 'movement',
+        power: 6,
+        cooldownTurns: 2,
+        requiredLevel: 5,
+        requiredRank: 'E',
+        learnCostCoins: 60,
+      },
+      {
+        id: 'healing_breath',
+        name: 'Дыхание восстановления',
+        description: 'Лечит ученика в бою.',
+        type: 'heal',
+        power: 18,
+        cooldownTurns: 3,
+        requiredLevel: 10,
+        requiredRank: 'D',
+        learnCostCoins: 120,
+      },
+      {
+        id: 'piercing_technique',
+        name: 'Пробивающая техника',
+        description: 'Сильная атака.',
+        type: 'attack',
+        power: 26,
+        cooldownTurns: 2,
+        requiredLevel: 15,
+        requiredRank: 'C',
+        learnCostCoins: 220,
+      },
+      {
+        id: 'domain_burst',
+        name: 'Вспышка домена',
+        description: 'Ульта: мощный выброс энергии.',
+        type: 'ultimate',
+        power: 45,
+        cooldownTurns: 5,
+        requiredLevel: 25,
+        requiredRank: 'B',
+        learnCostCoins: 400,
+      },
       // Атакующие
-      { id: 'flame_palm', name: 'Ладонь пламени', description: 'Огненная атака, поджигает противника.', type: 'attack', power: 22, cooldownTurns: 1, requiredLevel: 3, requiredRank: 'F', learnCostCoins: 40 },
-      { id: 'ice_needle', name: 'Ледяная игла', description: 'Пробивающий удар холодом.', type: 'attack', power: 20, cooldownTurns: 0, requiredLevel: 4, requiredRank: 'F', learnCostCoins: 50 },
-      { id: 'thunder_fist', name: 'Громовой кулак', description: 'Удар, насыщенный молнией.', type: 'attack', power: 28, cooldownTurns: 2, requiredLevel: 8, requiredRank: 'E', learnCostCoins: 90 },
-      { id: 'shadow_strike', name: 'Удар тени', description: 'Атака из тени, сложно предугадать.', type: 'attack', power: 24, cooldownTurns: 1, requiredLevel: 6, requiredRank: 'E', learnCostCoins: 70 },
-      { id: 'bone_crusher', name: 'Костолом', description: 'Сокрушительный удар по корпусу.', type: 'attack', power: 32, cooldownTurns: 3, requiredLevel: 12, requiredRank: 'D', learnCostCoins: 150 },
-      { id: 'spirit_slash', name: 'Духовный рассекатель', description: 'Удар оружием духа.', type: 'attack', power: 30, cooldownTurns: 2, requiredLevel: 11, requiredRank: 'D', learnCostCoins: 140 },
-      { id: 'dragon_roar', name: 'Рёв дракона', description: 'Оглушающий выброс ци.', type: 'attack', power: 38, cooldownTurns: 4, requiredLevel: 18, requiredRank: 'C', learnCostCoins: 260 },
-      { id: 'phoenix_dive', name: 'Пике феникса', description: 'Падение с неба, охваченное пламенем.', type: 'attack', power: 42, cooldownTurns: 4, requiredLevel: 20, requiredRank: 'C', learnCostCoins: 300 },
-      { id: 'void_rend', name: 'Разрыв пустоты', description: 'Разрушающий удар пространством.', type: 'attack', power: 48, cooldownTurns: 5, requiredLevel: 28, requiredRank: 'B', learnCostCoins: 450 },
-      { id: 'soul_harvest', name: 'Жатва душ', description: 'Тёмная атака, забирает силу врага.', type: 'attack', power: 44, cooldownTurns: 4, requiredLevel: 22, requiredRank: 'C', learnCostCoins: 340 },
-      { id: 'starfall', name: 'Падение звезды', description: 'Призыв небесной энергии на врага.', type: 'attack', power: 36, cooldownTurns: 3, requiredLevel: 16, requiredRank: 'D', learnCostCoins: 200 },
-      { id: 'thousand_cuts', name: 'Тысяча порезов', description: 'Серия быстрых ударов.', type: 'attack', power: 34, cooldownTurns: 2, requiredLevel: 14, requiredRank: 'D', learnCostCoins: 180 },
+      {
+        id: 'flame_palm',
+        name: 'Ладонь пламени',
+        description: 'Огненная атака, поджигает противника.',
+        type: 'attack',
+        power: 22,
+        cooldownTurns: 1,
+        requiredLevel: 3,
+        requiredRank: 'F',
+        learnCostCoins: 40,
+      },
+      {
+        id: 'ice_needle',
+        name: 'Ледяная игла',
+        description: 'Пробивающий удар холодом.',
+        type: 'attack',
+        power: 20,
+        cooldownTurns: 0,
+        requiredLevel: 4,
+        requiredRank: 'F',
+        learnCostCoins: 50,
+      },
+      {
+        id: 'thunder_fist',
+        name: 'Громовой кулак',
+        description: 'Удар, насыщенный молнией.',
+        type: 'attack',
+        power: 28,
+        cooldownTurns: 2,
+        requiredLevel: 8,
+        requiredRank: 'E',
+        learnCostCoins: 90,
+      },
+      {
+        id: 'shadow_strike',
+        name: 'Удар тени',
+        description: 'Атака из тени, сложно предугадать.',
+        type: 'attack',
+        power: 24,
+        cooldownTurns: 1,
+        requiredLevel: 6,
+        requiredRank: 'E',
+        learnCostCoins: 70,
+      },
+      {
+        id: 'bone_crusher',
+        name: 'Костолом',
+        description: 'Сокрушительный удар по корпусу.',
+        type: 'attack',
+        power: 32,
+        cooldownTurns: 3,
+        requiredLevel: 12,
+        requiredRank: 'D',
+        learnCostCoins: 150,
+      },
+      {
+        id: 'spirit_slash',
+        name: 'Духовный рассекатель',
+        description: 'Удар оружием духа.',
+        type: 'attack',
+        power: 30,
+        cooldownTurns: 2,
+        requiredLevel: 11,
+        requiredRank: 'D',
+        learnCostCoins: 140,
+      },
+      {
+        id: 'dragon_roar',
+        name: 'Рёв дракона',
+        description: 'Оглушающий выброс ци.',
+        type: 'attack',
+        power: 38,
+        cooldownTurns: 4,
+        requiredLevel: 18,
+        requiredRank: 'C',
+        learnCostCoins: 260,
+      },
+      {
+        id: 'phoenix_dive',
+        name: 'Пике феникса',
+        description: 'Падение с неба, охваченное пламенем.',
+        type: 'attack',
+        power: 42,
+        cooldownTurns: 4,
+        requiredLevel: 20,
+        requiredRank: 'C',
+        learnCostCoins: 300,
+      },
+      {
+        id: 'void_rend',
+        name: 'Разрыв пустоты',
+        description: 'Разрушающий удар пространством.',
+        type: 'attack',
+        power: 48,
+        cooldownTurns: 5,
+        requiredLevel: 28,
+        requiredRank: 'B',
+        learnCostCoins: 450,
+      },
+      {
+        id: 'soul_harvest',
+        name: 'Жатва душ',
+        description: 'Тёмная атака, забирает силу врага.',
+        type: 'attack',
+        power: 44,
+        cooldownTurns: 4,
+        requiredLevel: 22,
+        requiredRank: 'C',
+        learnCostCoins: 340,
+      },
+      {
+        id: 'starfall',
+        name: 'Падение звезды',
+        description: 'Призыв небесной энергии на врага.',
+        type: 'attack',
+        power: 36,
+        cooldownTurns: 3,
+        requiredLevel: 16,
+        requiredRank: 'D',
+        learnCostCoins: 200,
+      },
+      {
+        id: 'thousand_cuts',
+        name: 'Тысяча порезов',
+        description: 'Серия быстрых ударов.',
+        type: 'attack',
+        power: 34,
+        cooldownTurns: 2,
+        requiredLevel: 14,
+        requiredRank: 'D',
+        learnCostCoins: 180,
+      },
       // Защитные / движение
-      { id: 'iron_skin', name: 'Железная кожа', description: 'Укрепление тела, снижает входящий урон.', type: 'buff', power: 8, cooldownTurns: 3, requiredLevel: 5, requiredRank: 'E', learnCostCoins: 65 },
-      { id: 'wind_dash', name: 'Порыв ветра', description: 'Мгновенный рывок в сторону.', type: 'movement', power: 10, cooldownTurns: 2, requiredLevel: 7, requiredRank: 'E', learnCostCoins: 80 },
-      { id: 'mirror_step', name: 'Зеркальный шаг', description: 'Уклонение с отражением траектории атаки.', type: 'movement', power: 12, cooldownTurns: 3, requiredLevel: 9, requiredRank: 'D', learnCostCoins: 100 },
-      { id: 'earth_wall', name: 'Стена земли', description: 'Призыв барьера из ци земли.', type: 'buff', power: 14, cooldownTurns: 4, requiredLevel: 13, requiredRank: 'D', learnCostCoins: 160 },
-      { id: 'blink', name: 'Мерцание', description: 'Краткое телепортационное смещение.', type: 'movement', power: 6, cooldownTurns: 4, requiredLevel: 17, requiredRank: 'C', learnCostCoins: 240 },
-      { id: 'counter_stance', name: 'Стойка контратаки', description: 'Готовность отразить удар и ответить.', type: 'buff', power: 18, cooldownTurns: 3, requiredLevel: 21, requiredRank: 'C', learnCostCoins: 320 },
-      { id: 'golden_bell', name: 'Золотой колокол', description: 'Защитная оболочка ци вокруг тела.', type: 'buff', power: 22, cooldownTurns: 5, requiredLevel: 26, requiredRank: 'B', learnCostCoins: 420 },
-      { id: 'phantom_dodge', name: 'Призрачное уклонение', description: 'Тело становится полупрозрачным, атаки проходят мимо.', type: 'movement', power: 16, cooldownTurns: 5, requiredLevel: 24, requiredRank: 'B', learnCostCoins: 380 },
+      {
+        id: 'iron_skin',
+        name: 'Железная кожа',
+        description: 'Укрепление тела, снижает входящий урон.',
+        type: 'buff',
+        power: 8,
+        cooldownTurns: 3,
+        requiredLevel: 5,
+        requiredRank: 'E',
+        learnCostCoins: 65,
+      },
+      {
+        id: 'wind_dash',
+        name: 'Порыв ветра',
+        description: 'Мгновенный рывок в сторону.',
+        type: 'movement',
+        power: 10,
+        cooldownTurns: 2,
+        requiredLevel: 7,
+        requiredRank: 'E',
+        learnCostCoins: 80,
+      },
+      {
+        id: 'mirror_step',
+        name: 'Зеркальный шаг',
+        description: 'Уклонение с отражением траектории атаки.',
+        type: 'movement',
+        power: 12,
+        cooldownTurns: 3,
+        requiredLevel: 9,
+        requiredRank: 'D',
+        learnCostCoins: 100,
+      },
+      {
+        id: 'earth_wall',
+        name: 'Стена земли',
+        description: 'Призыв барьера из ци земли.',
+        type: 'buff',
+        power: 14,
+        cooldownTurns: 4,
+        requiredLevel: 13,
+        requiredRank: 'D',
+        learnCostCoins: 160,
+      },
+      {
+        id: 'blink',
+        name: 'Мерцание',
+        description: 'Краткое телепортационное смещение.',
+        type: 'movement',
+        power: 6,
+        cooldownTurns: 4,
+        requiredLevel: 17,
+        requiredRank: 'C',
+        learnCostCoins: 240,
+      },
+      {
+        id: 'counter_stance',
+        name: 'Стойка контратаки',
+        description: 'Готовность отразить удар и ответить.',
+        type: 'buff',
+        power: 18,
+        cooldownTurns: 3,
+        requiredLevel: 21,
+        requiredRank: 'C',
+        learnCostCoins: 320,
+      },
+      {
+        id: 'golden_bell',
+        name: 'Золотой колокол',
+        description: 'Защитная оболочка ци вокруг тела.',
+        type: 'buff',
+        power: 22,
+        cooldownTurns: 5,
+        requiredLevel: 26,
+        requiredRank: 'B',
+        learnCostCoins: 420,
+      },
+      {
+        id: 'phantom_dodge',
+        name: 'Призрачное уклонение',
+        description: 'Тело становится полупрозрачным, атаки проходят мимо.',
+        type: 'movement',
+        power: 16,
+        cooldownTurns: 5,
+        requiredLevel: 24,
+        requiredRank: 'B',
+        learnCostCoins: 380,
+      },
       // Лечение
-      { id: 'vitality_stream', name: 'Поток жизненной силы', description: 'Восстановление за счёт внутренней энергии.', type: 'heal', power: 22, cooldownTurns: 2, requiredLevel: 6, requiredRank: 'E', learnCostCoins: 75 },
-      { id: 'herb_mastery', name: 'Искусство трав', description: 'Быстрое применение лечебных свойств трав.', type: 'heal', power: 26, cooldownTurns: 3, requiredLevel: 11, requiredRank: 'D', learnCostCoins: 130 },
-      { id: 'spirit_well', name: 'Колодец духа', description: 'Черпание силы из духовного источника.', type: 'heal', power: 32, cooldownTurns: 4, requiredLevel: 16, requiredRank: 'D', learnCostCoins: 190 },
-      { id: 'rejuvenation', name: 'Омоложение', description: 'Ускоренная регенерация тканей.', type: 'heal', power: 38, cooldownTurns: 4, requiredLevel: 20, requiredRank: 'C', learnCostCoins: 290 },
-      { id: 'life_bloom', name: 'Цветение жизни', description: 'Всплеск целительной энергии.', type: 'heal', power: 44, cooldownTurns: 5, requiredLevel: 25, requiredRank: 'B', learnCostCoins: 410 },
-      { id: 'soul_mend', name: 'Починка души', description: 'Глубокое исцеление духа и тела.', type: 'heal', power: 50, cooldownTurns: 5, requiredLevel: 30, requiredRank: 'A', learnCostCoins: 500 },
+      {
+        id: 'vitality_stream',
+        name: 'Поток жизненной силы',
+        description: 'Восстановление за счёт внутренней энергии.',
+        type: 'heal',
+        power: 22,
+        cooldownTurns: 2,
+        requiredLevel: 6,
+        requiredRank: 'E',
+        learnCostCoins: 75,
+      },
+      {
+        id: 'herb_mastery',
+        name: 'Искусство трав',
+        description: 'Быстрое применение лечебных свойств трав.',
+        type: 'heal',
+        power: 26,
+        cooldownTurns: 3,
+        requiredLevel: 11,
+        requiredRank: 'D',
+        learnCostCoins: 130,
+      },
+      {
+        id: 'spirit_well',
+        name: 'Колодец духа',
+        description: 'Черпание силы из духовного источника.',
+        type: 'heal',
+        power: 32,
+        cooldownTurns: 4,
+        requiredLevel: 16,
+        requiredRank: 'D',
+        learnCostCoins: 190,
+      },
+      {
+        id: 'rejuvenation',
+        name: 'Омоложение',
+        description: 'Ускоренная регенерация тканей.',
+        type: 'heal',
+        power: 38,
+        cooldownTurns: 4,
+        requiredLevel: 20,
+        requiredRank: 'C',
+        learnCostCoins: 290,
+      },
+      {
+        id: 'life_bloom',
+        name: 'Цветение жизни',
+        description: 'Всплеск целительной энергии.',
+        type: 'heal',
+        power: 44,
+        cooldownTurns: 5,
+        requiredLevel: 25,
+        requiredRank: 'B',
+        learnCostCoins: 410,
+      },
+      {
+        id: 'soul_mend',
+        name: 'Починка души',
+        description: 'Глубокое исцеление духа и тела.',
+        type: 'heal',
+        power: 50,
+        cooldownTurns: 5,
+        requiredLevel: 30,
+        requiredRank: 'A',
+        learnCostCoins: 500,
+      },
       // Дебаффы (в бою дают урон по текущей логике)
-      { id: 'poison_sting', name: 'Ядовитое жало', description: 'Отравление, ослабляет противника.', type: 'debuff', power: 18, cooldownTurns: 2, requiredLevel: 4, requiredRank: 'F', learnCostCoins: 45 },
-      { id: 'weakness_strike', name: 'Удар по слабости', description: 'Снижает защиту врага на время.', type: 'debuff', power: 20, cooldownTurns: 2, requiredLevel: 8, requiredRank: 'E', learnCostCoins: 85 },
-      { id: 'curse_mark', name: 'Печать проклятия', description: 'Накладывает метку, усиливающую получаемый урон.', type: 'debuff', power: 26, cooldownTurns: 3, requiredLevel: 12, requiredRank: 'D', learnCostCoins: 155 },
-      { id: 'spirit_drain', name: 'Вытягивание духа', description: 'Забирает часть силы противника.', type: 'debuff', power: 30, cooldownTurns: 3, requiredLevel: 15, requiredRank: 'D', learnCostCoins: 210 },
-      { id: 'binding_chains', name: 'Оковы ци', description: 'Сковывает движения и ослабляет.', type: 'debuff', power: 34, cooldownTurns: 4, requiredLevel: 19, requiredRank: 'C', learnCostCoins: 270 },
-      { id: 'fear_gaze', name: 'Взгляд страха', description: 'Психологическая атака, снижает боевой дух.', type: 'debuff', power: 28, cooldownTurns: 3, requiredLevel: 17, requiredRank: 'C', learnCostCoins: 230 },
+      {
+        id: 'poison_sting',
+        name: 'Ядовитое жало',
+        description: 'Отравление, ослабляет противника.',
+        type: 'debuff',
+        power: 18,
+        cooldownTurns: 2,
+        requiredLevel: 4,
+        requiredRank: 'F',
+        learnCostCoins: 45,
+      },
+      {
+        id: 'weakness_strike',
+        name: 'Удар по слабости',
+        description: 'Снижает защиту врага на время.',
+        type: 'debuff',
+        power: 20,
+        cooldownTurns: 2,
+        requiredLevel: 8,
+        requiredRank: 'E',
+        learnCostCoins: 85,
+      },
+      {
+        id: 'curse_mark',
+        name: 'Печать проклятия',
+        description: 'Накладывает метку, усиливающую получаемый урон.',
+        type: 'debuff',
+        power: 26,
+        cooldownTurns: 3,
+        requiredLevel: 12,
+        requiredRank: 'D',
+        learnCostCoins: 155,
+      },
+      {
+        id: 'spirit_drain',
+        name: 'Вытягивание духа',
+        description: 'Забирает часть силы противника.',
+        type: 'debuff',
+        power: 30,
+        cooldownTurns: 3,
+        requiredLevel: 15,
+        requiredRank: 'D',
+        learnCostCoins: 210,
+      },
+      {
+        id: 'binding_chains',
+        name: 'Оковы ци',
+        description: 'Сковывает движения и ослабляет.',
+        type: 'debuff',
+        power: 34,
+        cooldownTurns: 4,
+        requiredLevel: 19,
+        requiredRank: 'C',
+        learnCostCoins: 270,
+      },
+      {
+        id: 'fear_gaze',
+        name: 'Взгляд страха',
+        description: 'Психологическая атака, снижает боевой дух.',
+        type: 'debuff',
+        power: 28,
+        cooldownTurns: 3,
+        requiredLevel: 17,
+        requiredRank: 'C',
+        learnCostCoins: 230,
+      },
       // Баффы (в бою дают урон по текущей логике, можно трактовать как усиленный удар)
-      { id: 'battle_rage', name: 'Боевая ярость', description: 'Всплеск ярости, увеличивает урон следующей атаки.', type: 'buff', power: 24, cooldownTurns: 2, requiredLevel: 10, requiredRank: 'D', learnCostCoins: 125 },
-      { id: 'sharp_edge', name: 'Острое лезвие', description: 'Ци усиливает оружие, повышая пробитие.', type: 'buff', power: 28, cooldownTurns: 2, requiredLevel: 14, requiredRank: 'D', learnCostCoins: 175 },
-      { id: 'berserker', name: 'Режим берсерка', description: 'Рискованное усиление атаки ценой защиты.', type: 'buff', power: 36, cooldownTurns: 4, requiredLevel: 22, requiredRank: 'C', learnCostCoins: 330 },
-      { id: 'divine_favor', name: 'Благоволение небес', description: 'Временное усиление всех параметров.', type: 'buff', power: 32, cooldownTurns: 4, requiredLevel: 18, requiredRank: 'C', learnCostCoins: 250 },
-      { id: 'overdrive', name: 'Перегрузка', description: 'Краткий выброс всей накопленной ци.', type: 'buff', power: 40, cooldownTurns: 5, requiredLevel: 27, requiredRank: 'B', learnCostCoins: 440 },
+      {
+        id: 'battle_rage',
+        name: 'Боевая ярость',
+        description: 'Всплеск ярости, увеличивает урон следующей атаки.',
+        type: 'buff',
+        power: 24,
+        cooldownTurns: 2,
+        requiredLevel: 10,
+        requiredRank: 'D',
+        learnCostCoins: 125,
+      },
+      {
+        id: 'sharp_edge',
+        name: 'Острое лезвие',
+        description: 'Ци усиливает оружие, повышая пробитие.',
+        type: 'buff',
+        power: 28,
+        cooldownTurns: 2,
+        requiredLevel: 14,
+        requiredRank: 'D',
+        learnCostCoins: 175,
+      },
+      {
+        id: 'berserker',
+        name: 'Режим берсерка',
+        description: 'Рискованное усиление атаки ценой защиты.',
+        type: 'buff',
+        power: 36,
+        cooldownTurns: 4,
+        requiredLevel: 22,
+        requiredRank: 'C',
+        learnCostCoins: 330,
+      },
+      {
+        id: 'divine_favor',
+        name: 'Благоволение небес',
+        description: 'Временное усиление всех параметров.',
+        type: 'buff',
+        power: 32,
+        cooldownTurns: 4,
+        requiredLevel: 18,
+        requiredRank: 'C',
+        learnCostCoins: 250,
+      },
+      {
+        id: 'overdrive',
+        name: 'Перегрузка',
+        description: 'Краткий выброс всей накопленной ци.',
+        type: 'buff',
+        power: 40,
+        cooldownTurns: 5,
+        requiredLevel: 27,
+        requiredRank: 'B',
+        learnCostCoins: 440,
+      },
       // Ультимейты
-      { id: 'heavenly_wrath', name: 'Гнев небес', description: 'Призыв карающей небесной силы.', type: 'ultimate', power: 52, cooldownTurns: 6, requiredLevel: 28, requiredRank: 'B', learnCostCoins: 460 },
-      { id: 'inferno', name: 'Инферно', description: 'Огненная буря вокруг противника.', type: 'ultimate', power: 55, cooldownTurns: 6, requiredLevel: 30, requiredRank: 'A', learnCostCoins: 500 },
-      { id: 'void_annihilation', name: 'Аннигиляция пустоты', description: 'Полное уничтожение в области пустоты.', type: 'ultimate', power: 58, cooldownTurns: 6, requiredLevel: 32, requiredRank: 'A', learnCostCoins: 520 },
-      { id: 'celestial_slash', name: 'Небесный удар', description: 'Один сокрушительный удар свыше.', type: 'ultimate', power: 50, cooldownTurns: 5, requiredLevel: 26, requiredRank: 'B', learnCostCoins: 430 },
-      { id: 'soul_devour', name: 'Пожирание души', description: 'Тёмная ульта, забирает жизнь врага.', type: 'ultimate', power: 54, cooldownTurns: 6, requiredLevel: 29, requiredRank: 'A', learnCostCoins: 480 },
-      { id: 'eternal_flame', name: 'Вечное пламя', description: 'Пламя, которое не гаснет, пока цель не падёт.', type: 'ultimate', power: 56, cooldownTurns: 6, requiredLevel: 31, requiredRank: 'A', learnCostCoins: 510 },
-      { id: 'supreme_sword', name: 'Меч верховного', description: 'Воплощение абсолютного меча.', type: 'ultimate', power: 60, cooldownTurns: 6, requiredLevel: 33, requiredRank: 'S', learnCostCoins: 550 },
+      {
+        id: 'heavenly_wrath',
+        name: 'Гнев небес',
+        description: 'Призыв карающей небесной силы.',
+        type: 'ultimate',
+        power: 52,
+        cooldownTurns: 6,
+        requiredLevel: 28,
+        requiredRank: 'B',
+        learnCostCoins: 460,
+      },
+      {
+        id: 'inferno',
+        name: 'Инферно',
+        description: 'Огненная буря вокруг противника.',
+        type: 'ultimate',
+        power: 55,
+        cooldownTurns: 6,
+        requiredLevel: 30,
+        requiredRank: 'A',
+        learnCostCoins: 500,
+      },
+      {
+        id: 'void_annihilation',
+        name: 'Аннигиляция пустоты',
+        description: 'Полное уничтожение в области пустоты.',
+        type: 'ultimate',
+        power: 58,
+        cooldownTurns: 6,
+        requiredLevel: 32,
+        requiredRank: 'A',
+        learnCostCoins: 520,
+      },
+      {
+        id: 'celestial_slash',
+        name: 'Небесный удар',
+        description: 'Один сокрушительный удар свыше.',
+        type: 'ultimate',
+        power: 50,
+        cooldownTurns: 5,
+        requiredLevel: 26,
+        requiredRank: 'B',
+        learnCostCoins: 430,
+      },
+      {
+        id: 'soul_devour',
+        name: 'Пожирание души',
+        description: 'Тёмная ульта, забирает жизнь врага.',
+        type: 'ultimate',
+        power: 54,
+        cooldownTurns: 6,
+        requiredLevel: 29,
+        requiredRank: 'A',
+        learnCostCoins: 480,
+      },
+      {
+        id: 'eternal_flame',
+        name: 'Вечное пламя',
+        description: 'Пламя, которое не гаснет, пока цель не падёт.',
+        type: 'ultimate',
+        power: 56,
+        cooldownTurns: 6,
+        requiredLevel: 31,
+        requiredRank: 'A',
+        learnCostCoins: 510,
+      },
+      {
+        id: 'supreme_sword',
+        name: 'Меч верховного',
+        description: 'Воплощение абсолютного меча.',
+        type: 'ultimate',
+        power: 60,
+        cooldownTurns: 6,
+        requiredLevel: 33,
+        requiredRank: 'S',
+        learnCostCoins: 550,
+      },
     ];
     const techniqueLibraryRequirement: Record<string, number> = {
       swift_step: 2,
@@ -678,9 +1246,7 @@ export class DisciplesService {
       .exec();
     const filtered = (
       all as Array<{ requiredRank?: string; requiredLibraryLevel?: number }>
-    ).filter(
-      (t) => this.rankValue(t.requiredRank ?? 'F') <= rankVal,
-    );
+    ).filter((t) => this.rankValue(t.requiredRank ?? 'F') <= rankVal);
     return filtered;
   }
 
@@ -696,7 +1262,10 @@ export class DisciplesService {
         maxHpPool: number;
       };
       rosterLine: string;
-      techniqueOwners: Map<string, { displayName: string; characterId: string }>;
+      techniqueOwners: Map<
+        string,
+        { displayName: string; characterId: string }
+      >;
       sideLabel: string;
     },
     opponentSide: {
@@ -710,7 +1279,10 @@ export class DisciplesService {
         maxHpPool: number;
       };
       rosterLine: string;
-      techniqueOwners: Map<string, { displayName: string; characterId: string }>;
+      techniqueOwners: Map<
+        string,
+        { displayName: string; characterId: string }
+      >;
       sideLabel: string;
     },
     supportState?: BattleSupportState,
@@ -1405,8 +1977,9 @@ export class DisciplesService {
     }
     const maxActive =
       config.maxDisciples && config.maxDisciples > 0 ? config.maxDisciples : 99;
-    const activeRecruitCount = disciples.filter((d: any) => !d.inWarehouse)
-      .length;
+    const activeRecruitCount = disciples.filter(
+      (d: any) => !d.inWarehouse,
+    ).length;
     const inWarehouse = activeRecruitCount >= maxActive;
     disciples.push({
       characterId: candidate.characterId,
@@ -1614,7 +2187,7 @@ export class DisciplesService {
 
   /** Ученики в бою: реальные статы + имя + экипировка техник */
   private buildBattleRosterMember(
-    d: any,
+    d: Disciple,
     displayName: string,
   ): {
     characterId: string;
@@ -1638,9 +2211,7 @@ export class DisciplesService {
     };
   }
 
-  private async enrichBattleRosterFromDisciples(
-    disciples: any[],
-  ): Promise<
+  private async enrichBattleRosterFromDisciples(disciples: Disciple[]): Promise<
     Array<{
       characterId: string;
       displayName: string;
@@ -1657,8 +2228,8 @@ export class DisciplesService {
       .map((d) => d.characterId)
       .filter(Boolean)
       .map((c) =>
-        typeof c === 'object' && c !== null && '_id' in (c as object)
-          ? (c as Types.ObjectId)
+        typeof c === 'object' && c !== null && '_id' in c
+          ? c
           : new Types.ObjectId(
               typeof c === 'object' && c !== null && 'toString' in c
                 ? (c as { toString(): string }).toString()
@@ -1678,12 +2249,9 @@ export class DisciplesService {
         c.name ?? 'Ученик',
       ]),
     );
-    return disciples.map((d: any) => {
+    return disciples.map((d) => {
       const cid = this.discipleCharId(d);
-      return this.buildBattleRosterMember(
-        d,
-        nameById.get(cid) ?? 'Ученик',
-      );
+      return this.buildBattleRosterMember(d, nameById.get(cid) ?? 'Ученик');
     });
   }
 
@@ -1742,9 +2310,7 @@ export class DisciplesService {
   private rosterLine(
     members: Array<{ displayName: string; level: number }>,
   ): string {
-    return members
-      .map((m) => `${m.displayName} (ур.${m.level})`)
-      .join(' · ');
+    return members.map((m) => `${m.displayName} (ур.${m.level})`).join(' · ');
   }
 
   /** Отряд бота: размер как у игрока, суммарная сила около targetCp */
@@ -1768,7 +2334,9 @@ export class DisciplesService {
       45,
       Math.round(
         targetTotalCp *
-          (mode === 'weekly' ? 0.98 + Math.random() * 0.12 : 0.85 + Math.random() * 0.28),
+          (mode === 'weekly'
+            ? 0.98 + Math.random() * 0.12
+            : 0.85 + Math.random() * 0.28),
       ),
     );
     const namesCasual = ['Бродячий боец', 'Странник ци', 'Наёмник'];
@@ -1791,7 +2359,10 @@ export class DisciplesService {
     }> = [];
     let cpAcc = 0;
     for (let i = 0; i < n; i++) {
-      const chunk = Math.max(28, Math.round(target / n * (0.86 + Math.random() * 0.28)));
+      const chunk = Math.max(
+        28,
+        Math.round((target / n) * (0.86 + Math.random() * 0.28)),
+      );
       const st = this.getBotDiscipleStats(chunk);
       const lvl =
         mode === 'weekly'
@@ -1832,9 +2403,7 @@ export class DisciplesService {
     defenderSpd: number,
   ): number {
     const raw =
-      power * (1 + attackerAtk / 50) +
-      attackerAtk * 0.46 +
-      attackerSpd * 0.16;
+      power * (1 + attackerAtk / 50) + attackerAtk * 0.46 + attackerSpd * 0.16;
     const armor = defenderDef * 0.5 + defenderSpd * 0.32;
     return Math.max(2, Math.round(raw * (100 / (100 + armor))));
   }
@@ -1896,7 +2465,9 @@ export class DisciplesService {
         username: 'Бот',
         avatar: null,
         combatRating: rating,
-        disciples: [{ ...botStats, name: 'Бродячий соперник', rank: 'E', level: 8 }],
+        disciples: [
+          { ...botStats, name: 'Бродячий соперник', rank: 'E', level: 8 },
+        ],
       },
       combatRating: rating,
       isBot: true,
@@ -1930,8 +2501,13 @@ export class DisciplesService {
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) throw new NotFoundException('User not found');
     if (this.activeDisciples(user).length === 0) {
-      throw new BadRequestException('Нужен хотя бы один ученик в активном отряде');
+      throw new BadRequestException(
+        'Нужен хотя бы один ученик в активном отряде',
+      );
     }
+
+    // Проверка ограничения боев в день (3 для обычных пользователей, безлимит для админов)
+    this.checkAndIncrementDailyBattles(user, config);
 
     const formula = config.cpFormula ?? {
       attack: 1.2,
@@ -1959,8 +2535,8 @@ export class DisciplesService {
     const userRosterLineStr = this.rosterLine(userRoster);
     const userEquipped = userRoster.flatMap((m) => m.techniquesEquipped ?? []);
 
-    const isBot = opponentUserId === 'bot:casual' || opponentUserId?.startsWith?.('bot:');
-    let cpOpponent: number;
+    const isBot =
+      opponentUserId === 'bot:casual' || opponentUserId?.startsWith?.('bot:');
     let oppEquipped: string[];
     let oppCard: unknown = null;
     let oppAgg: {
@@ -1984,13 +2560,6 @@ export class DisciplesService {
         userRoster.length,
         'casual',
       );
-      cpOpponent = 0;
-      for (const m of oppRoster) {
-        cpOpponent += this.cp(
-          { attack: m.attack, defense: m.defense, speed: m.speed, hp: m.hp },
-          formula,
-        );
-      }
       oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
       oppAgg = this.aggregateSquadCombatStats(oppRoster);
       oppTechniqueOwners = this.buildTechniqueOwnerMap(oppRoster);
@@ -2007,13 +2576,6 @@ export class DisciplesService {
         );
       }
       const oppRoster = await this.enrichBattleRosterFromDisciples(oppActive);
-      cpOpponent = 0;
-      for (const d of oppActive) {
-        cpOpponent += this.cp(
-          { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
-          formula,
-        );
-      }
       oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
       oppAgg = this.aggregateSquadCombatStats(oppRoster);
       oppTechniqueOwners = this.buildTechniqueOwnerMap(oppRoster);
@@ -2184,7 +2746,9 @@ export class DisciplesService {
         username: 'Бот',
         avatar: null,
         weeklyRating: rating,
-        disciples: [{ ...botStats, name: 'Недельный чемпион-бот', rank: 'B', level: 22 }],
+        disciples: [
+          { ...botStats, name: 'Недельный чемпион-бот', rank: 'B', level: 22 },
+        ],
       },
       weekly: {
         canWeeklyBattle: true,
@@ -2224,16 +2788,21 @@ export class DisciplesService {
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) throw new NotFoundException('User not found');
     if (this.activeDisciples(user).length === 0) {
-      throw new BadRequestException('Нужен хотя бы один ученик в активном отряде');
+      throw new BadRequestException(
+        'Нужен хотя бы один ученик в активном отряде',
+      );
     }
 
-    const lastWeekly = user.lastWeeklyBattleAt
-      ? new Date(user.lastWeeklyBattleAt)
-      : null;
-    if (lastWeekly && Date.now() - lastWeekly.getTime() < WEEK_MS) {
-      throw new BadRequestException(
-        'Недельная схватка уже использована. Доступна раз в 7 дней.',
-      );
+    // Админы могут сражаться без ограничений по времени
+    if (user.role !== 'admin') {
+      const lastWeekly = user.lastWeeklyBattleAt
+        ? new Date(user.lastWeeklyBattleAt)
+        : null;
+      if (lastWeekly && Date.now() - lastWeekly.getTime() < WEEK_MS) {
+        throw new BadRequestException(
+          'Недельная схватка уже использована. Доступна раз в 7 дней.',
+        );
+      }
     }
 
     const formula = config.cpFormula ?? {
@@ -2262,8 +2831,8 @@ export class DisciplesService {
     const userRosterLineW = this.rosterLine(userRosterW);
     const userEquipped = userRosterW.flatMap((m) => m.techniquesEquipped ?? []);
 
-    const isBot = opponentUserId === 'bot:weekly' || opponentUserId?.startsWith?.('bot:');
-    let cpOpponent: number;
+    const isBot =
+      opponentUserId === 'bot:weekly' || opponentUserId?.startsWith?.('bot:');
     let oppRating: number;
     let oppEquipped: string[] = [];
     let oppCard: unknown = null;
@@ -2289,13 +2858,6 @@ export class DisciplesService {
         userRosterW.length,
         'weekly',
       );
-      cpOpponent = 0;
-      for (const m of oppRoster) {
-        cpOpponent += this.cp(
-          { attack: m.attack, defense: m.defense, speed: m.speed, hp: m.hp },
-          formula,
-        );
-      }
       oppRating = rating;
       oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
       oppAggW = this.aggregateSquadCombatStats(oppRoster);
@@ -2313,13 +2875,6 @@ export class DisciplesService {
         );
       }
       const oppRoster = await this.enrichBattleRosterFromDisciples(oppActive);
-      cpOpponent = 0;
-      for (const d of oppActive) {
-        cpOpponent += this.cp(
-          { attack: d.attack, defense: d.defense, speed: d.speed, hp: d.hp },
-          formula,
-        );
-      }
       oppRating = opponent.weeklyRating ?? 1000;
       oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
       oppAggW = this.aggregateSquadCombatStats(oppRoster);
@@ -2446,7 +3001,9 @@ export class DisciplesService {
   async expeditionStatus(userId: string) {
     const user = await this.userModel
       .findById(new Types.ObjectId(userId))
-      .select('disciples balance lastExpeditionAt lastExpeditionResult lastExpeditionCompletesAt lastExpeditionDifficulty')
+      .select(
+        'disciples balance lastExpeditionAt lastExpeditionResult lastExpeditionCompletesAt lastExpeditionDifficulty',
+      )
       .lean()
       .exec();
     if (!user) throw new NotFoundException('User not found');
@@ -2520,7 +3077,8 @@ export class DisciplesService {
       ? new Date(user.lastExpeditionCompletesAt).getTime()
       : null;
     if (completesAt == null || Date.now() < completesAt) return null;
-    const difficulty = (user.lastExpeditionDifficulty as 'easy' | 'normal' | 'hard') ?? 'easy';
+    const difficulty =
+      (user.lastExpeditionDifficulty as 'easy' | 'normal' | 'hard') ?? 'easy';
     const result = await this.computeExpeditionResult(userId, user, difficulty);
     user.lastExpeditionResult = result as any;
     user.lastExpeditionCompletesAt = undefined;
@@ -2583,7 +3141,12 @@ export class DisciplesService {
     log.push(`Шанс успеха: ${Math.round(successChance * 100)}%`);
     log.push(success ? 'Экспедиция успешна!' : 'Экспедиция провалилась...');
 
-    let itemsGained: { itemId: string; count: number; name?: string; icon?: string }[] = [];
+    let itemsGained: {
+      itemId: string;
+      count: number;
+      name?: string;
+      icon?: string;
+    }[] = [];
 
     const ambushChance = 0.12;
     let ambushHappened = success && Math.random() < ambushChance;
@@ -2633,7 +3196,9 @@ export class DisciplesService {
       Math.random() <
         (difficulty === 'hard' ? 0.35 : difficulty === 'normal' ? 0.2 : 0.12)
     ) {
-      const fragmentItem = await this.gameItemsService.findById('mysterious_fragment');
+      const fragmentItem = await this.gameItemsService.findById(
+        'mysterious_fragment',
+      );
       itemsGained.push({
         itemId: 'mysterious_fragment',
         count: 1,
@@ -2819,10 +3384,17 @@ export class DisciplesService {
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) throw new NotFoundException('User not found');
     if (this.activeDisciples(user).length === 0)
-      throw new BadRequestException('Нужен хотя бы один ученик в активном отряде');
+      throw new BadRequestException(
+        'Нужен хотя бы один ученик в активном отряде',
+      );
 
-    if (user.lastExpeditionCompletesAt && Date.now() < new Date(user.lastExpeditionCompletesAt).getTime()) {
-      throw new BadRequestException('Экспедиция уже в пути. Дождитесь завершения.');
+    if (
+      user.lastExpeditionCompletesAt &&
+      Date.now() < new Date(user.lastExpeditionCompletesAt).getTime()
+    ) {
+      throw new BadRequestException(
+        'Экспедиция уже в пути. Дождитесь завершения.',
+      );
     }
 
     const cooldownHours = (config as any).expeditionCooldownHours ?? 24;
@@ -2958,8 +3530,9 @@ export class DisciplesService {
       .lean()
       .exec();
     if (!user) throw new NotFoundException('User not found');
-    const inv = (user as { inventory?: Array<{ itemId?: string; count?: number }> })
-      .inventory;
+    const inv = (
+      user as { inventory?: Array<{ itemId?: string; count?: number }> }
+    ).inventory;
     const recipes: Array<{
       recipeId: string;
       label: string;

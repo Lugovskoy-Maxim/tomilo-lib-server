@@ -428,7 +428,11 @@ export class CommentsService {
     }
     // Прогресс ежедневного задания «Поставьте лайк комментарию» для поставившего лайк
     if (emoji === '👍' && addedReaction) {
-      void this.usersService.incrementDailyQuestProgress(userId, 'like_comment', 1);
+      void this.usersService.incrementDailyQuestProgress(
+        userId,
+        'like_comment',
+        1,
+      );
     }
 
     // Уведомление автору комментария о новой реакции (не себе), с группировкой

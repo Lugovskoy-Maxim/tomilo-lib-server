@@ -142,7 +142,7 @@ export class GameItemsService {
     if (!user) throw new NotFoundException('User not found');
 
     type InvRow = { itemId: string; count: number };
-    let inventory = Array.isArray(user.inventory)
+    const inventory = Array.isArray(user.inventory)
       ? ([...user.inventory] as InvRow[])
       : [];
 
@@ -208,14 +208,54 @@ export class GameItemsService {
       description: string;
       rarity: string;
     }> = [
-      { id: 'spirit_grass', name: 'Духовная трава', description: 'Базовая трава с духом ци', rarity: 'common' },
-      { id: 'hundred_year_herb', name: 'Столетняя трава', description: 'Трава, вобравшая ци за сто лет', rarity: 'uncommon' },
-      { id: 'beast_core_low', name: 'Ядро зверя (низшее)', description: 'Ядро обычного духозверя', rarity: 'common' },
-      { id: 'spirit_stone_fragment', name: 'Осколок духовного камня', description: 'Обломок камня с духом ци', rarity: 'uncommon' },
-      { id: 'iron_ore', name: 'Железная руда', description: 'Руда для закалки', rarity: 'common' },
-      { id: 'wolf_king_core', name: 'Ядро Короля волков', description: 'Ядро вожака стаи', rarity: 'uncommon' },
-      { id: 'thousand_year_ginseng', name: 'Тысячелетний женьшень', description: 'Редкий корень', rarity: 'rare' },
-      { id: 'phoenix_feather', name: 'Перо феникса', description: 'Остаток священной птицы', rarity: 'rare' },
+      {
+        id: 'spirit_grass',
+        name: 'Духовная трава',
+        description: 'Базовая трава с духом ци',
+        rarity: 'common',
+      },
+      {
+        id: 'hundred_year_herb',
+        name: 'Столетняя трава',
+        description: 'Трава, вобравшая ци за сто лет',
+        rarity: 'uncommon',
+      },
+      {
+        id: 'beast_core_low',
+        name: 'Ядро зверя (низшее)',
+        description: 'Ядро обычного духозверя',
+        rarity: 'common',
+      },
+      {
+        id: 'spirit_stone_fragment',
+        name: 'Осколок духовного камня',
+        description: 'Обломок камня с духом ци',
+        rarity: 'uncommon',
+      },
+      {
+        id: 'iron_ore',
+        name: 'Железная руда',
+        description: 'Руда для закалки',
+        rarity: 'common',
+      },
+      {
+        id: 'wolf_king_core',
+        name: 'Ядро Короля волков',
+        description: 'Ядро вожака стаи',
+        rarity: 'uncommon',
+      },
+      {
+        id: 'thousand_year_ginseng',
+        name: 'Тысячелетний женьшень',
+        description: 'Редкий корень',
+        rarity: 'rare',
+      },
+      {
+        id: 'phoenix_feather',
+        name: 'Перо феникса',
+        description: 'Остаток священной птицы',
+        rarity: 'rare',
+      },
     ];
     for (const m of materials) {
       await this.gameItemModel.updateOne(
@@ -253,11 +293,12 @@ export class GameItemsService {
       { base: 'pill_tempering', nameBase: 'Отвар закалки' },
       { base: 'pill_breakthrough', nameBase: 'Пилюля прорыва' },
     ];
-    const qualities: { suffix: string; nameSuffix: string; rarity: string }[] = [
-      { suffix: 'common', nameSuffix: ' (обычная)', rarity: 'common' },
-      { suffix: 'quality', nameSuffix: ' (улучшенная)', rarity: 'uncommon' },
-      { suffix: 'legendary', nameSuffix: ' (легендарная)', rarity: 'rare' },
-    ];
+    const qualities: { suffix: string; nameSuffix: string; rarity: string }[] =
+      [
+        { suffix: 'common', nameSuffix: ' (обычная)', rarity: 'common' },
+        { suffix: 'quality', nameSuffix: ' (улучшенная)', rarity: 'uncommon' },
+        { suffix: 'legendary', nameSuffix: ' (легендарная)', rarity: 'rare' },
+      ];
     for (const { base, nameBase } of bases) {
       for (const q of qualities) {
         const id = `${base}_${q.suffix}`;

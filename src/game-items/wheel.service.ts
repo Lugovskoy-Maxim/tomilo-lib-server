@@ -108,14 +108,16 @@ export class WheelService {
           s.param &&
           typeof s.param === 'object' &&
           'itemId' in s.param
-            ? itemMetaById.get((s.param as { itemId?: string }).itemId ?? '')?.icon
+            ? itemMetaById.get((s.param as { itemId?: string }).itemId ?? '')
+                ?.icon
             : undefined,
         rarity:
           s.rewardType === 'item' &&
           s.param &&
           typeof s.param === 'object' &&
           'itemId' in s.param
-            ? itemMetaById.get((s.param as { itemId?: string }).itemId ?? '')?.rarity
+            ? itemMetaById.get((s.param as { itemId?: string }).itemId ?? '')
+                ?.rarity
             : undefined,
         rewardMeta:
           s.rewardType === 'item' &&
@@ -162,7 +164,12 @@ export class WheelService {
     param?: any;
     expGained?: number;
     coinsGained?: number;
-    itemsGained?: { itemId: string; count: number; name?: string; icon?: string }[];
+    itemsGained?: {
+      itemId: string;
+      count: number;
+      name?: string;
+      icon?: string;
+    }[];
     twistOfFate?: boolean;
     compensationCoins?: number;
     balance?: number;
@@ -217,7 +224,9 @@ export class WheelService {
         label: 'Пусто',
         balance: user.balance ?? 0,
         selectedSegmentIndex: 0,
-        nextSpinAt: new Date(getStartOfDayUTC().getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        nextSpinAt: new Date(
+          getStartOfDayUTC().getTime() + 24 * 60 * 60 * 1000,
+        ).toISOString(),
       };
     }
 
@@ -242,7 +251,9 @@ export class WheelService {
         coinsGained: compensationCoins,
         balance: user.balance ?? 0,
         selectedSegmentIndex: chosenIndex,
-        nextSpinAt: new Date(getStartOfDayUTC().getTime() + 24 * 60 * 60 * 1000).toISOString(),
+        nextSpinAt: new Date(
+          getStartOfDayUTC().getTime() + 24 * 60 * 60 * 1000,
+        ).toISOString(),
         rewardSummary: [
           {
             type: 'coins',
@@ -259,7 +270,12 @@ export class WheelService {
       param?: unknown;
       expGained?: number;
       coinsGained?: number;
-      itemsGained?: { itemId: string; count: number; name?: string; icon?: string }[];
+      itemsGained?: {
+        itemId: string;
+        count: number;
+        name?: string;
+        icon?: string;
+      }[];
     } = {
       rewardType: chosen.rewardType,
       label: chosen.label ?? '',
@@ -305,10 +321,18 @@ export class WheelService {
       ...result,
       balance: user.balance ?? 0,
       selectedSegmentIndex: chosenIndex,
-      nextSpinAt: new Date(getStartOfDayUTC().getTime() + 24 * 60 * 60 * 1000).toISOString(),
+      nextSpinAt: new Date(
+        getStartOfDayUTC().getTime() + 24 * 60 * 60 * 1000,
+      ).toISOString(),
       rewardSummary: [
         ...(result.coinsGained
-          ? [{ type: 'coins' as const, label: 'Монеты', amount: result.coinsGained }]
+          ? [
+              {
+                type: 'coins' as const,
+                label: 'Монеты',
+                amount: result.coinsGained,
+              },
+            ]
           : []),
         ...(result.expGained
           ? [{ type: 'exp' as const, label: 'Опыт', amount: result.expGained }]

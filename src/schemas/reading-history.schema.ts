@@ -46,10 +46,7 @@ export class ReadingHistoryTitle {
 export const ReadingHistoryTitleSchema =
   SchemaFactory.createForClass(ReadingHistoryTitle);
 
-ReadingHistoryTitleSchema.index(
-  { userId: 1, titleId: 1 },
-  { unique: true },
-);
+ReadingHistoryTitleSchema.index({ userId: 1, titleId: 1 }, { unique: true });
 ReadingHistoryTitleSchema.index({ userId: 1, readAt: -1 });
 ReadingHistoryTitleSchema.index({ userId: 1, 'chapters.chapterId': 1 });
 

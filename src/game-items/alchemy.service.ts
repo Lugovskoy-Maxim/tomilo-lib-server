@@ -35,6 +35,17 @@ export class AlchemyService {
     private gameItemsService: GameItemsService,
   ) {}
 
+  private readonly ALCHEMY_MATERIALS = [
+    'spirit_grass',
+    'hundred_year_herb',
+    'beast_core_low',
+    'spirit_stone_fragment',
+    'iron_ore',
+    'wolf_king_core',
+    'thousand_year_ginseng',
+    'phoenix_feather',
+  ];
+
   private async ensureDefaultRecipes(): Promise<void> {
     const count = await this.recipeModel.countDocuments({}).exec();
     if (count > 0) return;
@@ -472,7 +483,12 @@ export class AlchemyService {
     success: boolean;
     quality: 'common' | 'quality' | 'legendary';
     rewards: { exp?: number; coins?: number };
-    itemsGained?: { itemId: string; count: number; name?: string; icon?: string }[];
+    itemsGained?: {
+      itemId: string;
+      count: number;
+      name?: string;
+      icon?: string;
+    }[];
     balance?: number;
     rewardSummary?: {
       type: 'coins' | 'exp' | 'item';
@@ -693,7 +709,12 @@ export class AlchemyService {
     else if (r < scaled.legendary + scaled.quality) quality = 'quality';
 
     // выдаём “пилюлю” как предмет в инвентарь (resultType + суффикс качества)
-    const itemsGained: { itemId: string; count: number; name?: string; icon?: string }[] = [];
+    const itemsGained: {
+      itemId: string;
+      count: number;
+      name?: string;
+      icon?: string;
+    }[] = [];
     const resultBase = (recipe as any).resultType ?? 'pill_common';
     const resultItemId =
       quality === 'legendary'
@@ -799,6 +820,230 @@ export class AlchemyService {
         preventedByStabilizer,
         chancePercent: mishapChance,
       },
+    };
+  }
+
+  /**
+   * Генерирует случайный ассортимент для лавки алхимии (3-5 товаров).
+   * Каждый товар — материал из ALCHEMY_MATERIALS с количеством 1-3 и ценой 10-50 монет.
+   * Также добавляет возможность прямой покупки (isDirectPurchase = false по умолчанию).
+   */
+  private generateShopAssortment(): Array<{
+    itemId: string;
+    count: number;
+    priceCoins: number;
+    purchased: boolean;
+    isDirectPurchase: boolean;
+  }> {
+    const count = Math.floor(Math.random() * 3) + 3; // 3-5 товаров
+    const assortment: Array<{
+      itemId: string;
+      count: number;
+      priceCoins: number;
+      purchased: boolean;
+      isDirectPurchase: boolean;
+    }> = [];
+    const materials = [...this.ALCHEMY_MATERIALS];
+    // перемешиваем
+    for (let i = materials.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [materials[i], materials[j]] = [materials[j], materials[i]];
+    }
+    for (let i = 0; i < count; i++) {
+      const itemId = materials[i % materials.length];
+      const count = Math.floor(Math.random() * 3) + 1; // 1-3
+      const priceCoins = Math.floor(Math.random() * 41) + 10; // 10-50
+      assortment.push({
+        itemId,
+        count,
+        priceCoins,
+        purchased: false,
+        isDirectPurchase: false,
+      });
+    }
+    return assortment;
+  }
+
+  /**
+   * Получить текущий ассортимент лавки алхимии для пользователя.
+   * Если ассортимент устарел (alchemyShopDate не сегодня) или отсутствует — генерируется новый.
+   */
+  async getAlchemyShop(userId: string): Promise<{
+    assortment: Array<{
+      itemId: string;
+      count: number;
+      priceCoins: number;
+      purchased: boolean;
+      isDirectPurchase: boolean;
+      name?: string;
+      icon?: string;
+    }>;
+    shopDate: string;
+    canRefresh: boolean;
+    refreshCost: number;
+  }> {
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) throw new NotFoundException('User not found');
+
+    const today = getStartOfDayUTC();
+    const shopDate = user.alchemyShopDate
+      ? new Date(user.alchemyShopDate)
+      : null;
+    const isOutdated =
+      !shopDate || getStartOfDayUTC(shopDate).getTime() !== today.getTime();
+
+    if (
+      isOutdated ||
+      !user.alchemyShopAssortment ||
+      user.alchemyShopAssortment.length === 0
+    ) {
+      // генерируем новый ассортимент
+      user.alchemyShopAssortment = this.generateShopAssortment();
+      user.alchemyShopDate = today;
+      user.markModified('alchemyShopAssortment');
+      user.markModified('alchemyShopDate');
+      await user.save();
+    }
+
+    // обогащаем метаданными предметов
+    const allItems = await this.gameItemsService.findAllActive();
+    const itemMetaById = new Map(
+      allItems.map((item) => [
+        item.id,
+        { name: item.name, icon: item.icon ?? undefined },
+      ]),
+    );
+
+    const enriched = (user.alchemyShopAssortment ?? []).map((entry) => ({
+      ...entry,
+      name: itemMetaById.get(entry.itemId)?.name,
+      icon: itemMetaById.get(entry.itemId)?.icon,
+    }));
+
+    return {
+      assortment: enriched,
+      shopDate: (user.alchemyShopDate ?? today).toISOString(),
+      canRefresh: true,
+      refreshCost: 50, // стоимость обновления ассортимента
+    };
+  }
+
+  /**
+   * Принудительно обновить ассортимент лавки за монеты.
+   */
+  async refreshAlchemyShop(userId: string): Promise<{
+    ok: boolean;
+    newAssortment: Array<{
+      itemId: string;
+      count: number;
+      priceCoins: number;
+      purchased: boolean;
+      isDirectPurchase: boolean;
+      name?: string;
+      icon?: string;
+    }>;
+    balance: number;
+  }> {
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) throw new NotFoundException('User not found');
+
+    const refreshCost = 50;
+    if ((user.balance ?? 0) < refreshCost) {
+      throw new BadRequestException('Недостаточно монет для обновления');
+    }
+
+    user.balance = (user.balance ?? 0) - refreshCost;
+    user.alchemyShopAssortment = this.generateShopAssortment();
+    user.alchemyShopDate = new Date();
+    user.markModified('balance');
+    user.markModified('alchemyShopAssortment');
+    user.markModified('alchemyShopDate');
+    await user.save();
+
+    // обогащаем метаданными
+    const allItems = await this.gameItemsService.findAllActive();
+    const itemMetaById = new Map(
+      allItems.map((item) => [
+        item.id,
+        { name: item.name, icon: item.icon ?? undefined },
+      ]),
+    );
+
+    const enriched = (user.alchemyShopAssortment ?? []).map((entry) => ({
+      ...entry,
+      name: itemMetaById.get(entry.itemId)?.name,
+      icon: itemMetaById.get(entry.itemId)?.icon,
+    }));
+
+    return {
+      ok: true,
+      newAssortment: enriched,
+      balance: user.balance ?? 0,
+    };
+  }
+
+  /**
+   * Купить товар из лавки алхимии.
+   * Если isDirectPurchase = true, цена увеличивается в 5 раз.
+   * @param index индекс товара в массиве assortment (0-based)
+   * @param directPurchase если true, покупает напрямую за 5x цену (без роллов)
+   */
+  async buyAlchemyItem(
+    userId: string,
+    index: number,
+    directPurchase: boolean = false,
+  ): Promise<{
+    ok: boolean;
+    itemId: string;
+    count: number;
+    pricePaid: number;
+    balance: number;
+    purchased: boolean;
+  }> {
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) throw new NotFoundException('User not found');
+
+    const assortment = user.alchemyShopAssortment ?? [];
+    if (index < 0 || index >= assortment.length) {
+      throw new BadRequestException('Неверный индекс товара');
+    }
+    const entry = assortment[index];
+    if (entry.purchased) {
+      throw new BadRequestException('Товар уже куплен');
+    }
+
+    let price = entry.priceCoins;
+    if (directPurchase) {
+      price = entry.priceCoins * 5;
+      // помечаем как купленный напрямую
+      entry.isDirectPurchase = true;
+    }
+
+    if ((user.balance ?? 0) < price) {
+      throw new BadRequestException('Недостаточно монет');
+    }
+
+    // списываем монеты
+    user.balance = (user.balance ?? 0) - price;
+    // добавляем предмет в инвентарь
+    await this.gameItemsService.addToInventory(
+      userId,
+      entry.itemId,
+      entry.count,
+    );
+    // помечаем как купленный
+    entry.purchased = true;
+    user.markModified('balance');
+    user.markModified('alchemyShopAssortment');
+    await user.save();
+
+    return {
+      ok: true,
+      itemId: entry.itemId,
+      count: entry.count,
+      pricePaid: price,
+      balance: user.balance ?? 0,
+      purchased: true,
     };
   }
 

@@ -108,7 +108,10 @@ export class ReportsService {
         'Для жалобы на комментарий укажите entityType "comment"',
       );
     }
-    if (!createReportDto.entityId || !Types.ObjectId.isValid(createReportDto.entityId)) {
+    if (
+      !createReportDto.entityId ||
+      !Types.ObjectId.isValid(createReportDto.entityId)
+    ) {
       throw new BadRequestException('Некорректный идентификатор комментария');
     }
     const trimmed = createReportDto.content.trim();
@@ -140,7 +143,7 @@ export class ReportsService {
       ? new Types.ObjectId(createReportDto.titleId)
       : null;
     if (comment.entityType === CommentEntityType.TITLE) {
-      titleId = comment.entityId as Types.ObjectId;
+      titleId = comment.entityId;
     } else if (comment.entityType === CommentEntityType.CHAPTER) {
       const chapter = await this.chapterModel
         .findById(comment.entityId)

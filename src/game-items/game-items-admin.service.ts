@@ -397,7 +397,9 @@ export class GameItemsAdminService {
         const label = String(segment?.label ?? '').trim();
         const weight = Number(segment?.weight ?? 0);
         if (
-          !['xp', 'coins', 'item', 'element_bonus', 'empty'].includes(rewardType)
+          !['xp', 'coins', 'item', 'element_bonus', 'empty'].includes(
+            rewardType,
+          )
         ) {
           throw new BadRequestException(
             `Wheel segment #${index + 1}: invalid rewardType`,

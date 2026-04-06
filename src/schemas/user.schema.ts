@@ -260,11 +260,7 @@ export class User {
     enum: ['manual', 'rarity', 'favorites', 'last_upgraded'],
     default: 'manual',
   })
-  profileCardsShowcaseSort:
-    | 'manual'
-    | 'rarity'
-    | 'favorites'
-    | 'last_upgraded';
+  profileCardsShowcaseSort: 'manual' | 'rarity' | 'favorites' | 'last_upgraded';
 
   @Prop({
     type: [
@@ -553,6 +549,31 @@ export class User {
   @Prop({ default: 1 })
   alchemyCauldronTier?: number;
 
+  /** Лавка алхимии: дата последней генерации ассортимента */
+  @Prop()
+  alchemyShopDate?: Date;
+
+  /** Лавка алхимии: сгенерированный ассортимент на сегодня */
+  @Prop({
+    type: [
+      {
+        itemId: { type: String, required: true },
+        count: { type: Number, required: true },
+        priceCoins: { type: Number, required: true },
+        purchased: { type: Boolean, default: false },
+        isDirectPurchase: { type: Boolean, default: false }, // куплен напрямую за 5x цены
+      },
+    ],
+    default: [],
+  })
+  alchemyShopAssortment?: {
+    itemId: string;
+    count: number;
+    priceCoins: number;
+    purchased: boolean;
+    isDirectPurchase: boolean;
+  }[];
+
   @Prop()
   lastWheelSpinAt?: Date;
 
@@ -616,6 +637,14 @@ export class User {
 
   @Prop()
   lastBattleAt?: Date;
+
+  /** Ограничение боев в день: дата последнего сброса счетчика */
+  @Prop()
+  dailyBattlesDate?: Date;
+
+  /** Количество проведённых боев за текущий день (сбрасывается в 00:00 UTC) */
+  @Prop({ default: 0 })
+  dailyBattlesCount?: number;
 
   /** Недельная схватка: дата последнего боя (1 раз в неделю) */
   @Prop()

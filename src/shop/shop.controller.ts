@@ -158,9 +158,7 @@ export class ShopController {
         isAdmin &&
         (status === 'all' || status === 'accepted' || status === 'rejected')
       ) {
-        data = await this.shopService.getSuggestedDecorations(
-          status as 'all' | 'accepted' | 'rejected',
-        );
+        data = await this.shopService.getSuggestedDecorations(status);
       } else {
         data =
           await this.shopService.getSuggestedDecorationsWithUserVote(userId);

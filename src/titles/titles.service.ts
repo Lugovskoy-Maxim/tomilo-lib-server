@@ -1353,7 +1353,10 @@ export class TitlesService {
       if (titleReads.length > 0) {
         for (const tr of titleReads) {
           const tid = tr.titleId;
-          if (tid && !excludedTitleIds.some((existing) => existing.equals(tid))) {
+          if (
+            tid &&
+            !excludedTitleIds.some((existing) => existing.equals(tid))
+          ) {
             excludedTitleIds.push(tid);
           }
         }

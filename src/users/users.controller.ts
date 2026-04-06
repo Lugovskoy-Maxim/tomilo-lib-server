@@ -2159,7 +2159,9 @@ export class UsersController {
       };
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : String(error ?? 'Unknown error');
+        error instanceof Error
+          ? error.message
+          : String(error ?? 'Unknown error');
       return {
         success: false,
         message: 'Failed to fetch leaderboard',
@@ -2172,9 +2174,16 @@ export class UsersController {
 
   // 🙏 Рейтинг вкладчиков (принятые предложения персонажей) — для страницы благодарностей
   @Get('character-contributors')
-  async getCharacterContributors(
-    @Query('limit') limit?: string,
-  ): Promise<ApiResponseDto<{ users: { _id: string; username: string; avatar?: string; charactersAcceptedCount: number }[] }>> {
+  async getCharacterContributors(@Query('limit') limit?: string): Promise<
+    ApiResponseDto<{
+      users: {
+        _id: string;
+        username: string;
+        avatar?: string;
+        charactersAcceptedCount: number;
+      }[];
+    }>
+  > {
     try {
       const users = await this.usersService.findCharacterContributors(
         limit != null ? parseInt(String(limit), 10) : 100,
@@ -2360,7 +2369,10 @@ export class UsersController {
     try {
       const limitNum = Math.min(Number(limit) || 50, 100);
       const pageNum = Math.max(1, Number(page) || 1);
-      const data = await this.usersService.getSuspiciousUsers(limitNum, pageNum);
+      const data = await this.usersService.getSuspiciousUsers(
+        limitNum,
+        pageNum,
+      );
 
       return {
         success: true,

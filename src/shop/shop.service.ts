@@ -62,10 +62,14 @@ export const WEEKLY_SUGGESTION_WINNERS_COUNT = 3;
 function getPriceByRarity(
   rarity: 'common' | 'rare' | 'epic' | 'legendary',
 ): number {
-  return DECORATION_PRICE_BY_RARITY[rarity] ?? DECORATION_PRICE_BY_RARITY.common;
+  return (
+    DECORATION_PRICE_BY_RARITY[rarity] ?? DECORATION_PRICE_BY_RARITY.common
+  );
 }
 
-function getRarityByVotes(votesCount: number): 'common' | 'rare' | 'epic' | 'legendary' {
+function getRarityByVotes(
+  votesCount: number,
+): 'common' | 'rare' | 'epic' | 'legendary' {
   if (votesCount >= VOTES_FOR_RARITY.legendary) return 'legendary';
   if (votesCount >= VOTES_FOR_RARITY.epic) return 'epic';
   if (votesCount >= VOTES_FOR_RARITY.rare) return 'rare';
@@ -186,8 +190,7 @@ export class ShopService {
     const map = new Map<string, string>();
     for (const s of suggestions) {
       const id = (s as any).acceptedDecorationId?.toString();
-      const url =
-        (s as any).imageUrl ?? (s as any).image_url ?? '';
+      const url = (s as any).imageUrl ?? (s as any).image_url ?? '';
       if (id && url) map.set(id, url);
     }
     for (const d of decorations) {
@@ -405,7 +408,11 @@ export class ShopService {
     let grantedCard: unknown = null;
     if (decorationType === 'card') {
       try {
-        grantedCard = await this.cardsService.grantCardToUser(userId, decorationId, 1);
+        grantedCard = await this.cardsService.grantCardToUser(
+          userId,
+          decorationId,
+          1,
+        );
       } catch (err) {
         this.logger.warn(
           `Failed to grant shop card ${decorationId} to user ${userId}: ${(err as Error).message}`,
@@ -925,8 +932,7 @@ export class ShopService {
   async getSuggestedDecorations(
     status: 'pending' | 'accepted' | 'rejected' | 'all' = 'pending',
   ) {
-    const pipeline: any[] =
-      status === 'all' ? [] : [{ $match: { status } }];
+    const pipeline: any[] = status === 'all' ? [] : [{ $match: { status } }];
     const list = await this.suggestedDecorationModel
       .aggregate([
         ...pipeline,
@@ -1016,9 +1022,7 @@ export class ShopService {
     },
   ) {
     if (payload.type === 'card') {
-      throw new BadRequestException(
-        'Предложения карточек не принимаются',
-      );
+      throw new BadRequestException('Предложения карточек не принимаются');
     }
     await this.checkUserCanSuggest(userId);
 

@@ -108,9 +108,13 @@ export class DropsService {
       if (already >= rule.maxDropsPerDay) continue;
 
       const rarity = itemIdToRarity.get(rule.itemId) ?? 'common';
-      if (rarity === 'uncommon' && byRarity.uncommon >= MAX_UNCOMMON_READING_DROPS_PER_DAY)
+      if (
+        rarity === 'uncommon' &&
+        byRarity.uncommon >= MAX_UNCOMMON_READING_DROPS_PER_DAY
+      )
         continue;
-      if (rarity === 'rare' && byRarity.rare >= MAX_RARE_READING_DROPS_PER_DAY) continue;
+      if (rarity === 'rare' && byRarity.rare >= MAX_RARE_READING_DROPS_PER_DAY)
+        continue;
       if (
         (rarity === 'epic' || rarity === 'legendary') &&
         byRarity.epicOrLegendary >= MAX_HIGH_RARITY_READING_DROPS_PER_DAY
@@ -123,7 +127,8 @@ export class DropsService {
       countsByItem.set(rule.itemId, already + 1);
       if (rarity === 'uncommon') byRarity.uncommon += 1;
       else if (rarity === 'rare') byRarity.rare += 1;
-      else if (rarity === 'epic' || rarity === 'legendary') byRarity.epicOrLegendary += 1;
+      else if (rarity === 'epic' || rarity === 'legendary')
+        byRarity.epicOrLegendary += 1;
       gained.push({ itemId: rule.itemId, count: 1 });
     }
 
@@ -145,14 +150,21 @@ export class DropsService {
   async grantDailyQuestRewards(
     userId: string,
     questType: string,
-  ): Promise<{ itemId: string; count: number; name?: string; icon?: string }[]> {
+  ): Promise<
+    { itemId: string; count: number; name?: string; icon?: string }[]
+  > {
     const rewards = await this.dailyQuestRewardModel
       .find({ questType, isActive: true })
       .sort({ sortOrder: 1 })
       .lean()
       .exec();
 
-    const gained: { itemId: string; count: number; name?: string; icon?: string }[] = [];
+    const gained: {
+      itemId: string;
+      count: number;
+      name?: string;
+      icon?: string;
+    }[] = [];
     for (const r of rewards) {
       if (Math.random() > (r.chance ?? 1)) continue;
       const count =
@@ -187,7 +199,11 @@ export class DropsService {
     >
   > {
     const normalizedQuestTypes = Array.from(
-      new Set((questTypes ?? []).filter((questType) => typeof questType === 'string' && questType.trim())),
+      new Set(
+        (questTypes ?? []).filter(
+          (questType) => typeof questType === 'string' && questType.trim(),
+        ),
+      ),
     );
     if (normalizedQuestTypes.length === 0) return {};
 

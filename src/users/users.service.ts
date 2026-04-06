@@ -13,7 +13,10 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
-import { ChapterRead, ChapterReadDocument } from '../schemas/chapter-read.schema';
+import {
+  ChapterRead,
+  ChapterReadDocument,
+} from '../schemas/chapter-read.schema';
 import { TitleRead, TitleReadDocument } from '../schemas/title-read.schema';
 import {
   ReadingHistoryTitle,
@@ -268,11 +271,7 @@ export class UsersService {
       .exec();
 
     await this.readingHistoryOrderModel
-      .updateOne(
-        { userId: uid },
-        { $set: { titleIds } },
-        { upsert: true },
-      )
+      .updateOne({ userId: uid }, { $set: { titleIds } }, { upsert: true })
       .exec();
 
     const bulk = history.map((entry) => {
@@ -778,9 +777,7 @@ export class UsersService {
           userId: r._id?.toString?.() ?? '',
           count: r.count,
         }))
-        .filter(
-          (r) => r.userId && Types.ObjectId.isValid(r.userId),
-        );
+        .filter((r) => r.userId && Types.ObjectId.isValid(r.userId));
     } else if (category === 'comments') {
       const commentModel = this.userModel.db.collection('comments');
       /** $facet: корректный total + пагинация (раньше total был длиной страницы и ломал пагинацию) */
@@ -808,14 +805,14 @@ export class UsersService {
       aggregationResult = (facet?.data ?? [])
         .map((r) => ({
           userId:
-            r._id != null && typeof (r._id as { toString?: () => string }).toString === 'function'
+            r._id != null &&
+            typeof (r._id as { toString?: () => string }).toString ===
+              'function'
               ? (r._id as { toString: () => string }).toString()
               : String(r._id ?? ''),
           count: r.count,
         }))
-        .filter(
-          (r) => r.userId && Types.ObjectId.isValid(r.userId),
-        );
+        .filter((r) => r.userId && Types.ObjectId.isValid(r.userId));
     } else {
       const titleModel = this.userModel.db.collection('titles');
       const chapterModel = this.userModel.db.collection('chapters');
@@ -1132,9 +1129,9 @@ export class UsersService {
     if (this.cardsService) {
       try {
         const cards = await this.cardsService.getProfileCards(id);
-        (plain as any).profileCards = cards.cards;
-        (plain as any).profileCardsShowcase = cards.showcase;
-        (plain as any).profileCardsStats = cards.stats;
+        plain.profileCards = cards.cards;
+        plain.profileCardsShowcase = cards.showcase;
+        plain.profileCardsStats = cards.stats;
       } catch {
         // ignore card enrichment errors for profile endpoint
       }
@@ -2106,8 +2103,7 @@ export class UsersService {
 
     const isFirstChapterRead =
       !alreadyInHistory && ((chapterUpsertRes as any)?.upsertedCount ?? 0) > 0;
-    const isFirstTitleRead =
-      ((titleUpsertRes as any)?.upsertedCount ?? 0) > 0;
+    const isFirstTitleRead = ((titleUpsertRes as any)?.upsertedCount ?? 0) > 0;
 
     // 🛡️ Проверка на ботов перед начислением наград (делаем всегда, но награды даём только не-ботам)
     // (botDetection использует эти события для score; поэтому сохраняем поведение)
@@ -2340,7 +2336,12 @@ export class UsersService {
     );
     this.logger.log(`Reading history updated successfully for user ${userId}`);
 
-    let readingDrops: { itemId: string; count: number; name?: string; icon?: string }[] = [];
+    let readingDrops: {
+      itemId: string;
+      count: number;
+      name?: string;
+      icon?: string;
+    }[] = [];
     if (!botDetectionResult.isBot && isFirstChapterRead && this.dropsService) {
       const gained = await this.dropsService.tryReadingDrops(userId, true);
       if (gained.length > 0 && this.gameItemsService) {
@@ -2354,30 +2355,40 @@ export class UsersService {
           });
         }
       } else if (gained.length > 0) {
-        readingDrops = gained.map((g) => ({ itemId: g.itemId, count: g.count }));
+        readingDrops = gained.map((g) => ({
+          itemId: g.itemId,
+          count: g.count,
+        }));
       }
     }
     let readingCardDrops: Array<Record<string, unknown>> = [];
     if (!botDetectionResult.isBot && isFirstChapterRead && this.cardsService) {
       try {
-        const cardDrop = await this.cardsService.tryGrantReadingCard(userId, titleIdStr);
+        const cardDrop = await this.cardsService.tryGrantReadingCard(
+          userId,
+          titleIdStr,
+        );
         if (cardDrop?.card) {
           readingCardDrops = [
             {
               id: (cardDrop.card as { id?: string }).id ?? '',
               name: (cardDrop.card as { name?: string }).name ?? '',
               characterId:
-                (cardDrop.card as { characterId?: string | null }).characterId ??
-                null,
+                (cardDrop.card as { characterId?: string | null })
+                  .characterId ?? null,
               characterName:
-                (cardDrop.card as { characterName?: string }).characterName ?? '',
+                (cardDrop.card as { characterName?: string }).characterName ??
+                '',
               titleId:
                 (cardDrop.card as { titleId?: string | null }).titleId ?? null,
-              titleName: (cardDrop.card as { titleName?: string }).titleName ?? '',
+              titleName:
+                (cardDrop.card as { titleName?: string }).titleName ?? '',
               currentStage:
-                (cardDrop.card as { currentStage?: string }).currentStage ?? 'F',
+                (cardDrop.card as { currentStage?: string }).currentStage ??
+                'F',
               stageImageUrl:
-                (cardDrop.card as { stageImageUrl?: string }).stageImageUrl ?? '',
+                (cardDrop.card as { stageImageUrl?: string }).stageImageUrl ??
+                '',
               isNew: cardDrop.isNew,
               shardsGained: cardDrop.shardsGained ?? 0,
             },
@@ -3524,14 +3535,18 @@ export class UsersService {
     }
 
     const today = UsersService.getStartOfDayUTC();
-    const resetAt = new Date(today.getTime() + 24 * 60 * 60 * 1000).toISOString();
+    const resetAt = new Date(
+      today.getTime() + 24 * 60 * 60 * 1000,
+    ).toISOString();
     const existing = user.dailyQuests;
     const existingDate = existing?.date
       ? UsersService.getStartOfDayUTC(new Date(existing.date))
       : null;
     const rewardPreviewByQuestType = this.dropsService
       ? await this.dropsService.getDailyQuestRewardPreviews(
-          (existing?.quests ?? UsersService.DAILY_QUEST_POOL).map((quest) => quest.type),
+          (existing?.quests ?? UsersService.DAILY_QUEST_POOL).map(
+            (quest) => quest.type,
+          ),
         )
       : {};
 
@@ -3654,7 +3669,12 @@ export class UsersService {
     success: boolean;
     expGained?: number;
     coinsGained?: number;
-    itemsGained?: { itemId: string; count: number; name?: string; icon?: string }[];
+    itemsGained?: {
+      itemId: string;
+      count: number;
+      name?: string;
+      icon?: string;
+    }[];
     balance?: number;
     message?: string;
   }> {
@@ -4008,7 +4028,12 @@ export class UsersService {
 
   /** Рейтинг вкладчиков: пользователи с хотя бы одним принятым предложением персонажа. */
   async findCharacterContributors(limit: number = 100): Promise<
-    { _id: string; username: string; avatar?: string; charactersAcceptedCount: number }[]
+    {
+      _id: string;
+      username: string;
+      avatar?: string;
+      charactersAcceptedCount: number;
+    }[]
   > {
     const cap = Math.min(200, Math.max(1, limit));
     const list = await this.userModel

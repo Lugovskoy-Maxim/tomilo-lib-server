@@ -41,7 +41,9 @@ function normalizeStageRank(rank: string | undefined | null): CardStageRank {
   return CARD_STAGE_ORDER[stageIndex(rank)] ?? 'F';
 }
 
-function getNextStageRank(rank: string | undefined | null): CardStageRank | null {
+function getNextStageRank(
+  rank: string | undefined | null,
+): CardStageRank | null {
   const idx = stageIndex(rank);
   if (idx < 0 || idx >= CARD_STAGE_ORDER.length - 1) return null;
   return CARD_STAGE_ORDER[idx + 1];
@@ -60,7 +62,10 @@ function getEntityId(value: unknown): string | null {
   if (!value) return null;
   if (typeof value === 'string') return value;
   if (typeof value === 'object' && value !== null) {
-    const raw = value as { _id?: { toString(): string }; toString?: () => string };
+    const raw = value as {
+      _id?: { toString(): string };
+      toString?: () => string;
+    };
     if (raw._id?.toString) return raw._id.toString();
     if (raw.toString) return raw.toString();
   }
@@ -110,21 +115,34 @@ export class CardsService {
     const config = this.getStageConfig(stages, normalized);
     return Math.max(
       1,
-      ensurePositiveNumber(config?.requiredLevel, DEFAULT_REQUIRED_LEVELS[normalized]),
+      ensurePositiveNumber(
+        config?.requiredLevel,
+        DEFAULT_REQUIRED_LEVELS[normalized],
+      ),
     );
   }
 
-  private getDiscipleLevelForCharacter(user: UserDocument | any, characterId: string): number {
+  private getDiscipleLevelForCharacter(
+    user: UserDocument | any,
+    characterId: string,
+  ): number {
     const disciple = (user.disciples ?? []).find(
       (entry: any) =>
-        (entry.characterId?.toString?.() ?? String(entry.characterId)) === characterId,
+        (entry.characterId?.toString?.() ?? String(entry.characterId)) ===
+        characterId,
     );
     return disciple?.level ?? 0;
   }
 
-  private hasInventoryItem(user: UserDocument | any, itemId: string, count: number): boolean {
+  private hasInventoryItem(
+    user: UserDocument | any,
+    itemId: string,
+    count: number,
+  ): boolean {
     if (!itemId || count <= 0) return true;
-    const entry = (user.inventory ?? []).find((item: any) => item.itemId === itemId);
+    const entry = (user.inventory ?? []).find(
+      (item: any) => item.itemId === itemId,
+    );
     return (entry?.count ?? 0) >= count;
   }
 
@@ -133,8 +151,13 @@ export class CardsService {
     const defaultThreshold = isTitleDeck ? 5 : 8;
     const defaultRarity: CardDeckPityRarity = isTitleDeck ? 'epic' : 'rare';
     return {
-      threshold: Math.max(0, ensurePositiveNumber(deck?.pityThreshold, defaultThreshold)),
-      targetRarity: String(deck?.pityTargetRarity ?? defaultRarity) as CardDeckPityRarity,
+      threshold: Math.max(
+        0,
+        ensurePositiveNumber(deck?.pityThreshold, defaultThreshold),
+      ),
+      targetRarity: String(
+        deck?.pityTargetRarity ?? defaultRarity,
+      ) as CardDeckPityRarity,
     };
   }
 
@@ -144,7 +167,10 @@ export class CardsService {
     );
   }
 
-  private serializeDeck(deck: CardDeckDocument | any, user?: UserDocument | any) {
+  private serializeDeck(
+    deck: CardDeckDocument | any,
+    user?: UserDocument | any,
+  ) {
     const pity = this.getDeckPityConfig(deck);
     const deckId = deck?._id?.toString?.() ?? deck?.id?.toString?.() ?? '';
     const pityEntry = user ? this.getDeckPityEntry(user, deckId) : null;
@@ -213,11 +239,15 @@ export class CardsService {
       ? this.getDiscipleLevelForCharacter(user, card.characterId._id.toString())
       : 0;
     const currentStageConfig = this.getStageConfig(card?.stages, currentStage);
-    const nextStageConfig = nextStage ? this.getStageConfig(card?.stages, nextStage) : null;
+    const nextStageConfig = nextStage
+      ? this.getStageConfig(card?.stages, nextStage)
+      : null;
     const requiredLevel = nextStage
       ? this.getRequiredLevelForStage(card?.stages, nextStage)
       : null;
-    const canUpgradeByLevel = nextStage ? discipleLevel >= (requiredLevel ?? 0) : false;
+    const canUpgradeByLevel = nextStage
+      ? discipleLevel >= (requiredLevel ?? 0)
+      : false;
     const hasNextStageImage = !!nextStageConfig?.imageUrl;
     const hasUpgradeMaterials = nextStageConfig
       ? this.hasInventoryItem(
@@ -230,7 +260,9 @@ export class CardsService {
       ? (user?.balance ?? 0) >= (nextStageConfig.upgradeCoins ?? 0)
       : false;
     const favoriteIds = new Set(
-      (user?.favoriteCharacters ?? []).map((favorite: any) => favorite?.toString?.()),
+      (user?.favoriteCharacters ?? []).map((favorite: any) =>
+        favorite?.toString?.(),
+      ),
     );
     const characterId = card?.characterId?._id?.toString?.() ?? null;
     const nextStageShardCost = Math.max(
@@ -294,7 +326,10 @@ export class CardsService {
         shardProgress: {
           current: entry?.shards ?? 0,
           required: nextStageShardCost,
-          enough: nextStageShardCost <= 0 ? true : (entry?.shards ?? 0) >= nextStageShardCost,
+          enough:
+            nextStageShardCost <= 0
+              ? true
+              : (entry?.shards ?? 0) >= nextStageShardCost,
         },
         copyOverflow: Math.max(0, entry?.copies ?? 0),
         canUpgrade:
@@ -346,19 +381,35 @@ export class CardsService {
       .lean()
       .exec();
     if (existing) {
-      throw new BadRequestException('Карточка для этого персонажа уже существует');
+      throw new BadRequestException(
+        'Карточка для этого персонажа уже существует',
+      );
     }
-    const stages = sortStages((body.stages ?? []).map((stage) => ({
-      ...stage,
-      rank: normalizeStageRank(stage.rank),
-      requiredLevel: this.getRequiredLevelForStage(body.stages, stage.rank),
-      upgradeCoins: Math.max(0, ensurePositiveNumber(stage.upgradeCoins, 0)),
-      upgradeItemCount: Math.max(0, ensurePositiveNumber(stage.upgradeItemCount, 0)),
-      upgradeSuccessChance: Math.min(
-        1,
-        Math.max(0, ensurePositiveNumber(stage.upgradeSuccessChance, 1)),
+    const stages = sortStages(
+      (body.stages ?? []).map(
+        (stage) =>
+          ({
+            ...stage,
+            rank: normalizeStageRank(stage.rank),
+            requiredLevel: this.getRequiredLevelForStage(
+              body.stages,
+              stage.rank,
+            ),
+            upgradeCoins: Math.max(
+              0,
+              ensurePositiveNumber(stage.upgradeCoins, 0),
+            ),
+            upgradeItemCount: Math.max(
+              0,
+              ensurePositiveNumber(stage.upgradeItemCount, 0),
+            ),
+            upgradeSuccessChance: Math.min(
+              1,
+              Math.max(0, ensurePositiveNumber(stage.upgradeSuccessChance, 1)),
+            ),
+          }) as CardStage,
       ),
-    } as CardStage)));
+    );
     const baseStage = stages.find((stage) => stage.rank === 'F');
     const imageUrl = body.imageUrl || baseStage?.imageUrl || '';
     const card = await this.cardDecorationModel.create({
@@ -390,7 +441,9 @@ export class CardsService {
       stages: CardStage[];
     }>,
   ) {
-    const card = await this.cardDecorationModel.findById(new Types.ObjectId(id));
+    const card = await this.cardDecorationModel.findById(
+      new Types.ObjectId(id),
+    );
     if (!card) throw new NotFoundException('Карточка не найдена');
     if (body.characterId) {
       if (!Types.ObjectId.isValid(body.characterId)) {
@@ -411,10 +464,12 @@ export class CardsService {
         .lean()
         .exec();
       if (existing) {
-        throw new BadRequestException('Карточка для этого персонажа уже существует');
+        throw new BadRequestException(
+          'Карточка для этого персонажа уже существует',
+        );
       }
       card.characterId = character._id;
-      card.titleId = character.titleId as Types.ObjectId;
+      card.titleId = character.titleId;
     }
     if (body.name !== undefined) card.name = body.name;
     if (body.description !== undefined) card.description = body.description;
@@ -423,21 +478,37 @@ export class CardsService {
     if (body.rarity !== undefined) card.rarity = body.rarity;
     if (body.isAvailable !== undefined) card.isAvailable = body.isAvailable;
     if (body.quantity !== undefined) {
-      card.quantity = body.quantity === null ? undefined : Number(body.quantity);
+      card.quantity =
+        body.quantity === null ? undefined : Number(body.quantity);
     }
     if (body.stages !== undefined) {
       card.stages = sortStages(
-        (body.stages ?? []).map((stage) => ({
-          ...stage,
-          rank: normalizeStageRank(stage.rank),
-          requiredLevel: this.getRequiredLevelForStage(body.stages, stage.rank),
-          upgradeCoins: Math.max(0, ensurePositiveNumber(stage.upgradeCoins, 0)),
-          upgradeItemCount: Math.max(0, ensurePositiveNumber(stage.upgradeItemCount, 0)),
-          upgradeSuccessChance: Math.min(
-            1,
-            Math.max(0, ensurePositiveNumber(stage.upgradeSuccessChance, 1)),
-          ),
-        } as CardStage)),
+        (body.stages ?? []).map(
+          (stage) =>
+            ({
+              ...stage,
+              rank: normalizeStageRank(stage.rank),
+              requiredLevel: this.getRequiredLevelForStage(
+                body.stages,
+                stage.rank,
+              ),
+              upgradeCoins: Math.max(
+                0,
+                ensurePositiveNumber(stage.upgradeCoins, 0),
+              ),
+              upgradeItemCount: Math.max(
+                0,
+                ensurePositiveNumber(stage.upgradeItemCount, 0),
+              ),
+              upgradeSuccessChance: Math.min(
+                1,
+                Math.max(
+                  0,
+                  ensurePositiveNumber(stage.upgradeSuccessChance, 1),
+                ),
+              ),
+            }) as CardStage,
+        ),
       ) as any;
       if (!body.imageUrl) {
         const currentImage = this.getStageConfig(card.stages, 'F')?.imageUrl;
@@ -499,7 +570,8 @@ export class CardsService {
         0,
         ensurePositiveNumber(body.pityThreshold, isTitleDeck ? 5 : 8),
       ),
-      pityTargetRarity: body.pityTargetRarity ?? (isTitleDeck ? 'epic' : 'rare'),
+      pityTargetRarity:
+        body.pityTargetRarity ?? (isTitleDeck ? 'epic' : 'rare'),
     };
     if (body.titleId) {
       doc.titleId = new Types.ObjectId(body.titleId);
@@ -532,7 +604,8 @@ export class CardsService {
     if (body.price !== undefined) deck.price = Math.max(0, Number(body.price));
     if (body.isAvailable !== undefined) deck.isAvailable = body.isAvailable;
     if (body.quantity !== undefined) {
-      deck.quantity = body.quantity === null ? undefined : Number(body.quantity);
+      deck.quantity =
+        body.quantity === null ? undefined : Number(body.quantity);
     }
     if (body.titleId !== undefined) {
       deck.titleId = body.titleId ? new Types.ObjectId(body.titleId) : null;
@@ -541,7 +614,10 @@ export class CardsService {
       deck.cardsPerOpen = Math.max(1, Number(body.cardsPerOpen));
     }
     if (body.titleFocusChance !== undefined) {
-      deck.titleFocusChance = Math.min(1, Math.max(0, Number(body.titleFocusChance)));
+      deck.titleFocusChance = Math.min(
+        1,
+        Math.max(0, Number(body.titleFocusChance)),
+      );
     }
     if (body.pityThreshold !== undefined) {
       deck.pityThreshold = Math.max(0, Number(body.pityThreshold));
@@ -611,8 +687,10 @@ export class CardsService {
       isNew = true;
       shardsGained = Math.max(0, amount - 1);
     } else {
-      ownedCards[existingIndex].copies = (ownedCards[existingIndex].copies ?? 1) + amount;
-      ownedCards[existingIndex].shards = (ownedCards[existingIndex].shards ?? 0) + amount;
+      ownedCards[existingIndex].copies =
+        (ownedCards[existingIndex].copies ?? 1) + amount;
+      ownedCards[existingIndex].shards =
+        (ownedCards[existingIndex].shards ?? 0) + amount;
       shardsGained = amount;
     }
 
@@ -643,7 +721,9 @@ export class CardsService {
 
     const cardIds = Array.from(
       new Set(
-        (user.ownedCards ?? []).map((entry: any) => entry.cardId?.toString?.()).filter(Boolean),
+        (user.ownedCards ?? [])
+          .map((entry: any) => entry.cardId?.toString?.())
+          .filter(Boolean),
       ),
     );
     if (cardIds.length === 0) {
@@ -661,7 +741,9 @@ export class CardsService {
       .populate('titleId', 'title name')
       .lean()
       .exec();
-    const cardMap = new Map(cards.map((card: any) => [card._id.toString(), card]));
+    const cardMap = new Map(
+      cards.map((card: any) => [card._id.toString(), card]),
+    );
     const serialized = (user.ownedCards ?? [])
       .map((entry: any) => {
         const card = cardMap.get(entry.cardId?.toString?.());
@@ -669,14 +751,18 @@ export class CardsService {
         return this.serializeCard(card, entry, user);
       })
       .filter(Boolean);
-    const showcaseIds = (user.profileCardsShowcase ?? []).map((id: any) => id?.toString?.());
+    const showcaseIds = (user.profileCardsShowcase ?? []).map((id: any) =>
+      id?.toString?.(),
+    );
     const showcase = this.sortCardsForShowcase(
       showcaseIds
-      .map((id) => serialized.find((card: any) => card.id === id))
-      .filter(Boolean),
+        .map((id) => serialized.find((card: any) => card.id === id))
+        .filter(Boolean),
       (user as any).profileCardsShowcaseSort ?? 'manual',
     );
-    const uniqueTitles = new Set(serialized.map((card: any) => card.titleId).filter(Boolean));
+    const uniqueTitles = new Set(
+      serialized.map((card: any) => card.titleId).filter(Boolean),
+    );
 
     return {
       cards: serialized,
@@ -699,10 +785,14 @@ export class CardsService {
     const owned = new Set(
       (user.ownedCards ?? []).map((entry: any) => entry.cardId?.toString?.()),
     );
-    const uniqueIds = Array.from(new Set((cardIds ?? []).filter(Boolean))).slice(0, 6);
+    const uniqueIds = Array.from(
+      new Set((cardIds ?? []).filter(Boolean)),
+    ).slice(0, 6);
     const invalid = uniqueIds.filter((id) => !owned.has(id));
     if (invalid.length > 0) {
-      throw new BadRequestException('В витрину можно добавить только свои карточки');
+      throw new BadRequestException(
+        'В витрину можно добавить только свои карточки',
+      );
     }
     user.profileCardsShowcase = uniqueIds.map((id) => new Types.ObjectId(id));
     if (sortMode) {
@@ -732,7 +822,9 @@ export class CardsService {
     if (!card) throw new NotFoundException('Карточка не найдена');
     const nextStage = getNextStageRank(entry.currentStage);
     if (!nextStage) {
-      throw new BadRequestException('Карточка уже достигла максимального этапа');
+      throw new BadRequestException(
+        'Карточка уже достигла максимального этапа',
+      );
     }
     const nextConfig = this.getStageConfig(card.stages, nextStage);
     if (!nextConfig?.imageUrl) {
@@ -750,7 +842,9 @@ export class CardsService {
     }
     const upgradeCoins = nextConfig.upgradeCoins ?? 0;
     if ((user.balance ?? 0) < upgradeCoins) {
-      throw new BadRequestException('Недостаточно монет для улучшения карточки');
+      throw new BadRequestException(
+        'Недостаточно монет для улучшения карточки',
+      );
     }
     const upgradeItemId = nextConfig.upgradeItemId ?? '';
     const upgradeItemCount = nextConfig.upgradeItemCount ?? 0;
@@ -759,7 +853,9 @@ export class CardsService {
       upgradeItemCount > 0 &&
       !this.hasInventoryItem(user, upgradeItemId, upgradeItemCount)
     ) {
-      throw new BadRequestException('Недостаточно предметов для улучшения карточки');
+      throw new BadRequestException(
+        'Недостаточно предметов для улучшения карточки',
+      );
     }
 
     user.balance = (user.balance ?? 0) - upgradeCoins;
@@ -825,14 +921,18 @@ export class CardsService {
   ): any | null {
     if (cards.length === 0) return null;
     const filteredByRarity = options?.minRarity
-      ? cards.filter((card: any) => rarityScore(card.rarity) >= rarityScore(options.minRarity))
+      ? cards.filter(
+          (card: any) =>
+            rarityScore(card.rarity) >= rarityScore(options.minRarity),
+        )
       : cards;
     const basePool = filteredByRarity.length > 0 ? filteredByRarity : cards;
     const titleId = deck.titleId?.toString?.() ?? null;
     const titleCards = titleId
       ? basePool.filter((card: any) => getEntityId(card.titleId) === titleId)
       : [];
-    const focused = titleCards.length > 0 && Math.random() <= (deck.titleFocusChance ?? 0.75);
+    const focused =
+      titleCards.length > 0 && Math.random() <= (deck.titleFocusChance ?? 0.75);
     const pool = focused ? titleCards : basePool;
     return pool[Math.floor(Math.random() * pool.length)] ?? null;
   }
@@ -844,7 +944,11 @@ export class CardsService {
     if (!deck || !deck.isAvailable) {
       throw new NotFoundException('Колода не найдена');
     }
-    if (deck.quantity !== undefined && deck.quantity !== null && deck.quantity < 1) {
+    if (
+      deck.quantity !== undefined &&
+      deck.quantity !== null &&
+      deck.quantity < 1
+    ) {
       throw new BadRequestException('Колода закончилась');
     }
     if ((user.balance ?? 0) < (deck.price ?? 0)) {
@@ -853,7 +957,8 @@ export class CardsService {
     const pityConfig = this.getDeckPityConfig(deck);
     const deckPity = this.getDeckPityEntry(user, deckId);
     const forcePity =
-      pityConfig.threshold > 0 && (deckPity?.misses ?? 0) >= pityConfig.threshold;
+      pityConfig.threshold > 0 &&
+      (deckPity?.misses ?? 0) >= pityConfig.threshold;
     const cards = await this.cardDecorationModel
       .find({
         isAvailable: true,
@@ -884,7 +989,11 @@ export class CardsService {
       if (rarityScore(picked.rarity) >= rarityScore(pityConfig.targetRarity)) {
         hitPityTarget = true;
       }
-      const granted = await this.grantCardToUser(userId, picked._id.toString(), 1);
+      const granted = await this.grantCardToUser(
+        userId,
+        picked._id.toString(),
+        1,
+      );
       openedCards.push(granted);
     }
 
@@ -911,7 +1020,10 @@ export class CardsService {
       if (pityIndex >= 0) {
         (updatedUser.cardDeckPity as any)[pityIndex] = nextEntry;
       } else {
-        updatedUser.cardDeckPity = [...(updatedUser.cardDeckPity ?? []), nextEntry] as any;
+        updatedUser.cardDeckPity = [
+          ...(updatedUser.cardDeckPity ?? []),
+          nextEntry,
+        ] as any;
       }
       updatedUser.markModified('cardDeckPity');
       await updatedUser.save();
@@ -926,13 +1038,15 @@ export class CardsService {
         hitTarget: hitPityTarget,
         threshold: pityConfig.threshold,
         targetRarity: pityConfig.targetRarity,
-        progress: this.getDeckPityEntry(updatedUser ?? user, deckId)?.misses ?? 0,
+        progress:
+          this.getDeckPityEntry(updatedUser ?? user, deckId)?.misses ?? 0,
         remaining:
           pityConfig.threshold > 0
             ? Math.max(
                 0,
                 pityConfig.threshold -
-                  (this.getDeckPityEntry(updatedUser ?? user, deckId)?.misses ?? 0),
+                  (this.getDeckPityEntry(updatedUser ?? user, deckId)?.misses ??
+                    0),
               )
             : 0,
       },
@@ -963,7 +1077,10 @@ export class CardsService {
     const entry = (user.ownedCards ?? []).find(
       (item: any) => item.cardId?.toString?.() === picked._id.toString(),
     );
-    const stage = this.getStageConfig(picked.stages, entry?.currentStage ?? 'F');
+    const stage = this.getStageConfig(
+      picked.stages,
+      entry?.currentStage ?? 'F',
+    );
     if (!stage?.imageUrl) return null;
     return {
       mediaUrl: stage.imageUrl,
