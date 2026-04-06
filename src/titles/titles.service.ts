@@ -11,6 +11,7 @@ import { Model, Types } from 'mongoose';
 import { Title, TitleDocument, TitleStatus } from '../schemas/title.schema';
 import { Chapter, ChapterDocument } from '../schemas/chapter.schema';
 import { Collection, CollectionDocument } from '../schemas/collection.schema';
+import { TitleRead, TitleReadDocument } from '../schemas/title-read.schema';
 import { CreateTitleDto } from './dto/create-title.dto';
 import { UpdateTitleDto } from './dto/update-title.dto';
 import { FilesService } from '../files/files.service';
@@ -39,6 +40,8 @@ export class TitlesService {
     @InjectModel(Chapter.name) private chapterModel: Model<ChapterDocument>,
     @InjectModel(Collection.name)
     private collectionModel: Model<CollectionDocument>,
+    @InjectModel(TitleRead.name)
+    private titleReadModel: Model<TitleReadDocument>,
     private readonly filesService: FilesService,
     private readonly usersService: UsersService,
     @Inject(CACHE_MANAGER)
@@ -1341,8 +1344,20 @@ export class TitlesService {
         }
       }
 
-      // Обрабатываем reading history - собираем только валидные ObjectId
-      if (user.readingHistory && Array.isArray(user.readingHistory)) {
+      // Уже прочитанные тайтлы: сначала ledger title_reads, иначе fallback на историю из профиля
+      const titleReads = await this.titleReadModel
+        .find({ userId: new Types.ObjectId(userId) })
+        .select('titleId')
+        .lean()
+        .exec();
+      if (titleReads.length > 0) {
+        for (const tr of titleReads) {
+          const tid = tr.titleId;
+          if (tid && !excludedTitleIds.some((existing) => existing.equals(tid))) {
+            excludedTitleIds.push(tid);
+          }
+        }
+      } else if (user.readingHistory && Array.isArray(user.readingHistory)) {
         for (const entry of user.readingHistory) {
           let idStr: string | null = null;
           const titleObj = entry.titleId;
@@ -1350,7 +1365,6 @@ export class TitlesService {
           if (typeof titleObj === 'string') {
             idStr = titleObj;
           } else if (titleObj && typeof titleObj === 'object') {
-            // Используем Record для доступа к свойствам без ошибок типизации
             const obj = titleObj as Record<string, any>;
             idStr = obj._id?.toString() || obj.id?.toString() || null;
           }
@@ -1358,7 +1372,6 @@ export class TitlesService {
           if (idStr && Types.ObjectId.isValid(idStr)) {
             try {
               const objectId = new Types.ObjectId(idStr);
-              // Проверяем, что ещё не добавлен
               if (
                 !excludedTitleIds.some((existing) => existing.equals(objectId))
               ) {
@@ -1390,7 +1403,9 @@ export class TitlesService {
 
       // Если у пользователя нет истории, возвращаем рандомные тайтлы
       const hasHistory =
-        user.bookmarks?.length > 0 || user.readingHistory?.length > 0;
+        user.bookmarks?.length > 0 ||
+        titleReads.length > 0 ||
+        (user.readingHistory?.length ?? 0) > 0;
 
       if (!hasHistory) {
         // Если у пользователя нет истории, возвращаем рандомные тайтлы

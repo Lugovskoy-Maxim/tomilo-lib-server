@@ -5,6 +5,12 @@ import { UsersController } from './users.controller';
 import { User, UserSchema } from '../schemas/user.schema';
 import { ChapterRead, ChapterReadSchema } from '../schemas/chapter-read.schema';
 import { TitleRead, TitleReadSchema } from '../schemas/title-read.schema';
+import {
+  ReadingHistoryTitle,
+  ReadingHistoryTitleSchema,
+  ReadingHistoryOrder,
+  ReadingHistoryOrderSchema,
+} from '../schemas/reading-history.schema';
 import { FilesModule } from '../files/files.module';
 import { ChaptersModule } from '../chapters/chapters.module';
 import { BotDetectionModule } from '../common/services/bot-detection.module';
@@ -18,6 +24,8 @@ import { GameItemsModule } from '../game-items/game-items.module';
       { name: User.name, schema: UserSchema },
       { name: ChapterRead.name, schema: ChapterReadSchema },
       { name: TitleRead.name, schema: TitleReadSchema },
+      { name: ReadingHistoryTitle.name, schema: ReadingHistoryTitleSchema },
+      { name: ReadingHistoryOrder.name, schema: ReadingHistoryOrderSchema },
     ]),
     FilesModule,
     forwardRef(() => ChaptersModule),

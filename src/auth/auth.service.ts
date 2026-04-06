@@ -13,6 +13,7 @@ import { Model, Types } from 'mongoose';
 import * as bcrypt from 'bcrypt';
 import axios from 'axios';
 import { User, UserDocument } from '../schemas/user.schema';
+import { UsersService } from '../users/users.service';
 import { Comment, CommentDocument } from '../schemas/comment.schema';
 import { Report, ReportDocument } from '../schemas/report.schema';
 import {
@@ -54,6 +55,7 @@ export class AuthService {
     private pendingRegistrationModel: Model<PendingRegistrationDocument>,
     private jwtService: JwtService,
     private emailService: EmailService,
+    private usersService: UsersService,
     @Inject(CACHE_MANAGER)
     private cache: {
       get: (k: string) => Promise<unknown>;
@@ -862,6 +864,7 @@ export class AuthService {
     await this.mergeUserInto(other, currentUser);
     this.addProviderToUser(currentUser, provider, providerId);
     await currentUser.save();
+    await this.usersService.syncReadingHistoryFromUserDocument(currentUserId);
     this.logger.log(
       `Merged user ${other._id} into ${currentUserId}, linked ${provider}`,
     );
@@ -984,6 +987,10 @@ export class AuthService {
 
     target.experience = (target.experience ?? 0) + (other.experience ?? 0);
     target.balance = (target.balance ?? 0) + (other.balance ?? 0);
+
+    await this.usersService.deleteExternalReadingHistoryForUser(
+      otherId.toString(),
+    );
 
     await this.commentModel.updateMany(
       { userId: otherId },

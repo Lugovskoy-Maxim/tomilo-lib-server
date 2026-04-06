@@ -22,6 +22,7 @@
     "backup:db": "ts-node -r tsconfig-paths/register scripts/backup-db.ts",
     "migrate:reading-history": "ts-node -r tsconfig-paths/register scripts/migrate-reading-history.ts",
     "migrate:reading-history:safe": "npm run backup:db && npm run migrate:reading-history",
+    "backfill:reading-history-collections": "ts-node -r tsconfig-paths/register scripts/backfill-reading-history-collections.ts",
     "migrate:recalculate-counts": "ts-node -r tsconfig-paths/register scripts/recalculate-user-counts.ts",
     "check:autoparser": "ts-node -r tsconfig-paths/register scripts/check-autoparser-sources.ts",
     "migrate:s3": "ts-node -r tsconfig-paths/register scripts/migrate-uploads-to-s3.ts",

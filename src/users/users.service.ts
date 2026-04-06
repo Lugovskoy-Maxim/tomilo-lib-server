@@ -15,6 +15,12 @@ import { User, UserDocument } from '../schemas/user.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
 import { ChapterRead, ChapterReadDocument } from '../schemas/chapter-read.schema';
 import { TitleRead, TitleReadDocument } from '../schemas/title-read.schema';
+import {
+  ReadingHistoryTitle,
+  ReadingHistoryTitleDocument,
+  ReadingHistoryOrder,
+  ReadingHistoryOrderDocument,
+} from '../schemas/reading-history.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { FilesService } from '../files/files.service';
@@ -167,6 +173,10 @@ export class UsersService {
     private chapterReadModel: Model<ChapterReadDocument>,
     @InjectModel(TitleRead.name)
     private titleReadModel: Model<TitleReadDocument>,
+    @InjectModel(ReadingHistoryTitle.name)
+    private readingHistoryTitleModel: Model<ReadingHistoryTitleDocument>,
+    @InjectModel(ReadingHistoryOrder.name)
+    private readingHistoryOrderModel: Model<ReadingHistoryOrderDocument>,
     private filesService: FilesService,
     private chaptersService: ChaptersService,
     private botDetectionService: BotDetectionService,
@@ -198,6 +208,149 @@ export class UsersService {
     private cardsService?: CardsService,
   ) {
     this.logger.setContext(UsersService.name);
+  }
+
+  /**
+   * Синхронизирует вынесенную историю чтения с массивом User.readingHistory (двойная запись).
+   */
+  async syncReadingHistoryFromUserDocument(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) return;
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('readingHistory')
+      .lean()
+      .exec();
+    const h = (user as any)?.readingHistory;
+    await this.syncReadingHistoryExternal(userId, Array.isArray(h) ? h : []);
+  }
+
+  /** Удалить вынесенную историю (при merge аккаунтов — для «другого» пользователя). */
+  async deleteExternalReadingHistoryForUser(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) return;
+    const uid = new Types.ObjectId(userId);
+    await Promise.all([
+      this.readingHistoryTitleModel.deleteMany({ userId: uid }).exec(),
+      this.readingHistoryOrderModel.deleteOne({ userId: uid }).exec(),
+    ]);
+  }
+
+  private async syncReadingHistoryExternal(
+    userId: string,
+    history: Array<{
+      titleId?: Types.ObjectId;
+      chapters?: Array<{
+        chapterId?: Types.ObjectId;
+        chapterNumber?: number;
+        chapterTitle?: string;
+        readAt?: Date;
+      }>;
+      readAt?: Date;
+    }>,
+  ): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) return;
+    const uid = new Types.ObjectId(userId);
+    if (!Array.isArray(history) || history.length === 0) {
+      await Promise.all([
+        this.readingHistoryTitleModel.deleteMany({ userId: uid }).exec(),
+        this.readingHistoryOrderModel.deleteOne({ userId: uid }).exec(),
+      ]);
+      return;
+    }
+
+    const titleIds = history.map(
+      (e) => new Types.ObjectId(this.getHistoryTitleIdStr(e)),
+    );
+    await this.readingHistoryTitleModel
+      .deleteMany({
+        userId: uid,
+        titleId: { $nin: titleIds },
+      })
+      .exec();
+
+    await this.readingHistoryOrderModel
+      .updateOne(
+        { userId: uid },
+        { $set: { titleIds } },
+        { upsert: true },
+      )
+      .exec();
+
+    const bulk = history.map((entry) => {
+      const tid = new Types.ObjectId(this.getHistoryTitleIdStr(entry));
+      return {
+        updateOne: {
+          filter: { userId: uid, titleId: tid },
+          update: {
+            $set: {
+              chapters: (entry.chapters ?? []).map((c) => ({
+                chapterId: c.chapterId,
+                chapterNumber: c.chapterNumber,
+                chapterTitle: c.chapterTitle,
+                readAt: c.readAt ?? new Date(),
+              })),
+              readAt: entry.readAt ?? new Date(),
+            },
+          },
+          upsert: true,
+        },
+      };
+    });
+    if (bulk.length > 0) {
+      await this.readingHistoryTitleModel.bulkWrite(bulk as any);
+    }
+  }
+
+  /**
+   * История чтения для API: сначала вынесенная коллекция + порядок; иначе fallback на User.readingHistory.
+   */
+  private async getReadingHistoryArrayForUser(userId: string): Promise<any[]> {
+    if (!Types.ObjectId.isValid(userId)) return [];
+    const uid = new Types.ObjectId(userId);
+
+    const orderDoc = await this.readingHistoryOrderModel
+      .findOne({ userId: uid })
+      .lean()
+      .exec();
+
+    if (!orderDoc?.titleIds?.length) {
+      const user = await this.userModel
+        .findById(uid)
+        .select('readingHistory')
+        .lean()
+        .exec();
+      return Array.isArray((user as any)?.readingHistory)
+        ? (user as any).readingHistory
+        : [];
+    }
+
+    const titles = await this.readingHistoryTitleModel
+      .find({ userId: uid })
+      .lean()
+      .exec();
+    const byTitle = new Map(titles.map((t) => [t.titleId.toString(), t]));
+    const result: any[] = [];
+    for (const tid of orderDoc.titleIds) {
+      const row = byTitle.get(tid.toString());
+      if (row) {
+        result.push({
+          titleId: row.titleId,
+          chapters: row.chapters,
+          readAt: row.readAt,
+        });
+      }
+    }
+
+    if (result.length === 0) {
+      const user = await this.userModel
+        .findById(uid)
+        .select('readingHistory')
+        .lean()
+        .exec();
+      return Array.isArray((user as any)?.readingHistory)
+        ? (user as any).readingHistory
+        : [];
+    }
+    return result;
   }
 
   async findAll({
@@ -587,23 +740,37 @@ export class UsersService {
     let totalCount: number | null = null;
 
     if (category === 'chaptersRead') {
+      const readingColl = this.userModel.db.collection('reading_histories');
       const pipeline: PipelineStage[] = [
-        { $match: { isBot: { $ne: true }, showStats: { $ne: false } } },
-        { $unwind: '$readingHistory' },
-        { $unwind: '$readingHistory.chapters' },
+        { $unwind: '$chapters' },
         ...(isAllTime
           ? []
           : [
               {
                 $match: {
-                  'readingHistory.chapters.readAt': { $gte: dateFrom },
+                  'chapters.readAt': { $gte: dateFrom },
                 },
               },
             ]),
-        { $group: { _id: '$_id', count: { $sum: 1 } } },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'userId',
+            foreignField: '_id',
+            as: 'u',
+          },
+        },
+        { $unwind: '$u' },
+        {
+          $match: {
+            'u.isBot': { $ne: true },
+            'u.showStats': { $ne: false },
+          },
+        },
+        { $group: { _id: '$userId', count: { $sum: 1 } } },
         { $sort: { count: -1 as const } },
       ];
-      const allCounts = await this.userModel.aggregate(pipeline).exec();
+      const allCounts = await readingColl.aggregate(pipeline).toArray();
       totalCount = allCounts.length;
       aggregationResult = allCounts
         .slice(skip, skip + limit)
@@ -857,18 +1024,10 @@ export class UsersService {
 
     const user = await this.userModel
       .findById(new Types.ObjectId(id))
-      .select('-password')
+      .select('-password -readingHistory')
       .populate({
         path: 'bookmarks.titleId',
         select: '_id title slug coverImage type status isAdult',
-      })
-      .populate({
-        path: 'readingHistory.titleId',
-        select: '_id title slug coverImage type',
-      })
-      .populate({
-        path: 'readingHistory.chapters.chapterId',
-        select: '_id chapterNumber title',
       })
       .populate({
         path: 'equippedDecorations.avatar',
@@ -895,6 +1054,17 @@ export class UsersService {
       this.logger.warn(`User not found with ID: ${id}`);
       throw new NotFoundException('User not found');
     }
+    (user as any).readingHistory = await this.getReadingHistoryArrayForUser(id);
+    await user.populate([
+      {
+        path: 'readingHistory.titleId',
+        select: '_id title slug coverImage type',
+      },
+      {
+        path: 'readingHistory.chapters.chapterId',
+        select: '_id chapterNumber title',
+      },
+    ]);
     this.logger.log(`User found with ID: ${id}`);
     return user;
   }
@@ -1554,22 +1724,21 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID or title ID');
     }
 
-    const [user, title] = await Promise.all([
-      this.userModel
-        .findById(new Types.ObjectId(userId))
-        .select('readingHistory'),
+    const [userExists, historyList, title] = await Promise.all([
+      this.userModel.findById(new Types.ObjectId(userId)).select('_id').lean(),
+      this.getReadingHistoryArrayForUser(userId),
       this.titleModel
         .findById(new Types.ObjectId(titleId))
         .select('totalChapters'),
     ]);
 
-    if (!user) {
+    if (!userExists) {
       throw new NotFoundException('User not found');
     }
 
     const totalChapters = title?.totalChapters || 0;
 
-    const historyEntry = user.readingHistory.find(
+    const historyEntry = historyList.find(
       (e) => this.getHistoryTitleIdStr(e) === titleId,
     );
 
@@ -2165,6 +2334,10 @@ export class UsersService {
     // Явно помечаем путь изменённым: Mongoose не всегда отслеживает мутации вложенных массивов (chapters.push, readAt = ...)
     user.markModified('readingHistory');
     await user.save();
+    await this.syncReadingHistoryExternal(
+      userId,
+      (user.readingHistory ?? []) as any[],
+    );
     this.logger.log(`Reading history updated successfully for user ${userId}`);
 
     let readingDrops: { itemId: string; count: number; name?: string; icon?: string }[] = [];
@@ -2431,27 +2604,33 @@ export class UsersService {
     const limit = Math.min(100, Math.max(1, options?.limit ?? 50));
     const light = options?.light ?? true;
 
-    let query = this.userModel
+    const user = await this.userModel
       .findById(new Types.ObjectId(userId))
-      .populate({
-        path: 'readingHistory.titleId',
-        select: '_id title slug coverImage type status isAdult',
-      })
-      .select('readingHistory');
-    if (!light) {
-      query = query.populate({
-        path: 'readingHistory.chapters.chapterId',
-        select: '_id chapterNumber title',
-      });
-    }
-    const user = await query;
-
+      .select('_id')
+      .lean();
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
+    const readingHistory = await this.getReadingHistoryArrayForUser(userId);
+    const wrapper: { readingHistory: any[] } = { readingHistory };
+    await this.userModel.populate(wrapper, [
+      {
+        path: 'readingHistory.titleId',
+        select: '_id title slug coverImage type status isAdult',
+      },
+      ...(!light
+        ? [
+            {
+              path: 'readingHistory.chapters.chapterId',
+              select: '_id chapterNumber title',
+            },
+          ]
+        : []),
+    ]);
+
     // В обратном порядке (новые сначала)
-    const fullList = user.readingHistory.slice().reverse();
+    const fullList = wrapper.readingHistory.slice().reverse();
     const total = fullList.length;
     const start = (page - 1) * limit;
     const slice = fullList.slice(start, start + limit);
@@ -2497,13 +2676,17 @@ export class UsersService {
       throw new BadRequestException('Invalid user ID or title ID');
     }
 
-    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    const user = await this.userModel
+      .findById(new Types.ObjectId(userId))
+      .select('_id')
+      .lean();
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
+    const list = await this.getReadingHistoryArrayForUser(userId);
     // Находим запись для указанного тайтла
-    const titleHistory = user.readingHistory.find(
+    const titleHistory = list.find(
       (entry) => this.getHistoryTitleIdStr(entry) === titleId,
     );
 
@@ -2535,15 +2718,15 @@ export class UsersService {
 
     const user = await this.userModel
       .findById(new Types.ObjectId(userId))
-      .select('readingHistory');
+      .select('_id')
+      .lean();
 
     if (!user) {
       throw new NotFoundException('User not found');
     }
 
-    const entry = user.readingHistory.find(
-      (e) => this.getHistoryTitleIdStr(e) === titleId,
-    );
+    const list = await this.getReadingHistoryArrayForUser(userId);
+    const entry = list.find((e) => this.getHistoryTitleIdStr(e) === titleId);
     if (!entry?.chapters?.length) {
       return { chapterIds: [], chapterNumbers: [] };
     }
@@ -2577,6 +2760,8 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    await this.syncReadingHistoryExternal(userId, []);
+
     return user;
   }
 
@@ -2599,6 +2784,8 @@ export class UsersService {
     if (!user) {
       throw new NotFoundException('User not found');
     }
+
+    await this.syncReadingHistoryFromUserDocument(userId);
 
     return user;
   }
@@ -2669,6 +2856,7 @@ export class UsersService {
 
     user.markModified('readingHistory');
     await user.save();
+    await this.syncReadingHistoryFromUserDocument(userId);
     return (await this.userModel
       .findById(new Types.ObjectId(userId))
       .select('-password')) as User;
@@ -2685,10 +2873,12 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
+    const readingHistory = await this.getReadingHistoryArrayForUser(userId);
+
     return {
       totalBookmarks: user.bookmarks.length,
-      totalRead: user.readingHistory.length,
-      lastRead: user.readingHistory[user.readingHistory.length - 1] || null,
+      totalRead: readingHistory.length,
+      lastRead: readingHistory[readingHistory.length - 1] || null,
       level: user.level,
       experience: user.experience,
       balance: user.balance,
@@ -3942,6 +4132,7 @@ export class UsersService {
 
     for (const user of users) {
       let userModified = false;
+      let readingHistoryModifiedInCleanup = false;
 
       // Clean bookmarks - remove references to non-existent titles
       if (user.bookmarks && (user.bookmarks as any[]).length > 0) {
@@ -4048,15 +4239,22 @@ export class UsersService {
           }
         }
 
-        if (validReadingHistory.length !== user.readingHistory.length) {
+        const rhChanged =
+          JSON.stringify(validReadingHistory) !==
+          JSON.stringify(user.readingHistory);
+        if (rhChanged) {
           user.readingHistory = validReadingHistory;
           userModified = true;
+          readingHistoryModifiedInCleanup = true;
         }
       }
 
       // Save user if modified
       if (userModified) {
         await user.save();
+        if (readingHistoryModifiedInCleanup) {
+          await this.syncReadingHistoryFromUserDocument(user._id.toString());
+        }
       }
     }
 
@@ -4248,18 +4446,10 @@ export class UsersService {
       ? this.userModel.findById(new Types.ObjectId(userId))
       : this.userModel.findOne({ username: userId });
     const targetUser = await query
-      .select('-password')
+      .select('-password -readingHistory')
       .populate({
         path: 'bookmarks.titleId',
         select: '_id title slug coverImage type status isAdult',
-      })
-      .populate({
-        path: 'readingHistory.titleId',
-        select: '_id title slug coverImage type',
-      })
-      .populate({
-        path: 'readingHistory.chapters.chapterId',
-        select: '_id chapterNumber title',
       })
       .populate({
         path: 'equippedDecorations.avatar',
@@ -4370,7 +4560,20 @@ export class UsersService {
     }
 
     if (canViewHistory) {
-      profile.readingHistory = targetUser.readingHistory;
+      const wrap: { readingHistory: any[] } = {
+        readingHistory: await this.getReadingHistoryArrayForUser(targetUserId),
+      };
+      await this.userModel.populate(wrap, [
+        {
+          path: 'readingHistory.titleId',
+          select: '_id title slug coverImage type',
+        },
+        {
+          path: 'readingHistory.chapters.chapterId',
+          select: '_id chapterNumber title',
+        },
+      ]);
+      profile.readingHistory = wrap.readingHistory;
     }
 
     const canViewAchievements =
