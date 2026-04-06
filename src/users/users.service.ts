@@ -13,6 +13,8 @@ import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { InjectModel } from '@nestjs/mongoose';
 import { User, UserDocument } from '../schemas/user.schema';
 import { Title, TitleDocument } from '../schemas/title.schema';
+import { ChapterRead, ChapterReadDocument } from '../schemas/chapter-read.schema';
+import { TitleRead, TitleReadDocument } from '../schemas/title-read.schema';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { FilesService } from '../files/files.service';
@@ -161,6 +163,10 @@ export class UsersService {
   constructor(
     @InjectModel(User.name) private userModel: Model<UserDocument>,
     @InjectModel(Title.name) private titleModel: Model<TitleDocument>,
+    @InjectModel(ChapterRead.name)
+    private chapterReadModel: Model<ChapterReadDocument>,
+    @InjectModel(TitleRead.name)
+    private titleReadModel: Model<TitleReadDocument>,
     private filesService: FilesService,
     private chaptersService: ChaptersService,
     private botDetectionService: BotDetectionService,
@@ -1825,8 +1831,8 @@ export class UsersService {
 
     const currentTime = new Date();
 
-    // Флаг: является ли глава новой (для начисления опыта)
-    let isNewChapter = false;
+    // Флаг "уже было в истории" (для UI) — отдельно от анти-фарма наград
+    let alreadyInHistory = false;
 
     if (existingEntryIndex !== -1) {
       // Тайтл уже есть в истории - обновляем его
@@ -1841,21 +1847,19 @@ export class UsersService {
       if (existingChapterIndex !== -1) {
         // Глава уже есть - обновляем время чтения, НЕ начисляем опыт
         existingEntry.chapters[existingChapterIndex].readAt = currentTime;
-        isNewChapter = false;
+        alreadyInHistory = true;
         this.logger.log(
           `Updated read time for existing chapter in user ${userId}'s history (no XP)`,
         );
       } else {
-        // Главы нет - добавляем новую, начисляем опыт
-        isNewChapter = true;
+        // Главы нет - добавляем новую (награды определяются ledger-ом ниже)
+        alreadyInHistory = false;
         existingEntry.chapters.push({
           chapterId: chapterObjectId,
           chapterNumber,
           chapterTitle,
           readAt: currentTime,
         });
-        // Инкрементируем счётчик прочитанных глав
-        user.chaptersReadCount = (user.chaptersReadCount ?? 0) + 1;
         // Оставляем только последние N глав по тайтлу, чтобы не раздувать историю
         if (existingEntry.chapters.length > MAX_CHAPTERS_PER_TITLE_IN_HISTORY) {
           existingEntry.chapters = existingEntry.chapters
@@ -1873,8 +1877,8 @@ export class UsersService {
       // Обновляем время чтения тайтла
       existingEntry.readAt = currentTime;
     } else {
-      // Тайтла нет в истории - создаем новую запись, начисляем опыт
-      isNewChapter = true;
+      // Тайтла нет в истории - создаем новую запись (награды определяются ledger-ом ниже)
+      alreadyInHistory = false;
       const newEntry = {
         titleId: titleObjectId,
         chapters: [
@@ -1888,11 +1892,6 @@ export class UsersService {
         readAt: currentTime,
       };
 
-      // Инкрементируем счётчик прочитанных глав
-      user.chaptersReadCount = (user.chaptersReadCount ?? 0) + 1;
-      // Инкрементируем счётчик уникальных тайтлов
-      user.titlesReadCount = (user.titlesReadCount ?? 0) + 1;
-
       // Добавляем в начало и ограничиваем размер (не более N тайтлов)
       user.readingHistory.unshift(newEntry);
       if (user.readingHistory.length > MAX_READING_HISTORY_TITLES) {
@@ -1904,16 +1903,45 @@ export class UsersService {
       this.logger.log(`Added new title to user ${userId}'s reading history`);
     }
 
-    // Обновляем streak (серию дней активности) — только если глава новая
-    let streakBonus = 0;
-    if (isNewChapter) {
-      streakBonus = this.updateStreak(user);
-    }
+    // 🧾 Ledger: факт первого прочтения должен быть независим от readingHistory.
+    // Даже если историю очистили — награды повторно не выдаём.
+    const [chapterUpsertRes, titleUpsertRes] = await Promise.all([
+      this.chapterReadModel
+        .updateOne(
+          { userId: new Types.ObjectId(userId), chapterId: chapterObjectId },
+          {
+            $setOnInsert: {
+              userId: new Types.ObjectId(userId),
+              titleId: titleObjectId,
+              chapterId: chapterObjectId,
+              firstReadAt: currentTime,
+            },
+          },
+          { upsert: true },
+        )
+        .exec(),
+      this.titleReadModel
+        .updateOne(
+          { userId: new Types.ObjectId(userId), titleId: titleObjectId },
+          {
+            $setOnInsert: {
+              userId: new Types.ObjectId(userId),
+              titleId: titleObjectId,
+              firstReadAt: currentTime,
+            },
+          },
+          { upsert: true },
+        )
+        .exec(),
+    ]);
 
-    // Добавляем примерное время чтения (4 минуты на главу) — только если глава новая
-    if (isNewChapter) {
-      this.addReadingTime(user, 4);
-    }
+    const isFirstChapterRead =
+      !alreadyInHistory && ((chapterUpsertRes as any)?.upsertedCount ?? 0) > 0;
+    const isFirstTitleRead =
+      ((titleUpsertRes as any)?.upsertedCount ?? 0) > 0;
+
+    // 🛡️ Проверка на ботов перед начислением наград (делаем всегда, но награды даём только не-ботам)
+    // (botDetection использует эти события для score; поэтому сохраняем поведение)
 
     // 🛡️ Проверка на ботов перед начислением XP
     const botDetectionResult = await this.botDetectionService.checkActivity(
@@ -1940,7 +1968,20 @@ export class UsersService {
       );
     }
 
-    // Award experience for reading (только если не бот И глава новая)
+    const canReward = !botDetectionResult.isBot && isFirstChapterRead;
+
+    // Обновляем streak/время чтения/счётчики — только если реальное первое прочтение и не бот
+    let streakBonus = 0;
+    if (canReward) {
+      streakBonus = this.updateStreak(user);
+      this.addReadingTime(user, 4);
+      user.chaptersReadCount = (user.chaptersReadCount ?? 0) + 1;
+      if (isFirstTitleRead) {
+        user.titlesReadCount = (user.titlesReadCount ?? 0) + 1;
+      }
+    }
+
+    // Award experience for reading (только если не бот И первое прочтение в ledger)
     let progressEvent:
       | {
           expGained: number;
@@ -1959,7 +2000,7 @@ export class UsersService {
       | { rank: number; stars: number; name: string; minLevel: number }
       | undefined = undefined;
 
-    if (!botDetectionResult.isBot && isNewChapter) {
+    if (canReward) {
       const oldLevel = user.level;
       const oldRank = this.levelToRank(oldLevel);
       oldRankInfo = oldRank;
@@ -1996,9 +2037,9 @@ export class UsersService {
       };
     } else if (botDetectionResult.isBot) {
       this.logger.warn(`Skipping XP award for bot user ${userId}`);
-    } else if (!isNewChapter) {
+    } else if (!isFirstChapterRead) {
       this.logger.log(
-        `Skipping XP award for already read chapter ${chapterId} by user ${userId}`,
+        `Skipping XP award for already rewarded chapter ${chapterId} by user ${userId}`,
       );
     }
 
@@ -2064,7 +2105,7 @@ export class UsersService {
       );
     }
 
-    if (botDetectionResult.isBot === false && isNewChapter) {
+    if (botDetectionResult.isBot === false && isFirstChapterRead) {
       void this.incrementDailyQuestProgress(userId, 'read_chapters', 1);
     }
 
@@ -2127,7 +2168,7 @@ export class UsersService {
     this.logger.log(`Reading history updated successfully for user ${userId}`);
 
     let readingDrops: { itemId: string; count: number; name?: string; icon?: string }[] = [];
-    if (!botDetectionResult.isBot && isNewChapter && this.dropsService) {
+    if (!botDetectionResult.isBot && isFirstChapterRead && this.dropsService) {
       const gained = await this.dropsService.tryReadingDrops(userId, true);
       if (gained.length > 0 && this.gameItemsService) {
         for (const g of gained) {
@@ -2144,7 +2185,7 @@ export class UsersService {
       }
     }
     let readingCardDrops: Array<Record<string, unknown>> = [];
-    if (!botDetectionResult.isBot && isNewChapter && this.cardsService) {
+    if (!botDetectionResult.isBot && isFirstChapterRead && this.cardsService) {
       try {
         const cardDrop = await this.cardsService.tryGrantReadingCard(userId, titleIdStr);
         if (cardDrop?.card) {
