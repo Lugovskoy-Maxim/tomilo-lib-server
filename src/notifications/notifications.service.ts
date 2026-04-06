@@ -170,9 +170,7 @@ export class NotificationsService {
       throw new NotFoundException('Notification not found');
     }
 
-    await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, {
-      ttl: 5,
-    } as any);
+    await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, 5);
     await this.notifyUnreadCount(userId);
     return notification;
   }
@@ -187,9 +185,7 @@ export class NotificationsService {
       { isRead: true },
     );
 
-    await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, {
-      ttl: 5,
-    } as any);
+    await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, 5);
     await this.notifyUnreadCount(userId);
     return { modifiedCount: result.modifiedCount };
   }
@@ -212,9 +208,7 @@ export class NotificationsService {
     }
 
     if (!result.isRead) {
-      await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, {
-        ttl: 5,
-      } as any);
+      await this.cacheManager.set(this.unreadCountCacheKey(userId), -1, 5);
       await this.notifyUnreadCount(userId);
     }
   }
@@ -235,9 +229,7 @@ export class NotificationsService {
       isRead: false,
     });
 
-    await this.cacheManager.set(key, count, {
-      ttl: UNREAD_COUNT_CACHE_TTL_MS,
-    } as any);
+    await this.cacheManager.set(key, count, UNREAD_COUNT_CACHE_TTL_MS);
     return { count };
   }
 

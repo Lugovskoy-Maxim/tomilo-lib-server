@@ -304,9 +304,11 @@ export class UsersService {
       .select(projection)
       .lean();
 
-    await this.cacheManager.set(cacheKey, users, {
-      ttl: HOMEPAGE_ACTIVE_USERS_CACHE_TTL_MS,
-    });
+    await this.cacheManager.set(
+      cacheKey,
+      users,
+      HOMEPAGE_ACTIVE_USERS_CACHE_TTL_MS,
+    );
 
     return users;
   }
@@ -496,9 +498,7 @@ export class UsersService {
     };
 
     try {
-      await this.cacheManager.set(cacheKey, result, {
-        ttl: LEADERBOARD_CACHE_TTL_MS,
-      });
+      await this.cacheManager.set(cacheKey, result, LEADERBOARD_CACHE_TTL_MS);
     } catch (cacheErr) {
       this.logger.warn(
         `Leaderboard cache set failed: ${cacheErr instanceof Error ? cacheErr.message : String(cacheErr)}`,
@@ -539,9 +539,11 @@ export class UsersService {
 
     const result: LeaderboardAllPeriodsResponse = { week, month, all };
     try {
-      await this.cacheManager.set(cacheKey, result, {
-        ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS,
-      });
+      await this.cacheManager.set(
+        cacheKey,
+        result,
+        LEADERBOARD_PERIOD_CACHE_TTL_MS,
+      );
     } catch (cacheErr) {
       this.logger.warn(
         `Leaderboard cache set failed: ${cacheErr instanceof Error ? cacheErr.message : String(cacheErr)}`,
@@ -694,9 +696,11 @@ export class UsersService {
         period,
       };
       try {
-        await this.cacheManager.set(cacheKey, result, {
-          ttl: LEADERBOARD_PERIOD_CACHE_TTL_MS,
-        });
+        await this.cacheManager.set(
+          cacheKey,
+          result,
+          LEADERBOARD_PERIOD_CACHE_TTL_MS,
+        );
       } catch (cacheErr) {
         this.logger.warn(
           `Leaderboard cache set failed: ${cacheErr instanceof Error ? cacheErr.message : String(cacheErr)}`,
@@ -821,9 +825,7 @@ export class UsersService {
       .lean()
       .exec();
     const canViewAdult = user?.displaySettings?.isAdult !== false;
-    await this.cacheManager.set(key, canViewAdult, {
-      ttl: CAN_VIEW_ADULT_CACHE_TTL_MS,
-    });
+    await this.cacheManager.set(key, canViewAdult, CAN_VIEW_ADULT_CACHE_TTL_MS);
     return canViewAdult;
   }
 
@@ -4472,9 +4474,11 @@ export class UsersService {
 
     if (displaySettings.isAdult !== undefined) {
       const key = `${CAN_VIEW_ADULT_CACHE_PREFIX}${userId}`;
-      await this.cacheManager.set(key, displaySettings.isAdult !== false, {
-        ttl: CAN_VIEW_ADULT_CACHE_TTL_MS,
-      });
+      await this.cacheManager.set(
+        key,
+        displaySettings.isAdult !== false,
+        CAN_VIEW_ADULT_CACHE_TTL_MS,
+      );
     }
 
     this.logger.log(

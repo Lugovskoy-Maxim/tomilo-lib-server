@@ -173,9 +173,7 @@ export class ChaptersService {
     const cached = await this.cacheManager.get(key);
     if (typeof cached === 'number') return cached;
     const total = await this.chapterModel.countDocuments(query);
-    await this.cacheManager.set(key, total, {
-      ttl: CHAPTERS_COUNT_CACHE_TTL_MS,
-    } as any);
+    await this.cacheManager.set(key, total, CHAPTERS_COUNT_CACHE_TTL_MS);
     return total;
   }
 
