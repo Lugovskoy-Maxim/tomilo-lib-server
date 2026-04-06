@@ -17,7 +17,7 @@ function getDateBoundaries() {
   const weekAgo = new Date(today);
   weekAgo.setDate(weekAgo.getDate() - 7);
   const monthAgo = new Date(today);
-  monthAgo.setMonth(monthAgo.getMonth() - 1);
+  monthAgo.setDate(monthAgo.getDate() - 30);
 
   return {
     today,

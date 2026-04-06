@@ -436,11 +436,9 @@ export class ChaptersService {
     // Подготавливаем обновления для счетчиков по периодам
     const update: any = { $inc: { views: 1 } };
 
-    // Проверяем, нужно ли сбросить месячный счетчик (проверяем первым!)
+    const oneMonthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const needMonthReset =
-      !title.lastMonthReset ||
-      now.getMonth() !== title.lastMonthReset.getMonth() ||
-      now.getFullYear() !== title.lastMonthReset.getFullYear();
+      !title.lastMonthReset || title.lastMonthReset < oneMonthAgo;
 
     if (needMonthReset) {
       update.monthViews = 1;

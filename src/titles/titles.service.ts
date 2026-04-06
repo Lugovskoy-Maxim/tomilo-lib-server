@@ -476,23 +476,16 @@ export class TitlesService {
             },
           },
           oneWeekAgo: { $subtract: ['$$NOW', 7 * 24 * 60 * 60 * 1000] },
-          startOfMonth: {
-            $dateFromParts: {
-              year: { $year: '$$NOW' },
-              month: { $month: '$$NOW' },
-              day: 1,
-            },
-          },
+          oneMonthAgo: { $subtract: ['$$NOW', 30 * 24 * 60 * 60 * 1000] },
         },
       },
       {
         $set: {
-          // Сначала определяем, нужно ли сбросить месяц
+          // Скользящие 30 суток (как неделя — скользящие 7), не календарный месяц
           monthReset: {
             $or: [
               { $eq: [{ $ifNull: ['$lastMonthReset', null] }, null] },
-              { $ne: [{ $year: '$lastMonthReset' }, { $year: '$$NOW' }] },
-              { $ne: [{ $month: '$lastMonthReset' }, { $month: '$$NOW' }] },
+              { $lt: ['$lastMonthReset', '$oneMonthAgo'] },
             ],
           },
           // Нужно ли сбросить неделю (без учёта месяца)
@@ -550,7 +543,7 @@ export class TitlesService {
             ],
           },
           lastMonthReset: {
-            $cond: ['$monthReset', '$startOfMonth', '$lastMonthReset'],
+            $cond: ['$monthReset', '$$NOW', '$lastMonthReset'],
           },
         },
       },
@@ -558,7 +551,7 @@ export class TitlesService {
         $unset: [
           'startOfToday',
           'oneWeekAgo',
-          'startOfMonth',
+          'oneMonthAgo',
           'dayReset',
           'weekReset',
           'monthReset',
