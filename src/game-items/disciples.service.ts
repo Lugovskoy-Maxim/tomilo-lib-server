@@ -114,6 +114,30 @@ const DISCIPLE_GAME_SHOP_OFFERS: DiscipleGameShopOffer[] = [
     priceCoins: 48,
   },
   {
+    offerId: 'defense_talisman_1',
+    kind: 'item',
+    label: 'Талисман защиты ×1',
+    itemId: 'defense_talisman',
+    count: 1,
+    priceCoins: 65,
+  },
+  {
+    offerId: 'heavenly_thunder_1',
+    kind: 'item',
+    label: 'Талисман небесной грозы ×1',
+    itemId: 'heavenly_thunder_talisman',
+    count: 1,
+    priceCoins: 95,
+  },
+  {
+    offerId: 'resurrection_fragment_1',
+    kind: 'item',
+    label: 'Осколок воскрешения ×1',
+    itemId: 'resurrection_fragment',
+    count: 1,
+    priceCoins: 120,
+  },
+  {
     offerId: 'expedition_talisman_1',
     kind: 'item',
     label: 'Талисман вылазки ×1',
@@ -2454,30 +2478,55 @@ export class DisciplesService {
 
     const rating = user.combatRating ?? 0;
     const delta = Math.max(20, Math.floor(rating * 0.15));
+    const matchFilter = {
+      _id: { $ne: new Types.ObjectId(userId) },
+      'disciples.0': { $exists: true },
+      combatRating: { $gte: rating - delta, $lte: rating + delta },
+    } as const;
+
+    // Рандомизируем противников (иначе Mongo вернёт «первого» и он будет повторяться).
+    // При небольшом онлайне всё равно возможны повторы, но не «вечно один и тот же».
+    const candidatesCount = await this.userModel
+      .countDocuments(matchFilter as any)
+      .exec();
+    const skip = candidatesCount > 1 ? Math.floor(Math.random() * candidatesCount) : 0;
     const opponent = await this.userModel
-      .findOne({
-        _id: { $ne: new Types.ObjectId(userId) },
-        'disciples.0': { $exists: true },
-        combatRating: { $gte: rating - delta, $lte: rating + delta },
-      })
+      .findOne(matchFilter as any)
       .select('username avatar combatRating disciples')
+      .skip(skip)
       .lean()
       .exec();
 
     if (opponent) {
+      // В матчмейкинге нужны имена/аватары учеников, иначе на фронте виден только уровень.
+      const oppPop = await this.userModel
+        .findById((opponent as any)._id)
+        .populate([
+          {
+            path: 'disciples.characterId',
+            model: 'Character',
+            select: 'name avatar',
+          },
+          { path: 'disciples.titleId', model: 'Title', select: 'name' },
+        ])
+        .select('username avatar combatRating disciples')
+        .lean()
+        .exec();
+
+      const src = (oppPop ?? opponent) as any;
       return {
         opponent: {
-          userId: (opponent as any)._id.toString(),
-          username: (opponent as any).username,
-          avatar: (opponent as any).avatar,
-          combatRating: (opponent as any).combatRating,
-          disciples: (opponent as any).disciples?.map((d: any) => ({
-            characterId: d.characterId?.toString?.() ?? null,
-            name: d.name,
-            titleName: d.titleName,
+          userId: src._id.toString(),
+          username: src.username,
+          avatar: src.avatar,
+          combatRating: src.combatRating,
+          disciples: (src.disciples ?? []).map((d: any) => ({
+            characterId: d.characterId?._id?.toString?.() ?? d.characterId?.toString?.() ?? null,
+            name: d.characterId?.name ?? d.name,
+            titleName: d.titleId?.name ?? d.titleName,
             level: d.level,
             rank: d.rank,
-            avatar: d.avatar,
+            avatar: d.characterId?.avatar ?? d.avatar,
             attack: d.attack,
             defense: d.defense,
             speed: d.speed,
@@ -2485,7 +2534,7 @@ export class DisciplesService {
             cardMedia: d.cardMedia ?? null,
           })),
         },
-        combatRating: (opponent as any).combatRating,
+        combatRating: src.combatRating,
       };
     }
 
@@ -2521,6 +2570,13 @@ export class DisciplesService {
     }[];
     resultScreen?: {
       outcome: string;
+      outcomeReason?: string;
+      userTeamCp?: number;
+      opponentTeamCp?: number;
+      teams?: {
+        user?: Array<{ name: string; level: number }>;
+        opponent?: Array<{ name: string; level: number }>;
+      };
       userCard: unknown;
       opponentCard: unknown;
       battleLog: unknown;
@@ -2568,6 +2624,14 @@ export class DisciplesService {
 
     const isBot =
       opponentUserId === 'bot:casual' || opponentUserId?.startsWith?.('bot:');
+    let oppRosterMembers: Array<{
+      displayName: string;
+      level: number;
+      attack: number;
+      defense: number;
+      speed: number;
+      hp: number;
+    }> = [];
     let oppEquipped: string[];
     let oppCard: unknown = null;
     let oppAgg: {
@@ -2591,6 +2655,7 @@ export class DisciplesService {
         userRoster.length,
         'casual',
       );
+      oppRosterMembers = oppRoster;
       oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
       oppAgg = this.aggregateSquadCombatStats(oppRoster);
       oppTechniqueOwners = this.buildTechniqueOwnerMap(oppRoster);
@@ -2607,6 +2672,7 @@ export class DisciplesService {
         );
       }
       const oppRoster = await this.enrichBattleRosterFromDisciples(oppActive);
+      oppRosterMembers = oppRoster;
       oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
       oppAgg = this.aggregateSquadCombatStats(oppRoster);
       oppTechniqueOwners = this.buildTechniqueOwnerMap(oppRoster);
@@ -2677,6 +2743,36 @@ export class DisciplesService {
         )
       : null;
 
+    const fin = sim.final as {
+      hpUser: number;
+      hpOpp: number;
+      maxUser: number;
+      maxOpp: number;
+    };
+    const outcomeReason = win
+      ? fin.hpOpp <= 0
+        ? 'Противник потерял все очки здоровья.'
+        : fin.hpUser > fin.hpOpp
+          ? 'Лимит ходов исчерпан — у вашего отряда больше ОЗ.'
+          : 'Равные ОЗ после последнего хода — зачтена победа по скорости отряда.'
+      : fin.hpUser <= 0
+        ? 'Ваш отряд потерял все очки здоровья.'
+        : fin.hpUser < fin.hpOpp
+          ? 'Лимит ходов исчерпан — у противника больше ОЗ.'
+          : 'Равные ОЗ после последнего хода — поражение по скорости отряда.';
+
+    const opponentTeamCp = Math.round(
+      oppRosterMembers.reduce(
+        (acc, m) =>
+          acc +
+          this.cp(
+            { attack: m.attack, defense: m.defense, speed: m.speed, hp: m.hp },
+            formula,
+          ),
+        0,
+      ),
+    );
+
     return {
       win,
       coinsGained,
@@ -2684,6 +2780,16 @@ export class DisciplesService {
       consumedItems: supportState.consumed,
       resultScreen: {
         outcome: win ? 'win' : 'lose',
+        outcomeReason,
+        userTeamCp: Math.round(cpUser),
+        opponentTeamCp,
+        teams: {
+          user: userRoster.map((m) => ({ name: m.displayName, level: m.level })),
+          opponent: oppRosterMembers.map((m) => ({
+            name: m.displayName,
+            level: m.level,
+          })),
+        },
         userCard,
         opponentCard: oppCard,
         battleLog: sim.log,
@@ -2728,34 +2834,55 @@ export class DisciplesService {
 
     const rating = (user as any).weeklyRating ?? 1000;
     const delta = Math.max(50, Math.floor(rating * 0.1));
+    const matchFilter = {
+      _id: { $ne: new Types.ObjectId(userId) },
+      'disciples.0': { $exists: true },
+      $or: [
+        { weeklyRating: { $exists: false } },
+        { weeklyRating: { $gte: rating - delta, $lte: rating + delta } },
+      ],
+    } as const;
+
+    const candidatesCount = await this.userModel
+      .countDocuments(matchFilter as any)
+      .exec();
+    const skip = candidatesCount > 1 ? Math.floor(Math.random() * candidatesCount) : 0;
     const opponent = await this.userModel
-      .findOne({
-        _id: { $ne: new Types.ObjectId(userId) },
-        'disciples.0': { $exists: true },
-        $or: [
-          { weeklyRating: { $exists: false } },
-          { weeklyRating: { $gte: rating - delta, $lte: rating + delta } },
-        ],
-      })
+      .findOne(matchFilter as any)
       .select('username avatar weeklyRating disciples')
+      .skip(skip)
       .lean()
       .exec();
 
     if (opponent) {
       const oppRating = (opponent as any).weeklyRating ?? 1000;
+      const oppPop = await this.userModel
+        .findById((opponent as any)._id)
+        .populate([
+          {
+            path: 'disciples.characterId',
+            model: 'Character',
+            select: 'name avatar',
+          },
+          { path: 'disciples.titleId', model: 'Title', select: 'name' },
+        ])
+        .select('username avatar weeklyRating disciples')
+        .lean()
+        .exec();
+      const src = (oppPop ?? opponent) as any;
       return {
         opponent: {
-          userId: (opponent as any)._id.toString(),
-          username: (opponent as any).username,
-          avatar: (opponent as any).avatar,
+          userId: src._id.toString(),
+          username: src.username,
+          avatar: src.avatar,
           weeklyRating: oppRating,
-          disciples: (opponent as any).disciples?.map((d: any) => ({
-            characterId: d.characterId?.toString?.() ?? null,
-            name: d.name,
-            titleName: d.titleName,
+          disciples: (src.disciples ?? []).map((d: any) => ({
+            characterId: d.characterId?._id?.toString?.() ?? d.characterId?.toString?.() ?? null,
+            name: d.characterId?.name ?? d.name,
+            titleName: d.titleId?.name ?? d.titleName,
             level: d.level,
             rank: d.rank,
-            avatar: d.avatar,
+            avatar: d.characterId?.avatar ?? d.avatar,
             attack: d.attack,
             defense: d.defense,
             speed: d.speed,
@@ -2833,7 +2960,7 @@ export class DisciplesService {
         : null;
       if (lastWeekly && Date.now() - lastWeekly.getTime() < WEEK_MS) {
         throw new BadRequestException(
-          'Недельная схватка уже использована. Доступна раз в 7 дней.',
+          'Недельная схватка уже состаялась. Доступна только 1 раз в неделю.',
         );
       }
     }
