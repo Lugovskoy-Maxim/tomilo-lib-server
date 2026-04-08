@@ -26,6 +26,24 @@ export class SpamDetectionService {
     this.logger = new Logger(SpamDetectionService.name);
   }
 
+  private normalizeText(input: string): string {
+    return (input ?? '')
+      .replace(/\u00AD/g, '') // soft hyphen
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  private countRegexMatches(text: string, re: RegExp): number {
+    const flags = re.flags.includes('g') ? re.flags : `${re.flags}g`;
+    const r = new RegExp(re.source, flags);
+    const m = text.match(r);
+    return m ? m.length : 0;
+  }
+
+  private looksLikeUrl(text: string): boolean {
+    return /(https?:\/\/|www\.)/i.test(text) || /\b[a-z0-9-]+\.(ru|com|net|org|site|xyz|top|shop|app|gg|me|io)\b/i.test(text);
+  }
+
   /**
    * Detect spam in a comment
    */
@@ -35,6 +53,9 @@ export class SpamDetectionService {
   ): Promise<SpamDetectionResult> {
     const reasons: string[] = [];
     let score = 0;
+
+    const content = this.normalizeText(comment.content || '');
+    const contentLower = content.toLowerCase();
 
     // 1. Check for duplicate comments from same user
     const duplicateComments = await this.commentModel
@@ -58,41 +79,64 @@ export class SpamDetectionService {
     }
 
     // 2. Check comment length (too short or too long)
-    if (comment.content.length < 3) {
+    if (content.length < 3) {
       score += 10;
       reasons.push('Комментарий слишком короткий (менее 3 символов)');
     }
 
-    if (comment.content.length > 1000) {
+    if (content.length > 1000) {
       score += 5;
       reasons.push('Комментарий слишком длинный (более 1000 символов)');
     }
 
-    // 3. Check for spam patterns (common spam words)
-    const spamPatterns = [
-      /купить/i,
-      /продам/i,
-      /заказать/i,
-      /голосуйте за/i,
-      /дешево/i,
-      /скидка/i,
-      /http:\/\//i,
-      /https:\/\//i,
-      /www\./i,
-      /\.(ru|com|net|org)/i,
-      /[0-9]{10,}/, // phone numbers
-    ];
-
-    let patternMatches = 0;
-    for (const pattern of spamPatterns) {
-      if (pattern.test(comment.content)) {
-        patternMatches++;
-      }
+    // 3. Links / contact / obvious spam patterns
+    const urlCount = this.countRegexMatches(
+      content,
+      /\bhttps?:\/\/[^\s]+|\bwww\.[^\s]+/i,
+    );
+    const domainLikeCount = this.countRegexMatches(
+      contentLower,
+      /\b[a-z0-9-]+\.(ru|com|net|org|site|xyz|top|shop|app|gg|me|io)\b/i,
+    );
+    const hasUrl = urlCount + domainLikeCount > 0 || this.looksLikeUrl(content);
+    if (hasUrl) {
+      const hits = urlCount + domainLikeCount;
+      score += Math.min(35, 15 + hits * 10);
+      reasons.push(
+        hits > 0
+          ? `Обнаружены ссылки/домены (${hits})`
+          : 'Обнаружены ссылки/домены',
+      );
     }
 
-    if (patternMatches > 0) {
-      score += patternMatches * 10;
-      reasons.push(`Обнаружены спам-паттерны (${patternMatches} совпадений)`);
+    const phoneLike = /(?:\+?\d[\d\s().-]{8,}\d)/.test(content);
+    if (phoneLike) {
+      score += 20;
+      reasons.push('Похоже на номер телефона/контактные данные');
+    }
+
+    const contactPatterns = [
+      /\b(в\s*лс|в\s*личк[уе]|в\s*директ|в\s*dm)\b/i,
+      /\b(телеграм|tg|t\.me|telegram)\b/i,
+      /\b(whatsapp|вайбер|viber)\b/i,
+      /\b(инст(а|аграм)|instagram)\b/i,
+      /\b(дискорд|discord)\b/i,
+      /\b(vk\.com|вк\.ком|вконтакте)\b/i,
+      /\b(подписывай(ся|тесь)|подпишись)\b/i,
+      /\b(скидк|промокод|акция|розыгрыш)\b/i,
+      /\b(куп(и|ить)|продам|заказ(ать|ывай)|дешев(о|ле)|заработ(ок|ай))\b/i,
+    ];
+    let contactHits = 0;
+    for (const p of contactPatterns) if (p.test(content)) contactHits++;
+    if (contactHits > 0) {
+      score += Math.min(30, contactHits * 10);
+      reasons.push(`Маркетинг/контактные паттерны (${contactHits})`);
+    }
+
+    const handleCount = this.countRegexMatches(content, /@\w{3,}/i);
+    if (handleCount > 0) {
+      score += Math.min(15, 5 + handleCount * 5);
+      reasons.push(`Упоминания @username (${handleCount})`);
     }
 
     // 4. Check user's recent comment frequency
@@ -111,6 +155,76 @@ export class SpamDetectionService {
       reasons.push(
         `Пользователь отправил ${recentCommentsCount} комментариев за последний час`,
       );
+    }
+
+    // 4.1 Burst: very fast posting (last 2 minutes)
+    const recent2m = await this.commentModel.countDocuments({
+      userId: user._id,
+      createdAt: { $gte: new Date(Date.now() - 2 * 60 * 1000) },
+    });
+    if (recent2m >= 4) {
+      score += 25;
+      reasons.push(`Подозрительно частые комментарии (за 2 минуты: ${recent2m})`);
+    } else if (recent2m >= 3) {
+      score += 15;
+      reasons.push(`Частые комментарии (за 2 минуты: ${recent2m})`);
+    }
+
+    // 4.2 Repeated chars / emoji flood / noise ratio
+    if (/(.)\1{7,}/u.test(content)) {
+      score += 15;
+      reasons.push('Повторяющиеся символы (похоже на флуд)');
+    }
+    const emojiCount = this.countRegexMatches(
+      content,
+      /[\u{1F300}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/u,
+    );
+    if (emojiCount >= 20) {
+      score += 20;
+      reasons.push(`Слишком много эмодзи (${emojiCount})`);
+    } else if (emojiCount >= 12) {
+      score += 10;
+      reasons.push(`Много эмодзи (${emojiCount})`);
+    }
+    const letters = this.countRegexMatches(content, /[A-Za-zА-Яа-яЁё]/u);
+    const digits = this.countRegexMatches(content, /\d/u);
+    const nonSpace = content.replace(/\s+/g, '');
+    const noise = nonSpace.length - letters - digits;
+    if (nonSpace.length >= 20) {
+      const noiseRatio = noise / nonSpace.length;
+      if (noiseRatio > 0.55) {
+        score += 15;
+        reasons.push('Слишком много знаков/символов (шум)');
+      }
+    }
+
+    const upper = this.countRegexMatches(content, /[A-ZА-ЯЁ]/u);
+    if (letters >= 12 && upper / Math.max(1, letters) > 0.75) {
+      score += 10;
+      reasons.push('Много текста капсом');
+    }
+
+    // 4.3 Mixed alphabets in one word (рaзнobой латиницы/кириллицы)
+    const mixedAlphabetWord = /\b(?=\w*[A-Za-z])(?=\w*[А-Яа-яЁё])[\wЁё]{4,}\b/u.test(
+      content,
+    );
+    if (mixedAlphabetWord) {
+      score += 10;
+      reasons.push('Смешение латиницы и кириллицы (маскировка)');
+    }
+
+    // 4.4 New account with marketing-like signals
+    const userCreatedAt: Date | undefined = (user as any)?.createdAt
+      ? new Date((user as any).createdAt)
+      : undefined;
+    if (
+      userCreatedAt &&
+      Date.now() - userCreatedAt.getTime() < 24 * 60 * 60 * 1000
+    ) {
+      if (hasUrl || contactHits > 0 || phoneLike) {
+        score += 10;
+        reasons.push('Новый аккаунт + подозрительный контент');
+      }
     }
 
     // 5. Check if user is already restricted
@@ -133,7 +247,7 @@ export class SpamDetectionService {
     }
 
     // Determine actions based on score
-    const isSpam = score >= 30;
+    const isSpam = score >= 35;
     let shouldWarnUser = false;
     let shouldRestrictUser = false;
     let restrictionHours = 0;
@@ -146,7 +260,7 @@ export class SpamDetectionService {
       shouldRestrictUser = true;
       restrictionHours = 6; // 6 hours restriction
       shouldWarnUser = true;
-    } else if (score >= 30) {
+    } else if (score >= 35) {
       shouldWarnUser = true;
     }
 
