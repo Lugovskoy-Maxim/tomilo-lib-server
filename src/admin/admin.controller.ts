@@ -845,6 +845,45 @@ export class AdminController {
   }
 
   /**
+   * Перепроверить старые комментарии на спам (backfill)
+   */
+  @Post('spam/backfill')
+  async backfillSpamChecks(
+    @Body()
+    body: {
+      days?: number;
+      limit?: number;
+      onlyUnchecked?: boolean;
+      dryRun?: boolean;
+    },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const result = await this.spamDetectionService.backfillSpamChecks({
+        days: body?.days,
+        limit: body?.limit,
+        onlyUnchecked: body?.onlyUnchecked,
+        dryRun: body?.dryRun,
+      });
+      return {
+        success: true,
+        data: result,
+        timestamp: new Date().toISOString(),
+        path: 'admin/spam/backfill',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to backfill spam checks',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'admin/spam/backfill',
+        method: 'POST',
+      };
+    }
+  }
+
+  /**
    * Пометить комментарий как спам
    */
   @Post('spam/comments/:id/mark-as-spam')

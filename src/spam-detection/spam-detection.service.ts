@@ -78,6 +78,32 @@ export class SpamDetectionService {
       );
     }
 
+    // 1.1 Global duplicates (same text posted by many users)
+    // This catches spam waves like "кккруто" repeated 100+ times by many accounts.
+    if (contentLower.length >= 4) {
+      const globalDuplicateCount = await this.commentModel.countDocuments({
+        content: comment.content,
+        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      });
+
+      if (globalDuplicateCount >= 50) {
+        score += 45;
+        reasons.push(
+          `Массовый повтор одного и того же комментария (за 24 часа: ${globalDuplicateCount})`,
+        );
+      } else if (globalDuplicateCount >= 20) {
+        score += 35;
+        reasons.push(
+          `Частый повтор одного и того же комментария (за 24 часа: ${globalDuplicateCount})`,
+        );
+      } else if (globalDuplicateCount >= 10) {
+        score += 20;
+        reasons.push(
+          `Повторяющийся комментарий (за 24 часа: ${globalDuplicateCount})`,
+        );
+      }
+    }
+
     // 2. Check comment length (too short or too long)
     if (content.length < 3) {
       score += 10;
@@ -272,6 +298,90 @@ export class SpamDetectionService {
       shouldRestrictUser,
       restrictionHours,
     };
+  }
+
+  /**
+   * Backfill spam checks for old comments (admin maintenance).
+   * Scans comments and applies spam actions for those that match the heuristics.
+   */
+  async backfillSpamChecks(params?: {
+    limit?: number;
+    days?: number;
+    onlyUnchecked?: boolean;
+    dryRun?: boolean;
+  }): Promise<{
+    scanned: number;
+    markedSpam: number;
+    warned: number;
+    restricted: number;
+  }> {
+    const limit = Math.min(Math.max(params?.limit ?? 500, 1), 5000);
+    const days = Math.min(Math.max(params?.days ?? 30, 1), 3650);
+    const onlyUnchecked = params?.onlyUnchecked ?? true;
+    const dryRun = params?.dryRun ?? false;
+
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const filter: Record<string, any> = {
+      createdAt: { $gte: since },
+    };
+    if (onlyUnchecked) {
+      filter.isSpamChecked = { $ne: true };
+    }
+
+    const cursor = this.commentModel
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .cursor();
+
+    let scanned = 0;
+    let markedSpam = 0;
+    let warned = 0;
+    let restricted = 0;
+
+    for await (const comment of cursor) {
+      scanned++;
+      try {
+        const user = await this.userModel.findById((comment as any).userId);
+        if (!user) continue;
+
+        const spamResult = await this.detectSpam(comment as any, user as any);
+        const hasAction =
+          spamResult.isSpam ||
+          spamResult.shouldWarnUser ||
+          spamResult.shouldRestrictUser;
+
+        if (hasAction) {
+          if (!dryRun) {
+            await this.applySpamActions(comment as any, user as any, spamResult);
+          }
+          if (spamResult.isSpam) markedSpam++;
+          if (spamResult.shouldWarnUser) warned++;
+          if (spamResult.shouldRestrictUser) restricted++;
+        } else if (!dryRun && onlyUnchecked) {
+          // mark as checked so we don't rescan forever
+          await this.commentModel.updateOne(
+            { _id: (comment as any)._id },
+            {
+              $set: {
+                isSpamChecked: true,
+                spamDetectedAt: new Date(),
+                spamScore: spamResult.score,
+                spamReasons: spamResult.reasons,
+              },
+            },
+          );
+        }
+      } catch (e) {
+        this.logger.warn(
+          `Backfill spam check failed for comment ${String((comment as any)?._id)}: ${
+            (e as Error).message
+          }`,
+        );
+      }
+    }
+
+    return { scanned, markedSpam, warned, restricted };
   }
 
   /**
@@ -485,7 +595,7 @@ export class SpamDetectionService {
 
     const recentSpamComments = await this.commentModel.countDocuments({
       isSpam: true,
-      createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      spamDetectedAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
     });
 
     return {

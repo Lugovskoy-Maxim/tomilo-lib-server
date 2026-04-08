@@ -1059,7 +1059,7 @@ export class AdminService {
   async getSpamComments(skip: number, limit: number): Promise<any[]> {
     const comments = await this.commentModel
       .find({ isSpam: true })
-      .sort({ createdAt: -1 })
+      .sort({ spamDetectedAt: -1, createdAt: -1 })
       .skip(skip)
       .limit(limit)
       .populate('userId', 'username avatar')
