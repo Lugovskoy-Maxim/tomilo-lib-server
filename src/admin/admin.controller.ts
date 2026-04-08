@@ -845,7 +845,8 @@ export class AdminController {
   }
 
   /**
-   * Перепроверить старые комментарии на спам (backfill)
+   * Перепроверить старые комментарии на спам (backfill).
+   * Без `days` — поиск по всей истории; с `days` — только комментарии не старше N дней.
    */
   @Post('spam/backfill')
   async backfillSpamChecks(

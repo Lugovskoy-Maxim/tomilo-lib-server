@@ -640,6 +640,9 @@ export class DisciplesService {
     level: number,
     userId?: string,
   ) {
+    if (!Types.ObjectId.isValid(characterId)) {
+      return null;
+    }
     if (userId) {
       const ownedCard = await this.cardsService.resolveCardMediaForUser(
         userId,
@@ -664,6 +667,36 @@ export class DisciplesService {
       };
     }
     return null;
+  }
+
+  /** Состав для resultScreen: имя, уровень, id и карточка для превью в UI */
+  private async teamsForResultScreen(
+    roster: Array<{
+      characterId: string;
+      displayName: string;
+      level: number;
+    }>,
+    cardOwnerUserId?: string,
+  ): Promise<
+    Array<{
+      name: string;
+      level: number;
+      characterId: string;
+      cardMedia: { mediaUrl?: string; mediaType?: string; label?: string } | null;
+    }>
+  > {
+    return Promise.all(
+      roster.map(async (m) => ({
+        name: m.displayName,
+        level: m.level,
+        characterId: m.characterId,
+        cardMedia: await this.resolveCardMedia(
+          m.characterId,
+          m.level,
+          cardOwnerUserId,
+        ),
+      })),
+    );
   }
 
   private async ensureDefaultTechniqueSeeded(): Promise<void> {
@@ -1410,12 +1443,18 @@ export class DisciplesService {
       }
     }
 
+    /**
+     * Выбор техники на ход: среди не на кулдауне случайно, но если есть что-то кроме basic_strike — только из этого пула.
+     * Раньше брался первый элемент списка экипировки → почти всегда «Базовый удар» (кд 0).
+     */
     const pick = (equipped: string[]) => {
-      const list = equipped.length ? equipped : ['basic_strike'];
-      for (const id of list) {
-        if ((cd[id] ?? 0) <= 0) return id;
-      }
-      return 'basic_strike';
+      const raw = equipped.length ? equipped : ['basic_strike'];
+      const list = [...new Set(raw)];
+      const available = list.filter((id) => (cd[id] ?? 0) <= 0);
+      if (available.length === 0) return 'basic_strike';
+      const nonBasic = available.filter((id) => id !== 'basic_strike');
+      const pool = nonBasic.length > 0 ? nonBasic : available;
+      return pool[Math.floor(Math.random() * pool.length)]!;
     };
 
     let userBuffShield = 0;
@@ -2594,8 +2633,18 @@ export class DisciplesService {
       userTeamCp?: number;
       opponentTeamCp?: number;
       teams?: {
-        user?: Array<{ name: string; level: number }>;
-        opponent?: Array<{ name: string; level: number }>;
+        user?: Array<{
+          name: string;
+          level: number;
+          characterId?: string;
+          cardMedia?: { mediaUrl?: string; mediaType?: string; label?: string } | null;
+        }>;
+        opponent?: Array<{
+          name: string;
+          level: number;
+          characterId?: string;
+          cardMedia?: { mediaUrl?: string; mediaType?: string; label?: string } | null;
+        }>;
       };
       userCard: unknown;
       opponentCard: unknown;
@@ -2645,12 +2694,14 @@ export class DisciplesService {
     const isBot =
       opponentUserId === 'bot:casual' || opponentUserId?.startsWith?.('bot:');
     let oppRosterMembers: Array<{
+      characterId: string;
       displayName: string;
       level: number;
       attack: number;
       defense: number;
       speed: number;
       hp: number;
+      techniquesEquipped: string[];
     }> = [];
     let oppEquipped: string[];
     let oppCard: unknown = null;
@@ -2804,11 +2855,11 @@ export class DisciplesService {
         userTeamCp: Math.round(cpUser),
         opponentTeamCp,
         teams: {
-          user: userRoster.map((m) => ({ name: m.displayName, level: m.level })),
-          opponent: oppRosterMembers.map((m) => ({
-            name: m.displayName,
-            level: m.level,
-          })),
+          user: await this.teamsForResultScreen(userRoster, userId),
+          opponent: await this.teamsForResultScreen(
+            oppRosterMembers,
+            isBot ? undefined : opponentUserId,
+          ),
         },
         userCard,
         opponentCard: oppCard,
@@ -2961,8 +3012,18 @@ export class DisciplesService {
       userTeamCp?: number;
       opponentTeamCp?: number;
       teams?: {
-        user?: Array<{ name: string; level: number }>;
-        opponent?: Array<{ name: string; level: number }>;
+        user?: Array<{
+          name: string;
+          level: number;
+          characterId?: string;
+          cardMedia?: { mediaUrl?: string; mediaType?: string; label?: string } | null;
+        }>;
+        opponent?: Array<{
+          name: string;
+          level: number;
+          characterId?: string;
+          cardMedia?: { mediaUrl?: string; mediaType?: string; label?: string } | null;
+        }>;
       };
       userCard: unknown;
       opponentCard: unknown;
@@ -3021,12 +3082,14 @@ export class DisciplesService {
     const isBot =
       opponentUserId === 'bot:weekly' || opponentUserId?.startsWith?.('bot:');
     let oppRosterMembersW: Array<{
+      characterId: string;
       displayName: string;
       level: number;
       attack: number;
       defense: number;
       speed: number;
       hp: number;
+      techniquesEquipped: string[];
     }> = [];
     let oppRating: number;
     let oppEquipped: string[] = [];
@@ -3195,11 +3258,11 @@ export class DisciplesService {
         userTeamCp: Math.round(cpUser),
         opponentTeamCp: opponentTeamCpW,
         teams: {
-          user: userRosterW.map((m) => ({ name: m.displayName, level: m.level })),
-          opponent: oppRosterMembersW.map((m) => ({
-            name: m.displayName,
-            level: m.level,
-          })),
+          user: await this.teamsForResultScreen(userRosterW, userId),
+          opponent: await this.teamsForResultScreen(
+            oppRosterMembersW,
+            isBot ? undefined : opponentUserId,
+          ),
         },
         userCard,
         opponentCard: oppCard,

@@ -362,6 +362,7 @@ export class SpamDetectionService {
   /**
    * Backfill spam checks for old comments (admin maintenance).
    * Scans comments and applies spam actions for those that match the heuristics.
+   * Без `days` в выборку попадают комментарии за всё время; с `days` — не старше N дней.
    */
   async backfillSpamChecks(params?: {
     limit?: number;
@@ -375,14 +376,16 @@ export class SpamDetectionService {
     restricted: number;
   }> {
     const limit = Math.min(Math.max(params?.limit ?? 500, 1), 5000);
-    const days = Math.min(Math.max(params?.days ?? 30, 1), 3650);
     const onlyUnchecked = params?.onlyUnchecked ?? true;
     const dryRun = params?.dryRun ?? false;
 
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const filter: Record<string, any> = {
-      createdAt: { $gte: since },
-    };
+    const filter: Record<string, any> = {};
+    if (params?.days != null) {
+      const days = Math.min(Math.max(params.days, 1), 3650);
+      filter.createdAt = {
+        $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000),
+      };
+    }
     if (onlyUnchecked) {
       filter.isSpamChecked = { $ne: true };
     }
