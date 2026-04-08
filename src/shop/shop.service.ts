@@ -672,6 +672,7 @@ export class ShopService {
       isAvailable?: boolean;
       quantity?: number | null;
       authorId?: Types.ObjectId;
+      originalPrice?: number | null;
     },
   ) {
     if (!file || !file.filename) {
@@ -681,19 +682,36 @@ export class ShopService {
     const imageUrl = `/uploads/decorations/${file.filename}`;
 
     const rarity = payload.rarity;
+    let price = getPriceByRarity(rarity);
+    if (
+      payload.price !== undefined &&
+      payload.price !== null &&
+      !Number.isNaN(Number(payload.price))
+    ) {
+      price = Math.max(0, Number(payload.price));
+    }
     const doc: Record<string, unknown> = {
       name: payload.name,
       imageUrl,
-      price: getPriceByRarity(rarity),
+      price,
       rarity,
       description: payload.description ?? '',
       isAvailable: payload.isAvailable !== false,
+      purchaseCount: 0,
     };
     if (payload.quantity !== undefined && payload.quantity !== null) {
       doc.quantity = payload.quantity;
     }
     if (payload.authorId) {
       doc.authorId = payload.authorId;
+    }
+    if (
+      payload.originalPrice !== undefined &&
+      payload.originalPrice !== null &&
+      !Number.isNaN(Number(payload.originalPrice))
+    ) {
+      const op = Math.max(0, Number(payload.originalPrice));
+      if (op > price) doc.originalPrice = op;
     }
 
     let decoration;
@@ -714,15 +732,7 @@ export class ShopService {
         throw new BadRequestException('Invalid decoration type');
     }
 
-    await this.cacheManager.set('shop:decorations:all', undefined as unknown);
-    await this.cacheManager.set(
-      `shop:decorations:${type}`,
-      undefined as unknown,
-    );
-    if (typeof this.cacheManager.del === 'function') {
-      await this.cacheManager.del('shop:decorations:all');
-      await this.cacheManager.del(`shop:decorations:${type}`);
-    }
+    await this.invalidateShopDecorationCache(type);
 
     this.logger.log(
       `Admin uploaded ${type} decoration: ${decoration._id} (${payload.name})`,
@@ -822,16 +832,10 @@ export class ShopService {
     if (!deleted) {
       throw new NotFoundException('Decoration not found');
     }
-    await this.cacheManager.set('shop:decorations:all', undefined as unknown);
     if (type) {
-      await this.cacheManager.set(
-        `shop:decorations:${type}`,
-        undefined as unknown,
+      await this.invalidateShopDecorationCache(
+        type as 'avatar' | 'frame' | 'background' | 'card',
       );
-      if (typeof this.cacheManager.del === 'function') {
-        await this.cacheManager.del('shop:decorations:all');
-        await this.cacheManager.del(`shop:decorations:${type}`);
-      }
     }
     this.logger.log(`Admin deleted decoration: ${id}`);
     return { message: 'Decoration deleted successfully' };
@@ -848,6 +852,7 @@ export class ShopService {
       description: string;
       isAvailable: boolean;
       quantity: number | null;
+      originalPrice: number | null;
     }>,
   ) {
     const imageUrl = file?.filename
@@ -870,6 +875,7 @@ export class ShopService {
       description: string;
       isAvailable: boolean;
       quantity: number | null;
+      originalPrice: number | null;
     }>,
   ) {
     const oid = new Types.ObjectId(id);
@@ -905,20 +911,28 @@ export class ShopService {
     if (updates.quantity !== undefined)
       decoration.quantity =
         updates.quantity === null ? undefined : updates.quantity;
-    decoration.price = getPriceByRarity(
-      decoration.rarity as 'common' | 'rare' | 'epic' | 'legendary',
-    );
+
+    if (updates.price !== undefined && !Number.isNaN(Number(updates.price))) {
+      decoration.price = Math.max(0, Number(updates.price));
+    } else if (updates.rarity !== undefined) {
+      decoration.price = getPriceByRarity(
+        updates.rarity as 'common' | 'rare' | 'epic' | 'legendary',
+      );
+    }
+
+    if (updates.originalPrice !== undefined) {
+      if (updates.originalPrice === null) {
+        decoration.originalPrice = undefined;
+      } else if (!Number.isNaN(Number(updates.originalPrice))) {
+        const op = Math.max(0, Number(updates.originalPrice));
+        decoration.originalPrice =
+          op > decoration.price ? op : undefined;
+      }
+    }
+
     await decoration.save();
 
-    await this.cacheManager.set('shop:decorations:all', undefined as unknown);
-    await this.cacheManager.set(
-      `shop:decorations:${type}`,
-      undefined as unknown,
-    );
-    if (typeof this.cacheManager.del === 'function') {
-      await this.cacheManager.del('shop:decorations:all');
-      await this.cacheManager.del(`shop:decorations:${type}`);
-    }
+    await this.invalidateShopDecorationCache(type);
     this.logger.log(`Admin updated ${type} decoration: ${decoration._id}`);
     return decoration;
   }

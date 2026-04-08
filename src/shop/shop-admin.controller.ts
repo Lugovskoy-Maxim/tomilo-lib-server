@@ -47,6 +47,7 @@ export class ShopAdminController {
       rarity?: 'common' | 'rare' | 'epic' | 'legendary';
       isAvailable?: boolean;
       stock?: number | null;
+      originalPrice?: number | null;
     },
   ): Promise<ApiResponseDto<any>> {
     try {
@@ -60,6 +61,10 @@ export class ShopAdminController {
         rarity: body.rarity,
         isAvailable: body.isAvailable,
         quantity: stock,
+        originalPrice:
+          body.originalPrice !== undefined && body.originalPrice !== null
+            ? Number(body.originalPrice)
+            : undefined,
       });
       return {
         success: true,
@@ -184,6 +189,7 @@ export class ShopAdminController {
       type?: DecorationType;
       quantity?: number | string | null;
       stock?: number | string | null;
+      originalPrice?: number | string | null;
     },
     @Req() req: Express.Request,
   ): Promise<ApiResponseDto<any>> {
@@ -202,6 +208,16 @@ export class ShopAdminController {
           ? undefined
           : body.isAvailable === true || body.isAvailable === 'true';
 
+      let originalPriceOut: number | null | undefined = undefined;
+      if (body.originalPrice !== undefined) {
+        if (body.originalPrice === '' || body.originalPrice === null) {
+          originalPriceOut = null;
+        } else {
+          const n = Number(body.originalPrice);
+          if (!Number.isNaN(n)) originalPriceOut = n;
+        }
+      }
+
       if (file?.filename) {
         const data = await this.shopService.updateDecorationWithFile(id, file, {
           name: body.name,
@@ -213,6 +229,9 @@ export class ShopAdminController {
             quantity !== undefined && !Number.isNaN(quantity)
               ? quantity
               : undefined,
+          ...(originalPriceOut !== undefined
+            ? { originalPrice: originalPriceOut }
+            : {}),
         });
         return {
           success: true,
@@ -237,6 +256,9 @@ export class ShopAdminController {
             : ((body.quantity as number | null) ??
               (body.stock as number | null) ??
               undefined),
+        ...(originalPriceOut !== undefined
+          ? { originalPrice: originalPriceOut }
+          : {}),
       });
       return {
         success: true,
@@ -307,6 +329,7 @@ export class ShopAdminController {
       isAvailable?: string;
       quantity?: number | string | null;
       stock?: number | string | null;
+      originalPrice?: number | string | null;
     },
   ): Promise<ApiResponseDto<any>> {
     try {
@@ -339,6 +362,11 @@ export class ShopAdminController {
           ? String(body.name).trim()
           : (file.originalname && file.originalname.replace(/\.[^.]+$/, '')) ||
             'Unnamed';
+      let originalPriceUpload: number | null | undefined = undefined;
+      if (body.originalPrice !== undefined && body.originalPrice !== null) {
+        const o = Number(body.originalPrice);
+        if (!Number.isNaN(o)) originalPriceUpload = o;
+      }
       const data = await this.shopService.uploadDecoration(body.type, file, {
         name,
         price: !Number.isNaN(priceNum) ? priceNum : 0,
@@ -347,6 +375,7 @@ export class ShopAdminController {
         isAvailable:
           body.isAvailable === 'true' || body.isAvailable === undefined,
         quantity,
+        originalPrice: originalPriceUpload,
       });
       return {
         success: true,
