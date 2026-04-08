@@ -1,9 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
+import { FilterQuery, Model, Types } from 'mongoose';
 import { Comment, CommentDocument } from '../schemas/comment.schema';
 import { User, UserDocument } from '../schemas/user.schema';
 import { NotificationsService } from '../notifications/notifications.service';
+import { computeCommentContentFingerprint } from './comment-fingerprint.util';
 
 export interface SpamDetectionResult {
   isSpam: boolean;
@@ -33,6 +34,35 @@ export class SpamDetectionService {
       .trim();
   }
 
+  /** Публично для CommentsService при создании/редактировании */
+  computeContentFingerprint(raw: string): string {
+    return computeCommentContentFingerprint(raw);
+  }
+
+  /**
+   * Совпадение по отпечатку и/или дословному тексту (старые документы без fingerprint).
+   */
+  private buildContentSimilarityQuery(
+    comment: CommentDocument,
+    fp: string,
+  ): FilterQuery<CommentDocument> {
+    const or: FilterQuery<CommentDocument>[] = [];
+    if (fp.length >= 3) {
+      or.push({ contentFingerprint: fp });
+    }
+    const exact = (comment.content ?? '').trim();
+    if (exact.length > 0) {
+      or.push({ content: comment.content });
+    }
+    if (or.length === 0) {
+      return { _id: comment._id };
+    }
+    if (or.length === 1) {
+      return or[0];
+    }
+    return { $or: or };
+  }
+
   private countRegexMatches(text: string, re: RegExp): number {
     const flags = re.flags.includes('g') ? re.flags : `${re.flags}g`;
     const r = new RegExp(re.source, flags);
@@ -56,34 +86,41 @@ export class SpamDetectionService {
 
     const content = this.normalizeText(comment.content || '');
     const contentLower = content.toLowerCase();
+    const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const fp =
+      (comment as any).contentFingerprint?.trim() ||
+      computeCommentContentFingerprint(comment.content || '');
 
-    // 1. Check for duplicate comments from same user
-    const duplicateComments = await this.commentModel
-      .find({
-        userId: user._id,
-        content: comment.content,
-        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }, // Last 24 hours
-      })
-      .limit(5);
+    // 1. Check for duplicate comments from same user (по отпечатку и дословно)
+    const similarityQuery = this.buildContentSimilarityQuery(comment, fp);
+    const userDupCount = await this.commentModel.countDocuments({
+      userId: user._id,
+      createdAt: { $gte: since24h },
+      ...similarityQuery,
+    });
 
-    if (duplicateComments.length >= 3) {
+    if (userDupCount >= 4) {
       score += 30;
       reasons.push(
-        `Пользователь отправил ${duplicateComments.length} одинаковых комментария за последние 24 часа`,
+        `Пользователь отправил ${userDupCount} похожих комментариев за последние 24 часа`,
       );
-    } else if (duplicateComments.length >= 2) {
+    } else if (userDupCount >= 3) {
+      score += 25;
+      reasons.push(
+        `Пользователь отправил ${userDupCount} похожих комментариев за последние 24 часа`,
+      );
+    } else if (userDupCount >= 2) {
       score += 15;
       reasons.push(
-        `Пользователь отправил ${duplicateComments.length} одинаковых комментария за последние 24 часа`,
+        `Пользователь отправил ${userDupCount} похожих комментария за последние 24 часа`,
       );
     }
 
-    // 1.1 Global duplicates (same text posted by many users)
-    // This catches spam waves like "кккруто" repeated 100+ times by many accounts.
-    if (contentLower.length >= 4) {
+    // 1.1 Global duplicates (много аккаунтов — один и тот же смысл/текст)
+    if (fp.length >= 4) {
       const globalDuplicateCount = await this.commentModel.countDocuments({
-        content: comment.content,
-        createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+        createdAt: { $gte: since24h },
+        ...similarityQuery,
       });
 
       if (globalDuplicateCount >= 50) {
@@ -91,15 +128,25 @@ export class SpamDetectionService {
         reasons.push(
           `Массовый повтор одного и того же комментария (за 24 часа: ${globalDuplicateCount})`,
         );
-      } else if (globalDuplicateCount >= 20) {
+      } else if (globalDuplicateCount >= 25) {
+        score += 40;
+        reasons.push(
+          `Очень частый повтор комментария (за 24 часа: ${globalDuplicateCount})`,
+        );
+      } else if (globalDuplicateCount >= 15) {
         score += 35;
         reasons.push(
           `Частый повтор одного и того же комментария (за 24 часа: ${globalDuplicateCount})`,
         );
-      } else if (globalDuplicateCount >= 10) {
-        score += 20;
+      } else if (globalDuplicateCount >= 8) {
+        score += 28;
         reasons.push(
-          `Повторяющийся комментарий (за 24 часа: ${globalDuplicateCount})`,
+          `Повторяющийся комментарий у многих пользователей (за 24 часа: ${globalDuplicateCount})`,
+        );
+      } else if (globalDuplicateCount >= 5) {
+        score += 18;
+        reasons.push(
+          `Подозрительный повтор текста (за 24 часа: ${globalDuplicateCount})`,
         );
       }
     }
@@ -151,12 +198,24 @@ export class SpamDetectionService {
       /\b(подписывай(ся|тесь)|подпишись)\b/i,
       /\b(скидк|промокод|акция|розыгрыш)\b/i,
       /\b(куп(и|ить)|продам|заказ(ать|ывай)|дешев(о|ле)|заработ(ок|ай))\b/i,
+      /\b(голосуй(те)?|проголосуй(те)?)\s+за\s+мои\b/i,
+      /\bголосуйте\b.*\b(магазин|декор|топик)\b/i,
+      /\b(магазин|декор).*\b(голосуй|проголосуй|поддержи)\b/i,
     ];
     let contactHits = 0;
     for (const p of contactPatterns) if (p.test(content)) contactHits++;
     if (contactHits > 0) {
-      score += Math.min(30, contactHits * 10);
+      score += Math.min(40, contactHits * 12);
       reasons.push(`Маркетинг/контактные паттерны (${contactHits})`);
+    }
+
+    // 3.1 Реклама декоров / призывы голосовать (частый кейс)
+    if (
+      /\b(голосуй(те)?|проголосуй(те)?)\b/i.test(content) &&
+      /\b(декор|магазин|топик|оформлени)\b/i.test(content)
+    ) {
+      score += 38;
+      reasons.push('Призыв голосовать за декоры/магазин');
     }
 
     const handleCount = this.countRegexMatches(content, /@\w{3,}/i);
@@ -345,6 +404,17 @@ export class SpamDetectionService {
         const user = await this.userModel.findById((comment as any).userId);
         if (!user) continue;
 
+        const fp = computeCommentContentFingerprint(
+          String((comment as any).content ?? ''),
+        );
+        if (!dryRun && !(comment as any).contentFingerprint && fp) {
+          await this.commentModel.updateOne(
+            { _id: (comment as any)._id },
+            { $set: { contentFingerprint: fp } },
+          );
+          (comment as any).contentFingerprint = fp;
+        }
+
         const spamResult = await this.detectSpam(comment as any, user as any);
         const hasAction =
           spamResult.isSpam ||
@@ -398,9 +468,13 @@ export class SpamDetectionService {
     comment.spamDetectedAt = new Date();
     comment.spamScore = detectionResult.score;
     comment.spamReasons = detectionResult.reasons;
+    if (!(comment as any).contentFingerprint?.trim()) {
+      (comment as any).contentFingerprint =
+        computeCommentContentFingerprint(comment.content || '');
+    }
 
-    // Auto-hide high-confidence spam so it doesn't appear in feeds/leaderboards
-    if (detectionResult.isSpam && detectionResult.score >= 50) {
+    // Скрываем от публики при уверенном авто-спаме (ниже порога — только метка для админки)
+    if (detectionResult.isSpam && detectionResult.score >= 45) {
       comment.isVisible = false;
     }
     await comment.save();

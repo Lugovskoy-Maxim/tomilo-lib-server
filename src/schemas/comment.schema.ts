@@ -38,6 +38,10 @@ export class Comment {
   @Prop({ required: true, minlength: 1, maxlength: 5000 })
   content: string;
 
+  /** Нормализованный текст для антиспама (повторы «Кккруто»/«Ккккруто» и т.п.) */
+  @Prop({ type: String, default: '' })
+  contentFingerprint: string;
+
   @Prop({ type: Types.ObjectId, ref: 'Comment', default: null })
   parentId: Types.ObjectId | null;
 
@@ -105,3 +109,4 @@ CommentSchema.index({ entityType: 1, entityId: 1, createdAt: -1 });
 CommentSchema.index({ userId: 1 });
 CommentSchema.index({ parentId: 1 });
 CommentSchema.index({ createdAt: -1 });
+CommentSchema.index({ contentFingerprint: 1, createdAt: -1 });

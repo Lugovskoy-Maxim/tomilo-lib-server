@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
   ForbiddenException,
+  HttpException,
   Inject,
   forwardRef,
 } from '@nestjs/common';
@@ -73,8 +74,14 @@ export class CommentsService {
       }
     }
 
+    const trimmedContent = createCommentDto.content.trim();
+    const contentFingerprint =
+      this.spamDetectionService.computeContentFingerprint(trimmedContent);
+
     const comment = new this.commentModel({
       ...createCommentDto,
+      content: trimmedContent,
+      contentFingerprint,
       userId: new Types.ObjectId(userId),
       entityId: new Types.ObjectId(createCommentDto.entityId),
       parentId: createCommentDto.parentId
@@ -116,8 +123,11 @@ export class CommentsService {
         }
       }
     } catch (error) {
-      // Don't block comment creation if spam detection fails
-      console.warn('Spam detection failed:', error.message);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn('Spam detection failed:', msg);
     }
 
     // Инкрементируем счётчик комментариев пользователя
@@ -361,13 +371,60 @@ export class CommentsService {
       throw new ForbiddenException('You can only edit your own comments');
     }
 
-    comment.content = updateCommentDto.content;
+    const wasVisible = comment.isVisible;
+    const trimmed = updateCommentDto.content.trim();
+    comment.content = trimmed;
+    comment.contentFingerprint =
+      this.spamDetectionService.computeContentFingerprint(trimmed);
     comment.isEdited = true;
     if (updateCommentDto.isSpoiler !== undefined) {
       comment.isSpoiler = updateCommentDto.isSpoiler;
     }
 
-    return comment.save();
+    await comment.save();
+
+    try {
+      const user = await this.usersService.findById(userId);
+      if (user) {
+        const spamResult = await this.spamDetectionService.detectSpam(
+          comment,
+          user,
+        );
+        if (
+          spamResult.isSpam ||
+          spamResult.shouldWarnUser ||
+          spamResult.shouldRestrictUser
+        ) {
+          await this.spamDetectionService.applySpamActions(
+            comment,
+            user,
+            spamResult,
+          );
+          if (wasVisible && comment.isVisible === false) {
+            try {
+              await this.usersService.decrementCommentsCount(userId);
+            } catch (e) {
+              console.warn(
+                `Failed to decrement commentsCount after spam hide (edit): ${(e as Error).message}`,
+              );
+            }
+          }
+          if (spamResult.score >= 70) {
+            throw new ForbiddenException(
+              'Комментарий после правки помечен как спам. Сохранение отклонено.',
+            );
+          }
+        }
+      }
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn('Spam detection on comment update failed:', msg);
+    }
+
+    return comment;
   }
 
   async remove(id: string, userId: string, userRole?: string): Promise<void> {
