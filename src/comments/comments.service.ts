@@ -20,6 +20,7 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { UpdateCommentDto } from './dto/update-comment.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UsersService } from '../users/users.service';
+import { SpamDetectionService } from '../spam-detection/spam-detection.service';
 
 @Injectable()
 export class CommentsService {
@@ -30,12 +31,23 @@ export class CommentsService {
     private notificationsService: NotificationsService,
     @Inject(forwardRef(() => UsersService))
     private usersService: UsersService,
+    private spamDetectionService: SpamDetectionService,
   ) {}
 
   async create(
     createCommentDto: CreateCommentDto,
     userId: string,
   ): Promise<CommentDocument> {
+    // Check if user is allowed to comment (spam restrictions)
+    const canComment = await this.spamDetectionService.canUserComment(
+      new Types.ObjectId(userId),
+    );
+    if (!canComment.allowed) {
+      throw new ForbiddenException(
+        canComment.reason || 'Вы ограничены в комментировании',
+      );
+    }
+
     // Validate that the entity exists
     await this.validateEntity(
       createCommentDto.entityType,
@@ -71,6 +83,38 @@ export class CommentsService {
     });
 
     const saved = await comment.save();
+
+    // Run spam detection
+    try {
+      const user = await this.usersService.findById(userId);
+      if (user) {
+        const spamResult = await this.spamDetectionService.detectSpam(
+          saved,
+          user,
+        );
+        if (
+          spamResult.isSpam ||
+          spamResult.shouldWarnUser ||
+          spamResult.shouldRestrictUser
+        ) {
+          await this.spamDetectionService.applySpamActions(
+            saved,
+            user,
+            spamResult,
+          );
+
+          // If spam is severe, throw an error
+          if (spamResult.score >= 70) {
+            throw new ForbiddenException(
+              'Ваш комментарий был помечен как спам. Пожалуйста, не нарушайте правила сообщества.',
+            );
+          }
+        }
+      }
+    } catch (error) {
+      // Don't block comment creation if spam detection fails
+      console.warn('Spam detection failed:', error.message);
+    }
 
     // Инкрементируем счётчик комментариев пользователя
     try {

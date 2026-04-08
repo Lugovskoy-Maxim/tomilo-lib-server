@@ -7,6 +7,7 @@ import { Title, TitleSchema } from '../schemas/title.schema';
 import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { UsersModule } from '../users/users.module';
+import { SpamDetectionModule } from '../spam-detection/spam-detection.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { UsersModule } from '../users/users.module';
     ]),
     NotificationsModule,
     forwardRef(() => UsersModule),
+    SpamDetectionModule,
   ],
   controllers: [CommentsController],
   providers: [CommentsService],

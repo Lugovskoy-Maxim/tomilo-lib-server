@@ -18,12 +18,17 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { AdminService } from './admin.service';
 import { ApiResponseDto } from '../common/dto/api-response.dto';
+import { SpamDetectionService } from '../spam-detection/spam-detection.service';
+import { Types } from 'mongoose';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('admin')
 export class AdminController {
-  constructor(private readonly adminService: AdminService) {}
+  constructor(
+    private readonly adminService: AdminService,
+    private readonly spamDetectionService: SpamDetectionService,
+  ) {}
 
   /**
    * Главный дашборд - общая статистика для админки
@@ -769,6 +774,232 @@ export class AdminController {
         timestamp: new Date().toISOString(),
         path: 'admin/cache/clear',
         method: 'POST',
+      };
+    }
+  }
+
+  /**
+   * Получить статистику по спаму
+   */
+  @Get('spam/stats')
+  async getSpamStats(): Promise<ApiResponseDto<any>> {
+    try {
+      const stats = await this.spamDetectionService.getSpamStats();
+      return {
+        success: true,
+        data: stats,
+        timestamp: new Date().toISOString(),
+        path: 'admin/spam/stats',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch spam stats',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'admin/spam/stats',
+      };
+    }
+  }
+
+  /**
+   * Получить список спам-комментариев
+   */
+  @Get('spam/comments')
+  async getSpamComments(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const pageNum = parseInt(page, 10) || 1;
+      const limitNum = parseInt(limit, 10) || 20;
+      const skip = (pageNum - 1) * limitNum;
+
+      // Используем сервис комментариев для получения спам-комментариев
+      const comments = await this.adminService.getSpamComments(skip, limitNum);
+      const total = await this.adminService.countSpamComments();
+
+      return {
+        success: true,
+        data: {
+          comments,
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total,
+            pages: Math.ceil(total / limitNum),
+          },
+        },
+        timestamp: new Date().toISOString(),
+        path: 'admin/spam/comments',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch spam comments',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'admin/spam/comments',
+      };
+    }
+  }
+
+  /**
+   * Пометить комментарий как спам
+   */
+  @Post('spam/comments/:id/mark-as-spam')
+  async markCommentAsSpam(
+    @Param('id') commentId: string,
+    @Body() body: { reason: string },
+    @Request() req: any,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      await this.spamDetectionService.markAsSpam(
+        new Types.ObjectId(commentId),
+        new Types.ObjectId(req.user.userId),
+        body.reason || 'Помечено администратором',
+      );
+
+      return {
+        success: true,
+        message: 'Комментарий помечен как спам',
+        timestamp: new Date().toISOString(),
+        path: `admin/spam/comments/${commentId}/mark-as-spam`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to mark comment as spam',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `admin/spam/comments/${commentId}/mark-as-spam`,
+      };
+    }
+  }
+
+  /**
+   * Пометить комментарий как не спам
+   */
+  @Post('spam/comments/:id/mark-as-not-spam')
+  async markCommentAsNotSpam(
+    @Param('id') commentId: string,
+    @Body() body: { reason: string },
+    @Request() req: any,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      await this.spamDetectionService.markAsNotSpam(
+        new Types.ObjectId(commentId),
+        new Types.ObjectId(req.user.userId),
+        body.reason || 'Помечено как не спам администратором',
+      );
+
+      return {
+        success: true,
+        message: 'Комментарий помечен как не спам',
+        timestamp: new Date().toISOString(),
+        path: `admin/spam/comments/${commentId}/mark-as-not-spam`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to mark comment as not spam',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `admin/spam/comments/${commentId}/mark-as-not-spam`,
+      };
+    }
+  }
+
+  /**
+   * Получить пользователей с ограничениями за спам
+   */
+  @Get('spam/restricted-users')
+  async getRestrictedUsers(
+    @Query('page') page = '1',
+    @Query('limit') limit = '20',
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const pageNum = parseInt(page, 10) || 1;
+      const limitNum = parseInt(limit, 10) || 20;
+      const skip = (pageNum - 1) * limitNum;
+
+      const users = await this.adminService.getRestrictedUsers(skip, limitNum);
+      const total = await this.adminService.countRestrictedUsers();
+
+      return {
+        success: true,
+        data: {
+          users,
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total,
+            pages: Math.ceil(total / limitNum),
+          },
+        },
+        timestamp: new Date().toISOString(),
+        path: 'admin/spam/restricted-users',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch restricted users',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'admin/spam/restricted-users',
+      };
+    }
+  }
+
+  /**
+   * Снять ограничение с пользователя
+   */
+  @Post('spam/users/:id/remove-restriction')
+  async removeUserRestriction(
+    @Param('id') userId: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      await this.adminService.removeCommentRestriction(userId);
+
+      return {
+        success: true,
+        message: 'Ограничение с пользователя снято',
+        timestamp: new Date().toISOString(),
+        path: `admin/spam/users/${userId}/remove-restriction`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to remove user restriction',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `admin/spam/users/${userId}/remove-restriction`,
+      };
+    }
+  }
+
+  /**
+   * Очистить спам-комментарии (удалить все помеченные как спам)
+   */
+  @Post('spam/cleanup')
+  async cleanupSpamComments(): Promise<ApiResponseDto<any>> {
+    try {
+      const result = await this.adminService.cleanupSpamComments();
+
+      return {
+        success: true,
+        data: result,
+        message: 'Спам-комментарии очищены',
+        timestamp: new Date().toISOString(),
+        path: 'admin/spam/cleanup',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to cleanup spam comments',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'admin/spam/cleanup',
       };
     }
   }

@@ -1012,7 +1012,7 @@ export class UsersService {
     return user?.subscriptionExpiresAt ?? null;
   }
 
-  async findById(id: string): Promise<User> {
+  async findById(id: string): Promise<UserDocument> {
     this.logger.log(`Finding user by ID: ${id}`);
     if (!Types.ObjectId.isValid(id)) {
       this.logger.warn(`Invalid user ID format: ${id}`);

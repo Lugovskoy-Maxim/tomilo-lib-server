@@ -7,7 +7,7 @@ export type UserDocument = User & Document;
 export class User {
   _id: Types.ObjectId;
 
-  @Prop({ unique: true, required: true })
+  @Prop({ unique: true, required: true, maxlength: 16 })
   username: string;
 
   @Prop({ unique: true, required: true })
@@ -168,6 +168,41 @@ export class User {
     chapterId?: Types.ObjectId;
     titleId?: Types.ObjectId;
     timestamp: Date;
+  }[];
+
+  // Spam detection and moderation fields
+  @Prop({ default: 0 })
+  spamWarnings: number;
+
+  @Prop()
+  lastSpamWarningAt: Date;
+
+  @Prop()
+  commentRestrictedUntil: Date;
+
+  @Prop({ default: false })
+  isCommentRestricted: boolean;
+
+  @Prop({
+    type: [
+      {
+        commentId: { type: Types.ObjectId, ref: 'Comment', required: true },
+        detectedAt: { type: Date, default: Date.now },
+        reason: { type: String, required: true },
+        action: {
+          type: String,
+          enum: ['warning', 'restriction', 'deletion'],
+          required: true,
+        },
+      },
+    ],
+    default: [],
+  })
+  spamActivityLog: {
+    commentId: Types.ObjectId;
+    detectedAt: Date;
+    reason: string;
+    action: 'warning' | 'restriction' | 'deletion';
   }[];
 
   // Profile decorations

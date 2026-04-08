@@ -7,6 +7,7 @@ import { Title, TitleSchema } from '../schemas/title.schema';
 import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
 import { Comment, CommentSchema } from '../schemas/comment.schema';
 import { AdminLog, AdminLogSchema } from '../schemas/admin-log.schema';
+import { SpamDetectionModule } from '../spam-detection/spam-detection.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { AdminLog, AdminLogSchema } from '../schemas/admin-log.schema';
       { name: Comment.name, schema: CommentSchema },
       { name: AdminLog.name, schema: AdminLogSchema },
     ]),
+    SpamDetectionModule,
   ],
   controllers: [AdminController],
   providers: [AdminService],

@@ -78,6 +78,25 @@ export class Comment {
   /** Пользователь пометил текст как спойлер */
   @Prop({ default: false })
   isSpoiler: boolean;
+
+  // Spam detection fields
+  @Prop({ default: false })
+  isSpam: boolean;
+
+  @Prop({ default: false })
+  isSpamChecked: boolean;
+
+  @Prop()
+  spamDetectedAt: Date;
+
+  @Prop()
+  spamCheckedBy: Types.ObjectId;
+
+  @Prop({ default: 0 })
+  spamScore: number;
+
+  @Prop({ type: [String], default: [] })
+  spamReasons: string[];
 }
 
 export const CommentSchema = SchemaFactory.createForClass(Comment);

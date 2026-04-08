@@ -1052,4 +1052,83 @@ export class AdminService {
 
     return { deletedCount: result.deletedCount };
   }
+
+  /**
+   * Get spam comments
+   */
+  async getSpamComments(skip: number, limit: number): Promise<any[]> {
+    const comments = await this.commentModel
+      .find({ isSpam: true })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate('userId', 'username avatar')
+      .lean();
+
+    return comments;
+  }
+
+  /**
+   * Count spam comments
+   */
+  async countSpamComments(): Promise<number> {
+    return this.commentModel.countDocuments({ isSpam: true });
+  }
+
+  /**
+   * Get users with comment restrictions
+   */
+  async getRestrictedUsers(skip: number, limit: number): Promise<any[]> {
+    const users = await this.userModel
+      .find({
+        isCommentRestricted: true,
+        commentRestrictedUntil: { $gt: new Date() },
+      })
+      .sort({ commentRestrictedUntil: 1 })
+      .skip(skip)
+      .limit(limit)
+      .select(
+        'username email avatar spamWarnings lastSpamWarningAt commentRestrictedUntil',
+      )
+      .lean();
+
+    return users;
+  }
+
+  /**
+   * Count restricted users
+   */
+  async countRestrictedUsers(): Promise<number> {
+    return this.userModel.countDocuments({
+      isCommentRestricted: true,
+      commentRestrictedUntil: { $gt: new Date() },
+    });
+  }
+
+  /**
+   * Remove comment restriction from user
+   */
+  async removeCommentRestriction(userId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    await this.userModel.updateOne(
+      { _id: new Types.ObjectId(userId) },
+      {
+        $set: {
+          isCommentRestricted: false,
+          commentRestrictedUntil: null,
+        },
+      },
+    );
+  }
+
+  /**
+   * Cleanup spam comments (delete all marked as spam)
+   */
+  async cleanupSpamComments(): Promise<{ deletedCount: number }> {
+    const result = await this.commentModel.deleteMany({ isSpam: true });
+    return { deletedCount: result.deletedCount };
+  }
 }
