@@ -1868,6 +1868,7 @@ export class DisciplesService {
       balance: user.balance ?? 0,
       rerollCostCoins: config.rerollCostCoins,
       trainCostCoins: config.trainCostCoins,
+      characterPool: (config as { characterPool?: string }).characterPool ?? 'all',
       lastRerollCandidate: user.lastRerollCandidate ?? null,
     };
   }
@@ -1917,6 +1918,25 @@ export class DisciplesService {
         .lean()
         .exec();
       characterIds = (chars as { _id: Types.ObjectId }[]).map((c) => c._id);
+    } else if (
+      config.characterPool === 'bookmarks' &&
+      characterIds.length > 0 &&
+      characterIds.length < 28
+    ) {
+      // Узкий пул закладок — добавляем одобренных из всего каталога, чтобы не «застревать» на 3–5 героях
+      const allChars = await this.characterModel
+        .find({ status: CharacterModerationStatus.APPROVED })
+        .select('_id')
+        .lean()
+        .exec();
+      const seen = new Set(characterIds.map((id) => id.toString()));
+      for (const c of allChars as { _id: Types.ObjectId }[]) {
+        const s = c._id.toString();
+        if (!seen.has(s)) {
+          seen.add(s);
+          characterIds.push(c._id);
+        }
+      }
     }
     if (characterIds.length === 0) {
       throw new BadRequestException('Нет доступных персонажей для призыва');
@@ -2937,6 +2957,13 @@ export class DisciplesService {
     }[];
     resultScreen?: {
       outcome: string;
+      outcomeReason?: string;
+      userTeamCp?: number;
+      opponentTeamCp?: number;
+      teams?: {
+        user?: Array<{ name: string; level: number }>;
+        opponent?: Array<{ name: string; level: number }>;
+      };
       userCard: unknown;
       opponentCard: unknown;
       battleLog: unknown;
@@ -2960,7 +2987,7 @@ export class DisciplesService {
         : null;
       if (lastWeekly && Date.now() - lastWeekly.getTime() < WEEK_MS) {
         throw new BadRequestException(
-          'Недельная схватка уже состаялась. Доступна только 1 раз в неделю.',
+          'Недельная схватка уже состоялась. Доступна только 1 раз в неделю.',
         );
       }
     }
@@ -2993,6 +3020,14 @@ export class DisciplesService {
 
     const isBot =
       opponentUserId === 'bot:weekly' || opponentUserId?.startsWith?.('bot:');
+    let oppRosterMembersW: Array<{
+      displayName: string;
+      level: number;
+      attack: number;
+      defense: number;
+      speed: number;
+      hp: number;
+    }> = [];
     let oppRating: number;
     let oppEquipped: string[] = [];
     let oppCard: unknown = null;
@@ -3018,6 +3053,7 @@ export class DisciplesService {
         userRosterW.length,
         'weekly',
       );
+      oppRosterMembersW = oppRoster;
       oppRating = rating;
       oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
       oppAggW = this.aggregateSquadCombatStats(oppRoster);
@@ -3035,6 +3071,7 @@ export class DisciplesService {
         );
       }
       const oppRoster = await this.enrichBattleRosterFromDisciples(oppActive);
+      oppRosterMembersW = oppRoster;
       oppRating = opponent.weeklyRating ?? 1000;
       oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
       oppAggW = this.aggregateSquadCombatStats(oppRoster);
@@ -3098,7 +3135,7 @@ export class DisciplesService {
     const delta = Math.round(kRating * ((win ? 1 : 0) - expected));
     user.weeklyRating = Math.max(0, myRating + delta);
 
-    const weeklyExp = win ? 15 : 5;
+    const weeklyExp = win ? 18 : 6;
     this.applyGameExpToUser(user, weeklyExp, 'active', GAME_PRIMARY_EXP_SHARE);
     user.markModified('balance');
     user.markModified('lastWeeklyBattleAt');
@@ -3116,6 +3153,36 @@ export class DisciplesService {
         )
       : null;
 
+    const finW = sim.final as {
+      hpUser: number;
+      hpOpp: number;
+      maxUser: number;
+      maxOpp: number;
+    };
+    const outcomeReasonW = win
+      ? finW.hpOpp <= 0
+        ? 'Противник потерял все ОЗ.'
+        : finW.hpUser > finW.hpOpp
+          ? 'Лимит ходов — у вашего отряда больше ОЗ.'
+          : 'Ничья по ОЗ — победа по скорости отряда.'
+      : finW.hpUser <= 0
+        ? 'Ваш отряд потерял все ОЗ.'
+        : finW.hpUser < finW.hpOpp
+          ? 'Лимит ходов — у противника больше ОЗ.'
+          : 'Ничья по ОЗ — поражение по скорости.';
+
+    const opponentTeamCpW = Math.round(
+      oppRosterMembersW.reduce(
+        (acc, m) =>
+          acc +
+          this.cp(
+            { attack: m.attack, defense: m.defense, speed: m.speed, hp: m.hp },
+            formula,
+          ),
+        0,
+      ),
+    );
+
     return {
       win,
       coinsGained,
@@ -3124,6 +3191,16 @@ export class DisciplesService {
       consumedItems: supportState.consumed,
       resultScreen: {
         outcome: win ? 'win' : 'lose',
+        outcomeReason: outcomeReasonW,
+        userTeamCp: Math.round(cpUser),
+        opponentTeamCp: opponentTeamCpW,
+        teams: {
+          user: userRosterW.map((m) => ({ name: m.displayName, level: m.level })),
+          opponent: oppRosterMembersW.map((m) => ({
+            name: m.displayName,
+            level: m.level,
+          })),
+        },
         userCard,
         opponentCard: oppCard,
         battleLog: sim.log,
