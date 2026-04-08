@@ -32,6 +32,14 @@ export class AvatarDecoration {
   /** Автор (из предложений пользователей). Получает 10% от каждой продажи. */
   @Prop({ type: Types.ObjectId, ref: 'User' })
   authorId?: Types.ObjectId;
+
+  /** Зачёркнутая «старая» цена для отображения скидки в магазине. */
+  @Prop({ min: 0 })
+  originalPrice?: number;
+
+  /** Сколько раз оформляли покупку. */
+  @Prop({ default: 0, min: 0 })
+  purchaseCount: number;
 }
 
 export const AvatarDecorationSchema =

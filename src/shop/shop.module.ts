@@ -27,6 +27,7 @@ import {
   SuggestedDecoration,
   SuggestedDecorationSchema,
 } from '../schemas/suggested-decoration.schema';
+import { User, UserSchema } from '../schemas/user.schema';
 import { UsersModule } from '../users/users.module';
 import { GameItemsModule } from '../game-items/game-items.module';
 
@@ -44,6 +45,7 @@ const DECORATIONS_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
       { name: BackgroundDecoration.name, schema: BackgroundDecorationSchema },
       { name: CardDecoration.name, schema: CardDecorationSchema },
       { name: SuggestedDecoration.name, schema: SuggestedDecorationSchema },
+      { name: User.name, schema: UserSchema },
     ]),
     UsersModule,
     GameItemsModule,

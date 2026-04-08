@@ -45,6 +45,7 @@ import { PromocodesModule } from './promocodes/promocodes.module';
 import { TranslatorTeamsModule } from './translator-teams/translator-teams.module';
 import { CharactersModule } from './characters/characters.module';
 import { GameItemsModule } from './game-items/game-items.module';
+import { BackupModule } from './backup/backup.module';
 
 const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
 
@@ -102,6 +103,7 @@ const STATS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
     TranslatorTeamsModule,
     CharactersModule,
     GameItemsModule,
+    BackupModule,
   ],
   controllers: [AppController],
   providers: [

@@ -27,6 +27,7 @@ import {
   SuggestedDecoration,
   SuggestedDecorationDocument,
 } from '../schemas/suggested-decoration.schema';
+import { User, UserDocument } from '../schemas/user.schema';
 import { UsersService } from '../users/users.service';
 import { LoggerService } from '../common/logger/logger.service';
 import { CardsService } from '../game-items/cards.service';
@@ -99,16 +100,120 @@ export class ShopService {
       set: (k: string, v: unknown) => Promise<void>;
       del?: (k: string) => Promise<void>;
     },
+    @InjectModel(User.name)
+    private userModel: Model<UserDocument>,
   ) {
     this.logger.setContext(ShopService.name);
+  }
+
+  /** Сброс кэша списков магазина (после покупки / изменения каталога). */
+  private async invalidateShopDecorationCache(
+    type?: 'avatar' | 'frame' | 'background' | 'card',
+  ): Promise<void> {
+    await this.cacheManager.set('shop:decorations:all', undefined as unknown);
+    if (type) {
+      await this.cacheManager.set(
+        `shop:decorations:${type}`,
+        undefined as unknown,
+      );
+    }
+    if (typeof this.cacheManager.del === 'function') {
+      await this.cacheManager.del('shop:decorations:all');
+      if (type) await this.cacheManager.del(`shop:decorations:${type}`);
+    }
+  }
+
+  /** Сколько пользователей владеют каждым id (по типу декорации). */
+  private async attachOwnerCounts(
+    decorationType: 'avatar' | 'frame' | 'background' | 'card',
+    items: Array<{ _id: Types.ObjectId } & Record<string, unknown>>,
+  ): Promise<void> {
+    if (!items.length) return;
+    const ids = items.map((i) => i._id);
+    const agg = await this.userModel
+      .aggregate<{ _id: Types.ObjectId; ownersCount: number }>([
+        { $unwind: '$ownedDecorations' },
+        {
+          $match: {
+            'ownedDecorations.decorationType': decorationType,
+            'ownedDecorations.decorationId': { $in: ids },
+          },
+        },
+        {
+          $group: {
+            _id: '$ownedDecorations.decorationId',
+            ownersCount: { $sum: 1 },
+          },
+        },
+      ])
+      .exec();
+    const map = new Map<string, number>(
+      agg.map((r) => [r._id.toString(), r.ownersCount]),
+    );
+    for (const item of items) {
+      item.ownersCount = map.get(item._id.toString()) ?? 0;
+    }
+  }
+
+  private async enrichGroupedDecorationsWithStats(result: {
+    avatars: Array<{ _id: Types.ObjectId } & Record<string, unknown>>;
+    frames: Array<{ _id: Types.ObjectId } & Record<string, unknown>>;
+    backgrounds: Array<{ _id: Types.ObjectId } & Record<string, unknown>>;
+    cards: Array<{ _id: Types.ObjectId } & Record<string, unknown>>;
+  }): Promise<void> {
+    await Promise.all([
+      this.attachOwnerCounts('avatar', result.avatars),
+      this.attachOwnerCounts('frame', result.frames),
+      this.attachOwnerCounts('background', result.backgrounds),
+      this.attachOwnerCounts('card', result.cards),
+    ]);
+  }
+
+  private async enrichDecorationListWithStats(
+    decorationType: 'avatar' | 'frame' | 'background' | 'card',
+    items: Array<{ _id: Types.ObjectId } & Record<string, unknown>>,
+  ): Promise<void> {
+    await this.attachOwnerCounts(decorationType, items);
+  }
+
+  private async incrementDecorationPurchaseCount(
+    decorationType: 'avatar' | 'frame' | 'background' | 'card',
+    decorationId: string,
+  ): Promise<void> {
+    const oid = new Types.ObjectId(decorationId);
+    const inc = { $inc: { purchaseCount: 1 } };
+    switch (decorationType) {
+      case 'avatar':
+        await this.avatarDecorationModel.updateOne({ _id: oid }, inc);
+        break;
+      case 'background':
+        await this.backgroundDecorationModel.updateOne({ _id: oid }, inc);
+        break;
+      case 'frame':
+        await this.avatarFrameDecorationModel.updateOne({ _id: oid }, inc);
+        break;
+      case 'card':
+        await this.cardDecorationModel.updateOne({ _id: oid }, inc);
+        break;
+      default:
+        break;
+    }
   }
 
   // Get all available decorations
   async getAllDecorations() {
     const cacheKey = 'shop:decorations:all';
     const cached = await this.cacheManager.get(cacheKey);
-    if (cached)
-      return cached as Awaited<ReturnType<ShopService['getAllDecorations']>>;
+    if (cached) {
+      const result = cached as {
+        avatars: Array<{ _id: Types.ObjectId } & Record<string, unknown>>;
+        frames: Array<{ _id: Types.ObjectId } & Record<string, unknown>>;
+        backgrounds: Array<{ _id: Types.ObjectId } & Record<string, unknown>>;
+        cards: Array<{ _id: Types.ObjectId } & Record<string, unknown>>;
+      };
+      await this.enrichGroupedDecorationsWithStats(result);
+      return result;
+    }
 
     this.logger.log('Fetching all available decorations');
 
@@ -149,6 +254,7 @@ export class ShopService {
       backgrounds,
       cards,
     };
+    await this.enrichGroupedDecorationsWithStats(result);
     await this.cacheManager.set(cacheKey, result);
     return result;
   }
@@ -166,7 +272,21 @@ export class ShopService {
     await this.enrichDecorationsImageUrlFromSuggestions(frames);
     await this.enrichDecorationsImageUrlFromSuggestions(backgrounds);
     await this.enrichDecorationsImageUrlFromSuggestions(cards);
-    return { avatars, frames, backgrounds, cards };
+    const grouped = {
+      avatars,
+      frames,
+      backgrounds,
+      cards,
+    };
+    await this.enrichGroupedDecorationsWithStats(
+      grouped as {
+        avatars: Array<{ _id: Types.ObjectId } & Record<string, unknown>>;
+        frames: Array<{ _id: Types.ObjectId } & Record<string, unknown>>;
+        backgrounds: Array<{ _id: Types.ObjectId } & Record<string, unknown>>;
+        cards: Array<{ _id: Types.ObjectId } & Record<string, unknown>>;
+      },
+    );
+    return grouped;
   }
 
   /**
@@ -206,8 +326,13 @@ export class ShopService {
   async getDecorationsByType(type: 'avatar' | 'frame' | 'background' | 'card') {
     const cacheKey = `shop:decorations:${type}`;
     const cached = await this.cacheManager.get(cacheKey);
-    if (cached)
-      return cached as Awaited<ReturnType<ShopService['getDecorationsByType']>>;
+    if (cached) {
+      const list = cached as Array<
+        { _id: Types.ObjectId } & Record<string, unknown>
+      >;
+      await this.enrichDecorationListWithStats(type, list);
+      return list;
+    }
 
     this.logger.log(`Fetching ${type} decorations`);
 
@@ -250,6 +375,10 @@ export class ShopService {
     }
 
     await this.enrichDecorationsImageUrlFromSuggestions(decorations);
+    await this.enrichDecorationListWithStats(
+      type,
+      decorations as Array<{ _id: Types.ObjectId } & Record<string, unknown>>,
+    );
     await this.cacheManager.set(cacheKey, decorations);
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
     return decorations;
@@ -403,6 +532,9 @@ export class ShopService {
     };
 
     await this.usersService.update(userId, updateUserDto);
+
+    await this.incrementDecorationPurchaseCount(decorationType, decorationId);
+    void this.invalidateShopDecorationCache(decorationType);
 
     // Карточка из магазина теперь также попадает в игровую коллекцию пользователя.
     let grantedCard: unknown = null;
@@ -609,21 +741,39 @@ export class ShopService {
     isAvailable?: boolean;
     quantity?: number | null;
     authorId?: Types.ObjectId;
+    originalPrice?: number | null;
   }) {
     const rarity = payload.rarity ?? 'common';
+    let price = getPriceByRarity(rarity);
+    if (
+      payload.price !== undefined &&
+      payload.price !== null &&
+      !Number.isNaN(Number(payload.price))
+    ) {
+      price = Math.max(0, Number(payload.price));
+    }
     const doc: Record<string, unknown> = {
       name: payload.name,
       imageUrl: payload.imageUrl,
-      price: getPriceByRarity(rarity),
+      price,
       rarity,
       description: payload.description ?? '',
       isAvailable: payload.isAvailable !== false,
+      purchaseCount: 0,
     };
     if (payload.quantity !== undefined && payload.quantity !== null) {
       doc.quantity = payload.quantity;
     }
     if (payload.authorId) {
       doc.authorId = payload.authorId;
+    }
+    if (
+      payload.originalPrice !== undefined &&
+      payload.originalPrice !== null &&
+      !Number.isNaN(Number(payload.originalPrice))
+    ) {
+      const op = Math.max(0, Number(payload.originalPrice));
+      if (op > price) doc.originalPrice = op;
     }
     let decoration;
     switch (payload.type) {
@@ -642,15 +792,7 @@ export class ShopService {
       default:
         throw new BadRequestException('Invalid decoration type');
     }
-    await this.cacheManager.set('shop:decorations:all', undefined as unknown);
-    await this.cacheManager.set(
-      `shop:decorations:${payload.type}`,
-      undefined as unknown,
-    );
-    if (typeof this.cacheManager.del === 'function') {
-      await this.cacheManager.del('shop:decorations:all');
-      await this.cacheManager.del(`shop:decorations:${payload.type}`);
-    }
+    await this.invalidateShopDecorationCache(payload.type);
     this.logger.log(
       `Admin created ${payload.type} decoration: ${decoration._id} (${payload.name})`,
     );

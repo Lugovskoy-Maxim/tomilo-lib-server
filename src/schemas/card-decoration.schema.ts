@@ -83,6 +83,12 @@ export class CardDecoration {
 
   @Prop({ type: [CardStageSchema], default: [] })
   stages?: CardStage[];
+
+  @Prop({ min: 0 })
+  originalPrice?: number;
+
+  @Prop({ default: 0, min: 0 })
+  purchaseCount: number;
 }
 
 export const CardDecorationSchema =

@@ -67,6 +67,53 @@ export class EmailService {
     await this.sendEmail(to, subject, html);
   }
 
+  /** Ежедневный архив дампа БД (JSON-коллекции, tar.gz). */
+  async sendDatabaseBackupArchive(
+    to: string,
+    archivePath: string,
+    dateStr: string,
+    sizeBytes: number,
+  ) {
+    const subject = `Tomilo Lib — бэкап БД ${dateStr}`;
+    const mb = (sizeBytes / (1024 * 1024)).toFixed(2);
+    const html = `<p>Автоматический дамп MongoDB за ${dateStr}.</p><p>Размер архива: ${mb} МБ.</p>`;
+    await this.transporter.sendMail({
+      from: this.configService.get('YANDEX_EMAIL'),
+      to,
+      subject,
+      html,
+      attachments: [
+        {
+          filename: `tomilo-db-${dateStr}.tar.gz`,
+          path: archivePath,
+        },
+      ],
+    });
+  }
+
+  async sendBackupTooLargeEmail(
+    to: string,
+    dateStr: string,
+    sizeBytes: number,
+    maxBytes: number,
+  ) {
+    const subject = `Tomilo Lib — бэкап БД ${dateStr} (вложение слишком большое)`;
+    const html = `<p>Дамп за ${dateStr} собран, но архив (${sizeBytes} байт) превышает лимит отправки (${maxBytes} байт). Увеличьте BACKUP_EMAIL_MAX_BYTES или храните бэкапы на диске/S3.</p>`;
+    await this.sendEmail(to, subject, html);
+  }
+
+  async sendBackupFailureNotice(
+    to: string,
+    dateStr: string,
+    errorMessage: string,
+  ) {
+    const subject = `Tomilo Lib — ошибка бэкапа БД ${dateStr}`;
+    const html = `<p>Не удалось выполнить или отправить бэкап.</p><pre style="white-space:pre-wrap;font-family:monospace;">${escapeHtml(
+      errorMessage,
+    )}</pre>`;
+    await this.sendEmail(to, subject, html);
+  }
+
   private async sendEmail(to: string, subject: string, html: string) {
     const mailOptions = {
       from: this.configService.get('YANDEX_EMAIL'),
@@ -77,4 +124,12 @@ export class EmailService {
 
     await this.transporter.sendMail(mailOptions);
   }
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }

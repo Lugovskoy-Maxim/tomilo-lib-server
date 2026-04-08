@@ -10,6 +10,7 @@ import {
   Character,
   CharacterDocument,
   CharacterModerationStatus,
+  CharacterRole,
 } from '../schemas/character.schema';
 import {
   CharacterCard,
@@ -41,6 +42,40 @@ function libraryExpToNext(level: number): number {
   const L = Math.max(1, level);
   return Math.max(28, Math.floor(32 + L * 20 + L * L * 0.1));
 }
+
+/** Разброс atk/def/spd/hp вокруг базы при призыве ученика */
+const RECRUIT_STAT_SPREAD = 5;
+/** Доп. к базовому уровню статов для персонажей с ролью «главный герой» */
+const RECRUIT_MAIN_CORE_BONUS = 3;
+/** Доп. к середине HP при призыве главного героя */
+const RECRUIT_MAIN_HP_BONUS = 5;
+
+/** Ровно столько активных учеников — проверяем отрядные бафы в бою */
+const SQUAD_SYNERGY_ROSTER_SIZE = 3;
+
+/** Все трое из одного тайтла: ровный бонус ко всем боевым суммарным статам */
+const SYNERGY_SAME_TITLE = {
+  attack: 1.06,
+  defense: 1.06,
+  speed: 1.06,
+  hp: 1.06,
+} as const;
+
+/** Все трое с ролью «антагонист»: упор на атаку и скорость */
+const SYNERGY_ALL_ANTAGONIST = {
+  attack: 1.1,
+  defense: 1.04,
+  speed: 1.08,
+  hp: 1.03,
+} as const;
+
+/** Все трое с ролью «главный герой»: сбалансированно + запас ОЗ */
+const SYNERGY_ALL_MAIN = {
+  attack: 1.05,
+  defense: 1.05,
+  speed: 1.05,
+  hp: 1.08,
+} as const;
 
 /** Доля опыта основного ученика при тренировке (остальное делится между всеми остальными) */
 const TRAINING_PRIMARY_EXP_SHARE = 0.42;
@@ -348,7 +383,7 @@ export class DisciplesService {
     const now = new Date();
     const todayStart = getStartOfDayUTC(now);
     const lastReset = user.dailyBattlesDate
-      ? new Date(user.dailyBattlesDate as Date)
+      ? new Date(user.dailyBattlesDate)
       : null;
     if (!lastReset || lastReset < todayStart) return 0;
     return user.dailyBattlesCount ?? 0;
@@ -486,6 +521,62 @@ export class DisciplesService {
 
   private randomStat(min: number, max: number): number {
     return min + Math.floor(Math.random() * (max - min + 1));
+  }
+
+  /**
+   * Статы при вербовке: atk/def/spd близки друг к другу (±RECRUIT_STAT_SPREAD от общей базы),
+   * HP — от середины своего диапазона с тем же разбросом. Главные герои чуть сильнее.
+   */
+  private rollBalancedRecruitStats(
+    ranges: {
+      attackMin: number;
+      attackMax: number;
+      defenseMin: number;
+      defenseMax: number;
+      speedMin: number;
+      speedMax: number;
+      hpMin: number;
+      hpMax: number;
+    },
+    isMainHero: boolean,
+  ): {
+    attack: number;
+    defense: number;
+    speed: number;
+    hp: number;
+  } {
+    const clamp = (v: number, lo: number, hi: number) =>
+      Math.max(lo, Math.min(hi, Math.round(v)));
+    const coreLow = Math.max(
+      ranges.attackMin,
+      ranges.defenseMin,
+      ranges.speedMin,
+    );
+    const coreHigh = Math.min(
+      ranges.attackMax,
+      ranges.defenseMax,
+      ranges.speedMax,
+    );
+    let baseCore: number;
+    if (coreLow <= coreHigh) {
+      baseCore = this.randomStat(coreLow, coreHigh);
+    } else {
+      baseCore = Math.round((coreLow + coreHigh) / 2);
+    }
+    const mainBoost = isMainHero ? RECRUIT_MAIN_CORE_BONUS : 0;
+    const coreJitter = this.randomStat(
+      -RECRUIT_STAT_SPREAD,
+      RECRUIT_STAT_SPREAD,
+    );
+    const coreRaw = baseCore + mainBoost + coreJitter;
+    const attack = clamp(coreRaw, ranges.attackMin, ranges.attackMax);
+    const defense = clamp(coreRaw, ranges.defenseMin, ranges.defenseMax);
+    const speed = clamp(coreRaw, ranges.speedMin, ranges.speedMax);
+    const hpMid = (ranges.hpMin + ranges.hpMax) / 2;
+    const hpMain = isMainHero ? RECRUIT_MAIN_HP_BONUS : 0;
+    const hpJitter = this.randomStat(-RECRUIT_STAT_SPREAD, RECRUIT_STAT_SPREAD);
+    const hp = clamp(hpMid + hpMain + hpJitter, ranges.hpMin, ranges.hpMax);
+    return { attack, defense, speed, hp };
   }
 
   private discipleCharId(d: any): string {
@@ -682,7 +773,11 @@ export class DisciplesService {
       name: string;
       level: number;
       characterId: string;
-      cardMedia: { mediaUrl?: string; mediaType?: string; label?: string } | null;
+      cardMedia: {
+        mediaUrl?: string;
+        mediaType?: string;
+        label?: string;
+      } | null;
     }>
   > {
     return Promise.all(
@@ -1335,6 +1430,16 @@ export class DisciplesService {
         hp: number;
         maxHpPool: number;
       };
+      /** Покомпонентные статы (после синергии отряда) — урон/лечение считаются от исполнителя техники */
+      roster?: Array<{
+        characterId: string;
+        displayName: string;
+        attack: number;
+        defense: number;
+        speed: number;
+        hp: number;
+        techniquesEquipped: string[];
+      }>;
       rosterLine: string;
       techniqueOwners: Map<
         string,
@@ -1352,6 +1457,15 @@ export class DisciplesService {
         hp: number;
         maxHpPool: number;
       };
+      roster?: Array<{
+        characterId: string;
+        displayName: string;
+        attack: number;
+        defense: number;
+        speed: number;
+        hp: number;
+        techniquesEquipped: string[];
+      }>;
       rosterLine: string;
       techniqueOwners: Map<
         string,
@@ -1390,18 +1504,21 @@ export class DisciplesService {
       consumed: [],
     };
 
-    const userPerformer = (techId: string) =>
-      userSide.techniqueOwners.get(techId)?.displayName ?? userSide.sideLabel;
-    const oppPerformer = (techId: string) =>
-      opponentSide.techniqueOwners.get(techId)?.displayName ??
-      opponentSide.sideLabel;
+    const rosterDetail = (side: typeof userSide): string => {
+      if (!side.roster?.length) return '';
+      const parts = side.roster.map(
+        (m) =>
+          `${m.displayName} (ATK ${m.attack}, DEF ${m.defense}, SPD ${m.speed}, HP ${m.hp})`,
+      );
+      return ` · бойцы: ${parts.join('; ')}`;
+    };
 
     log.push({
       turn: 0,
       actor: 'system',
       action: 'battle_start',
-      message: `${userSide.sideLabel}: ${userSide.rosterLine} · ATK ${userSide.stats.attack}, DEF ${userSide.stats.defense}, SPD ${userSide.stats.speed}, запас ОЗ ${maxUser}`,
-      opponentSummary: `${opponentSide.sideLabel}: ${opponentSide.rosterLine} · ATK ${opponentSide.stats.attack}, DEF ${opponentSide.stats.defense}, SPD ${opponentSide.stats.speed}, запас ОЗ ${maxOpp}`,
+      message: `${userSide.sideLabel}: ${userSide.rosterLine} · суммарно ATK ${userSide.stats.attack}, DEF ${userSide.stats.defense}, SPD ${userSide.stats.speed}, запас ОЗ ${maxUser}${rosterDetail(userSide)}`,
+      opponentSummary: `${opponentSide.sideLabel}: ${opponentSide.rosterLine} · суммарно ATK ${opponentSide.stats.attack}, DEF ${opponentSide.stats.defense}, SPD ${opponentSide.stats.speed}, запас ОЗ ${maxOpp}${rosterDetail(opponentSide)}`,
       userRosterLine: userSide.rosterLine,
       opponentRosterLine: opponentSide.rosterLine,
       hpUser,
@@ -1454,7 +1571,7 @@ export class DisciplesService {
       if (available.length === 0) return 'basic_strike';
       const nonBasic = available.filter((id) => id !== 'basic_strike');
       const pool = nonBasic.length > 0 ? nonBasic : available;
-      return pool[Math.floor(Math.random() * pool.length)]!;
+      return pool[Math.floor(Math.random() * pool.length)];
     };
 
     let userBuffShield = 0;
@@ -1538,14 +1655,15 @@ export class DisciplesService {
       const uId = pick(userSide.equipped);
       const uT = techMap.get(uId) ?? techMap.get('basic_strike');
       if (uT?.cooldownTurns) cd[uId] = uT.cooldownTurns;
-      const uPerf = userPerformer(uId);
+      const uPerform = this.resolvePerformerForTechnique(userSide, uId);
+      const uStats = uPerform.stats;
+      const uPerf = uPerform.displayName;
 
       if (uT?.type === 'heal') {
         const heal = Math.max(
           6,
           Math.round(
-            (uT.power ?? 10) * (1 + userSide.stats.defense / 58) +
-              userSide.stats.hp * 0.07,
+            (uT.power ?? 10) * (1 + uStats.defense / 58) + uStats.hp * 0.07,
           ),
         );
         hpUser = Math.min(maxUser, hpUser + heal);
@@ -1562,9 +1680,7 @@ export class DisciplesService {
         });
       } else if (uT?.type === 'buff') {
         const shieldGain = Math.round(
-          (uT.power ?? 10) * 2.1 +
-            userSide.stats.defense * 0.55 +
-            userSide.stats.speed * 0.22,
+          (uT.power ?? 10) * 2.1 + uStats.defense * 0.55 + uStats.speed * 0.22,
         );
         userBuffShield += Math.max(6, shieldGain);
         log.push({
@@ -1594,8 +1710,8 @@ export class DisciplesService {
         });
         const dmg = this.computeStrikeDamage(
           (uT.power ?? 10) * 0.62,
-          userSide.stats.attack,
-          userSide.stats.speed,
+          uStats.attack,
+          uStats.speed,
           opponentSide.stats.defense,
           opponentSide.stats.speed,
         );
@@ -1616,8 +1732,8 @@ export class DisciplesService {
       } else {
         let dmg = this.computeStrikeDamage(
           uT.power ?? 10,
-          userSide.stats.attack,
-          userSide.stats.speed,
+          uStats.attack,
+          uStats.speed,
           opponentSide.stats.defense,
           opponentSide.stats.speed,
         );
@@ -1632,14 +1748,15 @@ export class DisciplesService {
       const oId = pick(opponentSide.equipped);
       const oT = techMap.get(oId) ?? techMap.get('basic_strike');
       if (oT?.cooldownTurns) cd[oId] = oT.cooldownTurns;
-      const oPerf = oppPerformer(oId);
+      const oPerform = this.resolvePerformerForTechnique(opponentSide, oId);
+      const oStats = oPerform.stats;
+      const oPerf = oPerform.displayName;
 
       if (oT?.type === 'heal') {
         const heal = Math.max(
           6,
           Math.round(
-            (oT.power ?? 10) * (1 + opponentSide.stats.defense / 58) +
-              opponentSide.stats.hp * 0.07,
+            (oT.power ?? 10) * (1 + oStats.defense / 58) + oStats.hp * 0.07,
           ),
         );
         hpOpp = Math.min(maxOpp, hpOpp + heal);
@@ -1656,9 +1773,7 @@ export class DisciplesService {
         });
       } else if (oT?.type === 'buff') {
         const shieldGain = Math.round(
-          (oT.power ?? 10) * 2.1 +
-            opponentSide.stats.defense * 0.55 +
-            opponentSide.stats.speed * 0.22,
+          (oT.power ?? 10) * 2.1 + oStats.defense * 0.55 + oStats.speed * 0.22,
         );
         oppBuffShield += Math.max(6, shieldGain);
         log.push({
@@ -1688,8 +1803,8 @@ export class DisciplesService {
         });
         const dmg = this.computeStrikeDamage(
           (oT.power ?? 10) * 0.62,
-          opponentSide.stats.attack,
-          opponentSide.stats.speed,
+          oStats.attack,
+          oStats.speed,
           userSide.stats.defense,
           userSide.stats.speed,
         );
@@ -1710,8 +1825,8 @@ export class DisciplesService {
       } else {
         let dmg = this.computeStrikeDamage(
           oT.power ?? 10,
-          opponentSide.stats.attack,
-          opponentSide.stats.speed,
+          oStats.attack,
+          oStats.speed,
           userSide.stats.defense,
           userSide.stats.speed,
         );
@@ -1814,8 +1929,7 @@ export class DisciplesService {
     const maxBattlesPerDay = config.maxBattlesPerDay ?? 5;
     const battlesToday = this.effectiveDailyBattlesCount(user as any);
     const isAdmin = (user as { role?: string }).role === 'admin';
-    const canBattle =
-      isAdmin || battlesToday < maxBattlesPerDay;
+    const canBattle = isAdmin || battlesToday < maxBattlesPerDay;
 
     const lastWeekly = (user as any).lastWeeklyBattleAt
       ? new Date((user as any).lastWeeklyBattleAt)
@@ -1907,7 +2021,8 @@ export class DisciplesService {
       balance: user.balance ?? 0,
       rerollCostCoins: config.rerollCostCoins,
       trainCostCoins: config.trainCostCoins,
-      characterPool: (config as { characterPool?: string }).characterPool ?? 'all',
+      characterPool:
+        (config as { characterPool?: string }).characterPool ?? 'all',
       lastRerollCandidate: user.lastRerollCandidate ?? null,
     };
   }
@@ -2015,10 +2130,12 @@ export class DisciplesService {
       hpMin: 20,
       hpMax: 50,
     };
-    const attack = this.randomStat(ranges.attackMin, ranges.attackMax);
-    const defense = this.randomStat(ranges.defenseMin, ranges.defenseMax);
-    const speed = this.randomStat(ranges.speedMin, ranges.speedMax);
-    const hp = this.randomStat(ranges.hpMin, ranges.hpMax);
+    const isMainHero =
+      (character as { role?: string }).role === CharacterRole.MAIN;
+    const { attack, defense, speed, hp } = this.rollBalancedRecruitStats(
+      ranges,
+      isMainHero,
+    );
 
     user.balance = (user.balance ?? 0) - cost;
     user.lastRerollCandidate = {
@@ -2237,13 +2354,13 @@ export class DisciplesService {
         d[k] = Math.min(cap, Math.max(1, (d[k] ?? 0) + delta));
       };
       if (roll < 0.55) {
-        const k = sortedByWeakest[0]!;
+        const k = sortedByWeakest[0];
         bump(k, roll < 0.2 ? 2 : 1);
       } else if (roll < 0.82) {
-        bump(sortedByWeakest[0]!, 1);
-        bump(sortedByWeakest[1]!, 1);
+        bump(sortedByWeakest[0], 1);
+        bump(sortedByWeakest[1], 1);
       } else {
-        const k = sortedByWeakest[Math.floor(Math.random() * 2)]!;
+        const k = sortedByWeakest[Math.floor(Math.random() * 2)];
         bump(k, 2);
       }
     }
@@ -2400,6 +2517,249 @@ export class DisciplesService {
     return { attack, defense, speed, hpSum, maxHpPool };
   }
 
+  private characterTitleIdStr(doc: { titleId?: unknown }): string {
+    const t = doc?.titleId;
+    if (t == null) return '';
+    if (t instanceof Types.ObjectId) return t.toString();
+    if (typeof t === 'object' && t !== null && '_id' in t) {
+      const id = (t as { _id: Types.ObjectId })._id;
+      return id instanceof Types.ObjectId ? id.toString() : String(id);
+    }
+    if (typeof t === 'string' || typeof t === 'number') return String(t);
+    return '';
+  }
+
+  private async loadCharacterSynergyMeta(
+    characterObjectIds: Types.ObjectId[],
+  ): Promise<Map<string, { role: string; titleId: string }>> {
+    const unique = [
+      ...new Map(characterObjectIds.map((id) => [id.toString(), id])).values(),
+    ];
+    if (!unique.length) return new Map();
+    const chars = await this.characterModel
+      .find({ _id: { $in: unique } })
+      .select('role titleId')
+      .lean()
+      .exec();
+    const map = new Map<string, { role: string; titleId: string }>();
+    for (const c of chars as {
+      _id: Types.ObjectId;
+      role?: string;
+      titleId?: unknown;
+    }[]) {
+      map.set(c._id.toString(), {
+        role: c.role ?? CharacterRole.OTHER,
+        titleId: this.characterTitleIdStr({ titleId: c.titleId }),
+      });
+    }
+    return map;
+  }
+
+  /**
+   * Синергия активного отряда из ровно трёх учеников (роли и тайтл из карточек персонажей).
+   * Множители перемножаются, если сработало несколько условий.
+   */
+  private computeSquadSynergy(
+    active: Disciple[],
+    metaByCharId: Map<string, { role: string; titleId: string }>,
+  ): {
+    mult: { attack: number; defense: number; speed: number; hp: number };
+    labels: string[];
+  } {
+    const labels: string[] = [];
+    let attack = 1;
+    let defense = 1;
+    let speed = 1;
+    let hp = 1;
+    if (active.length !== SQUAD_SYNERGY_ROSTER_SIZE) {
+      return { mult: { attack, defense, speed, hp }, labels };
+    }
+    const metas: { role: string; titleId: string }[] = [];
+    for (const d of active) {
+      const cid = this.discipleCharId(d);
+      const m = metaByCharId.get(cid);
+      if (!m) {
+        return {
+          mult: { attack: 1, defense: 1, speed: 1, hp: 1 },
+          labels: [],
+        };
+      }
+      metas.push(m);
+    }
+    const sameTitle =
+      Boolean(metas[0].titleId) &&
+      metas.every((m) => m.titleId === metas[0].titleId);
+    const allAntag = metas.every((m) => m.role === 'antagonist');
+    const allMain = metas.every((m) => m.role === 'main');
+
+    if (sameTitle) {
+      attack *= SYNERGY_SAME_TITLE.attack;
+      defense *= SYNERGY_SAME_TITLE.defense;
+      speed *= SYNERGY_SAME_TITLE.speed;
+      hp *= SYNERGY_SAME_TITLE.hp;
+      labels.push('Единый тайтл');
+    }
+    if (allAntag) {
+      attack *= SYNERGY_ALL_ANTAGONIST.attack;
+      defense *= SYNERGY_ALL_ANTAGONIST.defense;
+      speed *= SYNERGY_ALL_ANTAGONIST.speed;
+      hp *= SYNERGY_ALL_ANTAGONIST.hp;
+      labels.push('Три антагониста');
+    }
+    if (allMain) {
+      attack *= SYNERGY_ALL_MAIN.attack;
+      defense *= SYNERGY_ALL_MAIN.defense;
+      speed *= SYNERGY_ALL_MAIN.speed;
+      hp *= SYNERGY_ALL_MAIN.hp;
+      labels.push('Три главных героя');
+    }
+    return { mult: { attack, defense, speed, hp }, labels };
+  }
+
+  private applySynergyToAggregatedStats(
+    agg: {
+      attack: number;
+      defense: number;
+      speed: number;
+      hpSum: number;
+      maxHpPool: number;
+    },
+    mult: { attack: number; defense: number; speed: number; hp: number },
+  ): {
+    attack: number;
+    defense: number;
+    speed: number;
+    hpSum: number;
+    maxHpPool: number;
+  } {
+    const attack = Math.max(1, Math.round(agg.attack * mult.attack));
+    const defense = Math.max(1, Math.round(agg.defense * mult.defense));
+    const speed = Math.max(1, Math.round(agg.speed * mult.speed));
+    const hpSum = Math.max(5, Math.round(agg.hpSum * mult.hp));
+    const maxHpPool = Math.max(
+      140,
+      Math.round(hpSum * 5.2 + defense * 3.8 + attack * 1.1),
+    );
+    return { attack, defense, speed, hpSum, maxHpPool };
+  }
+
+  /** Те же множители синергии, что и у суммарных статов — для покомпонентных статов в бою */
+  private scaleRosterStatsWithSynergy<
+    T extends {
+      attack: number;
+      defense: number;
+      speed: number;
+      hp: number;
+    },
+  >(
+    roster: T[],
+    mult: { attack: number; defense: number; speed: number; hp: number },
+  ): T[] {
+    if (
+      mult.attack === 1 &&
+      mult.defense === 1 &&
+      mult.speed === 1 &&
+      mult.hp === 1
+    ) {
+      return roster;
+    }
+    return roster.map((m) => ({
+      ...m,
+      attack: Math.max(1, Math.round(m.attack * mult.attack)),
+      defense: Math.max(1, Math.round(m.defense * mult.defense)),
+      speed: Math.max(1, Math.round(m.speed * mult.speed)),
+      hp: Math.max(5, Math.round(m.hp * mult.hp)),
+    }));
+  }
+
+  /**
+   * Кто бьёт/лечит этой техникой и с какими личными статами (все ученики участвуют по очереди/случайно при дублях).
+   */
+  private resolvePerformerForTechnique(
+    side: {
+      stats: {
+        attack: number;
+        defense: number;
+        speed: number;
+        hp: number;
+        maxHpPool: number;
+      };
+      roster?: Array<{
+        characterId: string;
+        displayName: string;
+        attack: number;
+        defense: number;
+        speed: number;
+        hp: number;
+        techniquesEquipped: string[];
+      }>;
+      techniqueOwners: Map<
+        string,
+        { displayName: string; characterId: string }
+      >;
+      sideLabel: string;
+    },
+    techId: string,
+  ): {
+    stats: {
+      attack: number;
+      defense: number;
+      speed: number;
+      hp: number;
+    };
+    displayName: string;
+  } {
+    let candidates =
+      (side.roster ?? []).filter((m) =>
+        (m.techniquesEquipped ?? []).includes(techId),
+      ) ?? [];
+    if (
+      candidates.length === 0 &&
+      techId === 'basic_strike' &&
+      (side.roster?.length ?? 0) > 0
+    ) {
+      candidates = [...(side.roster ?? [])];
+    }
+    if (candidates.length > 0) {
+      const m =
+        candidates[Math.floor(Math.random() * candidates.length)] ??
+        candidates[0];
+      return {
+        stats: {
+          attack: m.attack,
+          defense: m.defense,
+          speed: m.speed,
+          hp: m.hp,
+        },
+        displayName: m.displayName,
+      };
+    }
+    const fb = side.techniqueOwners.get(techId);
+    if (fb && side.roster?.length) {
+      const m = side.roster.find((x) => x.characterId === fb.characterId);
+      if (m) {
+        return {
+          stats: {
+            attack: m.attack,
+            defense: m.defense,
+            speed: m.speed,
+            hp: m.hp,
+          },
+          displayName: m.displayName,
+        };
+      }
+    }
+    return {
+      stats: {
+        attack: side.stats.attack,
+        defense: side.stats.defense,
+        speed: side.stats.speed,
+        hp: side.stats.hp,
+      },
+      displayName: side.sideLabel,
+    };
+  }
+
   private buildTechniqueOwnerMap(
     members: Array<{
       displayName: string;
@@ -2548,7 +2908,8 @@ export class DisciplesService {
     const candidatesCount = await this.userModel
       .countDocuments(matchFilter as any)
       .exec();
-    const skip = candidatesCount > 1 ? Math.floor(Math.random() * candidatesCount) : 0;
+    const skip =
+      candidatesCount > 1 ? Math.floor(Math.random() * candidatesCount) : 0;
     const opponent = await this.userModel
       .findOne(matchFilter as any)
       .select('username avatar combatRating disciples')
@@ -2580,7 +2941,10 @@ export class DisciplesService {
           avatar: src.avatar,
           combatRating: src.combatRating,
           disciples: (src.disciples ?? []).map((d: any) => ({
-            characterId: d.characterId?._id?.toString?.() ?? d.characterId?.toString?.() ?? null,
+            characterId:
+              d.characterId?._id?.toString?.() ??
+              d.characterId?.toString?.() ??
+              null,
             name: d.characterId?.name ?? d.name,
             titleName: d.titleId?.name ?? d.titleName,
             level: d.level,
@@ -2637,13 +3001,21 @@ export class DisciplesService {
           name: string;
           level: number;
           characterId?: string;
-          cardMedia?: { mediaUrl?: string; mediaType?: string; label?: string } | null;
+          cardMedia?: {
+            mediaUrl?: string;
+            mediaType?: string;
+            label?: string;
+          } | null;
         }>;
         opponent?: Array<{
           name: string;
           level: number;
           characterId?: string;
-          cardMedia?: { mediaUrl?: string; mediaType?: string; label?: string } | null;
+          cardMedia?: {
+            mediaUrl?: string;
+            mediaType?: string;
+            label?: string;
+          } | null;
         }>;
       };
       userCard: unknown;
@@ -2651,6 +3023,10 @@ export class DisciplesService {
       battleLog: unknown;
       hp: unknown;
       supportEffects?: unknown;
+      squadSynergy?: {
+        user: { labels: string[] };
+        opponent: { labels: string[] };
+      };
     };
   }> {
     const config = await this.getConfig();
@@ -2686,7 +3062,12 @@ export class DisciplesService {
 
     const userActive = this.activeDisciples(user);
     const userRoster = await this.enrichBattleRosterFromDisciples(userActive);
-    const userAgg = this.aggregateSquadCombatStats(userRoster);
+    let userAgg = this.aggregateSquadCombatStats(userRoster);
+    const userSynergyMeta = await this.loadCharacterSynergyMeta(
+      userActive.map((d) => new Types.ObjectId(this.discipleCharId(d))),
+    );
+    const userSynergy = this.computeSquadSynergy(userActive, userSynergyMeta);
+    userAgg = this.applySynergyToAggregatedStats(userAgg, userSynergy.mult);
     const userTechniqueOwners = this.buildTechniqueOwnerMap(userRoster);
     const userRosterLineStr = this.rosterLine(userRoster);
     const userEquipped = userRoster.flatMap((m) => m.techniquesEquipped ?? []);
@@ -2718,6 +3099,13 @@ export class DisciplesService {
     >;
     let oppRosterLineStr: string;
     let oppCharacterId = '';
+    let oppSynergy: {
+      mult: { attack: number; defense: number; speed: number; hp: number };
+      labels: string[];
+    } = {
+      mult: { attack: 1, defense: 1, speed: 1, hp: 1 },
+      labels: [],
+    };
 
     if (isBot) {
       const oppRoster = this.buildBotBattleRoster(
@@ -2746,6 +3134,11 @@ export class DisciplesService {
       oppRosterMembers = oppRoster;
       oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
       oppAgg = this.aggregateSquadCombatStats(oppRoster);
+      const oppSynergyMeta = await this.loadCharacterSynergyMeta(
+        oppActive.map((d) => new Types.ObjectId(this.discipleCharId(d))),
+      );
+      oppSynergy = this.computeSquadSynergy(oppActive, oppSynergyMeta);
+      oppAgg = this.applySynergyToAggregatedStats(oppAgg, oppSynergy.mult);
       oppTechniqueOwners = this.buildTechniqueOwnerMap(oppRoster);
       oppRosterLineStr = this.rosterLine(oppRoster);
       const oppLead = this.getLeadActiveDisciple(opponent);
@@ -2760,6 +3153,13 @@ export class DisciplesService {
     }
 
     const lead = this.getLeadActiveDisciple(user);
+    const userRosterBattle = this.scaleRosterStatsWithSynergy(
+      userRoster,
+      userSynergy.mult,
+    );
+    const oppRosterBattle = isBot
+      ? oppRosterMembers
+      : this.scaleRosterStatsWithSynergy(oppRosterMembers, oppSynergy.mult);
     const sim = await this.simulateBattleWithTechniques(
       {
         characterId: lead ? this.discipleCharId(lead) : '',
@@ -2771,6 +3171,15 @@ export class DisciplesService {
           hp: userAgg.hpSum,
           maxHpPool: userAgg.maxHpPool,
         },
+        roster: userRosterBattle.map((m) => ({
+          characterId: m.characterId,
+          displayName: m.displayName,
+          attack: m.attack,
+          defense: m.defense,
+          speed: m.speed,
+          hp: m.hp,
+          techniquesEquipped: m.techniquesEquipped ?? [],
+        })),
         rosterLine: userRosterLineStr,
         techniqueOwners: userTechniqueOwners,
         sideLabel: 'Ваш отряд',
@@ -2785,6 +3194,15 @@ export class DisciplesService {
           hp: oppAgg.hpSum,
           maxHpPool: oppAgg.maxHpPool,
         },
+        roster: oppRosterBattle.map((m) => ({
+          characterId: m.characterId,
+          displayName: m.displayName,
+          attack: m.attack,
+          defense: m.defense,
+          speed: m.speed,
+          hp: m.hp,
+          techniquesEquipped: m.techniquesEquipped ?? [],
+        })),
         rosterLine: oppRosterLineStr,
         techniqueOwners: oppTechniqueOwners,
         sideLabel: isBot ? 'Отряд бота' : 'Отряд противника',
@@ -2866,6 +3284,10 @@ export class DisciplesService {
         battleLog: sim.log,
         hp: sim.final,
         supportEffects: sim.supportEffects,
+        squadSynergy: {
+          user: { labels: userSynergy.labels },
+          opponent: { labels: oppSynergy.labels },
+        },
       },
     };
   }
@@ -2917,7 +3339,8 @@ export class DisciplesService {
     const candidatesCount = await this.userModel
       .countDocuments(matchFilter as any)
       .exec();
-    const skip = candidatesCount > 1 ? Math.floor(Math.random() * candidatesCount) : 0;
+    const skip =
+      candidatesCount > 1 ? Math.floor(Math.random() * candidatesCount) : 0;
     const opponent = await this.userModel
       .findOne(matchFilter as any)
       .select('username avatar weeklyRating disciples')
@@ -2948,7 +3371,10 @@ export class DisciplesService {
           avatar: src.avatar,
           weeklyRating: oppRating,
           disciples: (src.disciples ?? []).map((d: any) => ({
-            characterId: d.characterId?._id?.toString?.() ?? d.characterId?.toString?.() ?? null,
+            characterId:
+              d.characterId?._id?.toString?.() ??
+              d.characterId?.toString?.() ??
+              null,
             name: d.characterId?.name ?? d.name,
             titleName: d.titleId?.name ?? d.titleName,
             level: d.level,
@@ -3016,13 +3442,21 @@ export class DisciplesService {
           name: string;
           level: number;
           characterId?: string;
-          cardMedia?: { mediaUrl?: string; mediaType?: string; label?: string } | null;
+          cardMedia?: {
+            mediaUrl?: string;
+            mediaType?: string;
+            label?: string;
+          } | null;
         }>;
         opponent?: Array<{
           name: string;
           level: number;
           characterId?: string;
-          cardMedia?: { mediaUrl?: string; mediaType?: string; label?: string } | null;
+          cardMedia?: {
+            mediaUrl?: string;
+            mediaType?: string;
+            label?: string;
+          } | null;
         }>;
       };
       userCard: unknown;
@@ -3030,6 +3464,10 @@ export class DisciplesService {
       battleLog: unknown;
       hp: unknown;
       supportEffects?: unknown;
+      squadSynergy?: {
+        user: { labels: string[] };
+        opponent: { labels: string[] };
+      };
     };
   }> {
     const config = await this.getConfig();
@@ -3074,7 +3512,15 @@ export class DisciplesService {
 
     const userActiveW = this.activeDisciples(user);
     const userRosterW = await this.enrichBattleRosterFromDisciples(userActiveW);
-    const userAggW = this.aggregateSquadCombatStats(userRosterW);
+    let userAggW = this.aggregateSquadCombatStats(userRosterW);
+    const userSynergyMetaW = await this.loadCharacterSynergyMeta(
+      userActiveW.map((d) => new Types.ObjectId(this.discipleCharId(d))),
+    );
+    const userSynergyW = this.computeSquadSynergy(
+      userActiveW,
+      userSynergyMetaW,
+    );
+    userAggW = this.applySynergyToAggregatedStats(userAggW, userSynergyW.mult);
     const userTechniqueOwnersW = this.buildTechniqueOwnerMap(userRosterW);
     const userRosterLineW = this.rosterLine(userRosterW);
     const userEquipped = userRosterW.flatMap((m) => m.techniquesEquipped ?? []);
@@ -3107,6 +3553,13 @@ export class DisciplesService {
     >;
     let oppRosterLineW: string;
     let oppCharacterIdW = '';
+    let oppSynergyW: {
+      mult: { attack: number; defense: number; speed: number; hp: number };
+      labels: string[];
+    } = {
+      mult: { attack: 1, defense: 1, speed: 1, hp: 1 },
+      labels: [],
+    };
 
     if (isBot) {
       const rating = user.weeklyRating ?? 1000;
@@ -3138,6 +3591,11 @@ export class DisciplesService {
       oppRating = opponent.weeklyRating ?? 1000;
       oppEquipped = oppRoster.flatMap((m) => m.techniquesEquipped ?? []);
       oppAggW = this.aggregateSquadCombatStats(oppRoster);
+      const oppSynergyMetaW = await this.loadCharacterSynergyMeta(
+        oppActive.map((d) => new Types.ObjectId(this.discipleCharId(d))),
+      );
+      oppSynergyW = this.computeSquadSynergy(oppActive, oppSynergyMetaW);
+      oppAggW = this.applySynergyToAggregatedStats(oppAggW, oppSynergyW.mult);
       oppTechniqueOwnersW = this.buildTechniqueOwnerMap(oppRoster);
       oppRosterLineW = this.rosterLine(oppRoster);
       const oppLeadW = this.getLeadActiveDisciple(opponent);
@@ -3151,6 +3609,13 @@ export class DisciplesService {
         : null;
     }
     const weeklyLead = this.getLeadActiveDisciple(user);
+    const userRosterBattleW = this.scaleRosterStatsWithSynergy(
+      userRosterW,
+      userSynergyW.mult,
+    );
+    const oppRosterBattleW = isBot
+      ? oppRosterMembersW
+      : this.scaleRosterStatsWithSynergy(oppRosterMembersW, oppSynergyW.mult);
     const sim = await this.simulateBattleWithTechniques(
       {
         characterId: weeklyLead ? this.discipleCharId(weeklyLead) : '',
@@ -3162,6 +3627,15 @@ export class DisciplesService {
           hp: userAggW.hpSum,
           maxHpPool: userAggW.maxHpPool,
         },
+        roster: userRosterBattleW.map((m) => ({
+          characterId: m.characterId,
+          displayName: m.displayName,
+          attack: m.attack,
+          defense: m.defense,
+          speed: m.speed,
+          hp: m.hp,
+          techniquesEquipped: m.techniquesEquipped ?? [],
+        })),
         rosterLine: userRosterLineW,
         techniqueOwners: userTechniqueOwnersW,
         sideLabel: 'Ваш отряд',
@@ -3176,6 +3650,15 @@ export class DisciplesService {
           hp: oppAggW.hpSum,
           maxHpPool: oppAggW.maxHpPool,
         },
+        roster: oppRosterBattleW.map((m) => ({
+          characterId: m.characterId,
+          displayName: m.displayName,
+          attack: m.attack,
+          defense: m.defense,
+          speed: m.speed,
+          hp: m.hp,
+          techniquesEquipped: m.techniquesEquipped ?? [],
+        })),
         rosterLine: oppRosterLineW,
         techniqueOwners: oppTechniqueOwnersW,
         sideLabel: isBot ? 'Отряд бота' : 'Отряд противника',
@@ -3269,6 +3752,10 @@ export class DisciplesService {
         battleLog: sim.log,
         hp: sim.final,
         supportEffects: sim.supportEffects,
+        squadSynergy: {
+          user: { labels: userSynergyW.labels },
+          opponent: { labels: oppSynergyW.labels },
+        },
       },
     };
   }

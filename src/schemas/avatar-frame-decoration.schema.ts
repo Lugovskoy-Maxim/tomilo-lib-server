@@ -32,6 +32,12 @@ export class AvatarFrameDecoration {
   /** Автор (из предложений пользователей). Получает 10% от каждой продажи. */
   @Prop({ type: Types.ObjectId, ref: 'User' })
   authorId?: Types.ObjectId;
+
+  @Prop({ min: 0 })
+  originalPrice?: number;
+
+  @Prop({ default: 0, min: 0 })
+  purchaseCount: number;
 }
 
 export const AvatarFrameDecorationSchema = SchemaFactory.createForClass(
