@@ -84,6 +84,8 @@ export class CommentsService {
 
     const saved = await comment.save();
 
+    let commentHiddenBySpamDetection = false;
+
     // Run spam detection
     try {
       const user = await this.usersService.findById(userId);
@@ -102,6 +104,8 @@ export class CommentsService {
             user,
             spamResult,
           );
+          commentHiddenBySpamDetection =
+            Boolean(saved.isSpam) && saved.isVisible === false;
 
           // If spam is severe, throw an error
           if (spamResult.score >= 70) {
@@ -118,7 +122,9 @@ export class CommentsService {
 
     // Инкрементируем счётчик комментариев пользователя
     try {
-      await this.usersService.incrementCommentsCount(userId);
+      if (!commentHiddenBySpamDetection) {
+        await this.usersService.incrementCommentsCount(userId);
+      }
     } catch (error) {
       // Не блокируем создание комментария при ошибке инкремента
       console.warn(

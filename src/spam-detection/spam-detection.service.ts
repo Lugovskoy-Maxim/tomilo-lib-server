@@ -288,6 +288,11 @@ export class SpamDetectionService {
     comment.spamDetectedAt = new Date();
     comment.spamScore = detectionResult.score;
     comment.spamReasons = detectionResult.reasons;
+
+    // Auto-hide high-confidence spam so it doesn't appear in feeds/leaderboards
+    if (detectionResult.isSpam && detectionResult.score >= 50) {
+      comment.isVisible = false;
+    }
     await comment.save();
 
     // Update user's spam activity log
