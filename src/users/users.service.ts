@@ -784,8 +784,27 @@ export class UsersService {
       const pipeline: any[] = [
         {
           $match: isAllTime
-            ? { isVisible: true }
-            : { createdAt: { $gte: dateFrom }, isVisible: true },
+            ? { isVisible: true, isSpam: { $ne: true } }
+            : {
+                createdAt: { $gte: dateFrom },
+                isVisible: true,
+                isSpam: { $ne: true },
+              },
+        },
+        {
+          $lookup: {
+            from: 'users',
+            localField: 'userId',
+            foreignField: '_id',
+            as: 'u',
+          },
+        },
+        { $unwind: '$u' },
+        {
+          $match: {
+            'u.isBot': { $ne: true },
+            'u.showStats': { $ne: false },
+          },
         },
         { $group: { _id: '$userId', count: { $sum: 1 } } },
         { $sort: { count: -1 as const } },
