@@ -31,12 +31,15 @@ function getStartOfDayUTC(d: Date = new Date()): Date {
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
+/** Опыт до следующего уровня ученика: плавный рост, без «лестницы» на низких уровнях */
 function expToNextLevel(level: number): number {
-  return 30 + level * 20;
+  const L = Math.max(1, level);
+  return Math.max(32, Math.floor(36 + L * 22 + L * L * 0.14));
 }
 
 function libraryExpToNext(level: number): number {
-  return 25 + level * 20;
+  const L = Math.max(1, level);
+  return Math.max(28, Math.floor(32 + L * 20 + L * L * 0.1));
 }
 
 /** Доля опыта основного ученика при тренировке (остальное делится между всеми остальными) */
@@ -313,6 +316,20 @@ export class DisciplesService {
    * @param config Конфиг (для maxBattlesPerDay)
    * @throws BadRequestException если превышен лимит
    */
+  /** Сколько боёв уже учтено «сегодня» (UTC), с автосбросом по дате — для профиля и лимита */
+  private effectiveDailyBattlesCount(user: {
+    dailyBattlesDate?: Date | null;
+    dailyBattlesCount?: number;
+  }): number {
+    const now = new Date();
+    const todayStart = getStartOfDayUTC(now);
+    const lastReset = user.dailyBattlesDate
+      ? new Date(user.dailyBattlesDate as Date)
+      : null;
+    if (!lastReset || lastReset < todayStart) return 0;
+    return user.dailyBattlesCount ?? 0;
+  }
+
   private checkAndIncrementDailyBattles(
     user: UserDocument,
     config: DisciplesConfigDocument,
@@ -1404,7 +1421,8 @@ export class DisciplesService {
         techniqueId,
         techniqueName,
         performerName,
-        value: total + absorbedByShield,
+        /** Фактическое снятие ОЗ у цели (после щита-баффа противника) */
+        value: total,
         absorbedByShield: absorbedByShield || undefined,
         hpUser,
         hpOpp,
@@ -1444,7 +1462,7 @@ export class DisciplesService {
         techniqueId,
         techniqueName,
         performerName,
-        value: total + absorbed,
+        value: total,
         absorbed: absorbed || undefined,
         hpUser,
         hpOpp,
@@ -1681,7 +1699,14 @@ export class DisciplesService {
       if (hpUser <= 0) break;
     }
 
-    const win = hpUser >= hpOpp;
+    const win =
+      hpOpp <= 0
+        ? true
+        : hpUser <= 0
+          ? false
+          : hpUser > hpOpp ||
+            (hpUser === hpOpp &&
+              userSide.stats.speed >= opponentSide.stats.speed);
     return {
       win,
       log,
@@ -1707,7 +1732,7 @@ export class DisciplesService {
         { path: 'disciples.titleId', model: 'Title', select: 'name' },
       ])
       .select(
-        'disciples maxDisciples primaryDiscipleCharacterId libraryLevel libraryExp lastTrainingAt combatRating lastBattleAt lastRerollCandidate balance lastWeeklyBattleAt weeklyRating weeklyWins weeklyLosses',
+        'disciples maxDisciples primaryDiscipleCharacterId libraryLevel libraryExp lastTrainingAt combatRating lastBattleAt lastRerollCandidate balance lastWeeklyBattleAt weeklyRating weeklyWins weeklyLosses role dailyBattlesCount dailyBattlesDate',
       )
       .lean()
       .exec();
@@ -1723,8 +1748,11 @@ export class DisciplesService {
     const canTrain =
       !lastTrainingAt ||
       getStartOfDayUTC(lastTrainingAt).getTime() < today.getTime();
-    const battlesToday = 0; // TODO: store battlesPerDayCount if needed
-    const canBattle = (config.maxBattlesPerDay ?? 5) > battlesToday;
+    const maxBattlesPerDay = config.maxBattlesPerDay ?? 5;
+    const battlesToday = this.effectiveDailyBattlesCount(user as any);
+    const isAdmin = (user as { role?: string }).role === 'admin';
+    const canBattle =
+      isAdmin || battlesToday < maxBattlesPerDay;
 
     const lastWeekly = (user as any).lastWeeklyBattleAt
       ? new Date((user as any).lastWeeklyBattleAt)
@@ -1802,6 +1830,9 @@ export class DisciplesService {
       combatRating: user.combatRating ?? 0,
       canTrain,
       canBattle,
+      dailyBattlesCount: battlesToday,
+      maxBattlesPerDay,
+      role: (user as { role?: string }).role,
       weekly: {
         canWeeklyBattle,
         nextWeeklyBattleAt,
@@ -2098,12 +2129,11 @@ export class DisciplesService {
     );
     if (!disciple) throw new BadRequestException('Ученик не найден');
 
-    // Редкий провал тренировки: списывает ресурсы/время, но без прироста статов (манхва-стиль)
-    const failChance = 0.06;
+    // Редкий провал: монеты и дневной слот тратятся, статы не растут
+    const failChance = 0.03;
     const failed = Math.random() < failChance;
 
     const cap = config.statCap ?? 50;
-    const roll = Math.random();
     type StatKey = 'attack' | 'defense' | 'speed' | 'hp';
     const d = disciple as {
       attack: number;
@@ -2115,27 +2145,28 @@ export class DisciplesService {
       rank?: string;
     };
     if (!failed) {
-      if (roll < 0.33) {
-        const key = ['attack', 'defense', 'speed', 'hp'][
-          Math.floor(Math.random() * 4)
-        ] as StatKey;
-        d[key] = Math.min(cap, (d[key] ?? 0) + 1);
-      } else if (roll < 0.66) {
-        const keys = ['attack', 'defense', 'speed', 'hp']
-          .sort(() => Math.random() - 0.5)
-          .slice(0, 2) as StatKey[];
-        for (const k of keys) {
-          d[k] = Math.min(cap, (d[k] ?? 0) + 1);
-        }
+      const stats: StatKey[] = ['attack', 'defense', 'speed', 'hp'];
+      const sortedByWeakest = [...stats].sort(
+        (a, b) => (d[a] ?? 0) - (d[b] ?? 0),
+      );
+      const roll = Math.random();
+      const bump = (k: StatKey, delta: number) => {
+        d[k] = Math.min(cap, Math.max(1, (d[k] ?? 0) + delta));
+      };
+      if (roll < 0.55) {
+        const k = sortedByWeakest[0]!;
+        bump(k, roll < 0.2 ? 2 : 1);
+      } else if (roll < 0.82) {
+        bump(sortedByWeakest[0]!, 1);
+        bump(sortedByWeakest[1]!, 1);
       } else {
-        const key = ['attack', 'defense', 'speed', 'hp'][
-          Math.floor(Math.random() * 4)
-        ] as StatKey;
-        d[key] = Math.min(cap, (d[key] ?? 0) + 2);
+        const k = sortedByWeakest[Math.floor(Math.random() * 2)]!;
+        bump(k, 2);
       }
     }
 
-    const expGain = 5 + Math.floor(Math.random() * 11);
+    const lvl = Math.max(1, d.level ?? 1);
+    const expGain = 7 + Math.floor(lvl * 0.35) + Math.floor(Math.random() * 6);
     this.applyGameExpToUser(user, expGain, 'all', TRAINING_PRIMARY_EXP_SHARE);
 
     user.balance = (user.balance ?? 0) - cost;
@@ -2626,10 +2657,12 @@ export class DisciplesService {
 
     const win = sim.win;
 
-    const coinsGained = win ? 25 : 5;
+    const coinsWin = 18 + Math.min(35, Math.floor(cpUser / 45));
+    const coinsLoss = 6 + Math.min(12, Math.floor(cpUser / 120));
+    const coinsGained = win ? coinsWin : coinsLoss;
     user.balance = (user.balance ?? 0) + coinsGained;
     user.lastBattleAt = new Date();
-    const battleExp = win ? 10 : 2;
+    const battleExp = win ? 12 : 4;
     this.applyGameExpToUser(user, battleExp, 'active', GAME_PRIMARY_EXP_SHARE);
     user.markModified('balance');
     user.markModified('lastBattleAt');

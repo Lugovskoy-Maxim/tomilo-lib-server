@@ -8,7 +8,6 @@ import { Chapter, ChapterSchema } from '../schemas/chapter.schema';
 import { Comment, CommentSchema } from '../schemas/comment.schema';
 import { AdminLog, AdminLogSchema } from '../schemas/admin-log.schema';
 import { SpamDetectionModule } from '../spam-detection/spam-detection.module';
-import { SpamDetectionService } from '../spam-detection/spam-detection.service';
 
 @Module({
   imports: [
@@ -22,7 +21,7 @@ import { SpamDetectionService } from '../spam-detection/spam-detection.service';
     SpamDetectionModule,
   ],
   controllers: [AdminController],
-  providers: [AdminService, SpamDetectionService],
+  providers: [AdminService],
   exports: [AdminService],
 })
 export class AdminModule {}
