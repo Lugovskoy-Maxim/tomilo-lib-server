@@ -56,7 +56,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch users',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/admin',
       };
@@ -83,7 +83,7 @@ export class UsersController {
       return {
         success: false,
         message: 'User not found',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/admin/${id}`,
       };
@@ -107,7 +107,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch profile',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile',
       };
@@ -132,7 +132,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch profile achievements',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/achievements',
       };
@@ -193,7 +193,7 @@ export class UsersController {
       return {
         success: false,
         message: 'An error occurred',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/daily-bonus',
         method: 'POST',
@@ -220,7 +220,7 @@ export class UsersController {
       return {
         success: false,
         message: 'An error occurred',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/daily-quests',
         method: 'GET',
@@ -265,7 +265,7 @@ export class UsersController {
       return {
         success: false,
         message: 'An error occurred',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/daily-quests/claim',
         method: 'POST',
@@ -1236,7 +1236,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to update profile',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile',
         method: 'PUT',
@@ -1262,7 +1262,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to schedule deletion',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/schedule-deletion',
         method: 'POST',
@@ -1288,7 +1288,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to cancel deletion',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/cancel-deletion',
         method: 'POST',
@@ -1319,7 +1319,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to update user',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/admin/${id}`,
         method: 'PUT',
@@ -1346,7 +1346,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to delete user',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/admin/${id}`,
         method: 'DELETE',
@@ -1388,7 +1388,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch bookmarks',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/bookmarks',
       };
@@ -1420,7 +1420,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch bookmark status',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/profile/bookmarks/${titleId}/status`,
       };
@@ -1453,7 +1453,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch bookmark counts',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/bookmarks/counts',
       };
@@ -1493,7 +1493,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch reading progress',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/profile/progress/${titleId}`,
       };
@@ -1534,7 +1534,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to add bookmark',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/profile/bookmarks/${titleId}`,
         method: 'POST',
@@ -1578,7 +1578,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to update bookmark category',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/profile/bookmarks/${titleId}`,
         method: 'PUT',
@@ -1611,7 +1611,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to remove bookmark',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/profile/bookmarks/${titleId}`,
         method: 'DELETE',
@@ -1653,7 +1653,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch reading history',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/history',
       };
@@ -1691,7 +1691,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch progress history',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/progress-history',
       };
@@ -1732,7 +1732,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch reading history',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/history',
       };
@@ -1763,7 +1763,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch read chapter ids',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/profile/history/${titleId}/read-ids`,
       };
@@ -1792,7 +1792,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch title reading history',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/profile/history/${titleId}`,
       };
@@ -1826,7 +1826,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to add to reading history',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/profile/history/${titleId}/${chapterId}`,
         method: 'POST',
@@ -1853,7 +1853,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to clear reading history',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/history',
         method: 'DELETE',
@@ -1886,7 +1886,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to remove entry from reading history',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/profile/history/${titleId}`,
         method: 'DELETE',
@@ -1921,7 +1921,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to remove chapter from reading history',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/profile/history/${titleId}/${chapterId}`,
         method: 'DELETE',
@@ -1946,7 +1946,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch user stats',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/stats',
       };
@@ -1987,7 +1987,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to update avatar',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/avatar',
         method: 'PUT',
@@ -2035,7 +2035,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to update avatar',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/avatar/admin/${userId}`,
         method: 'POST',
@@ -2081,7 +2081,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to update avatar',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/avatar',
         method: 'POST',
@@ -2198,7 +2198,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch character contributors',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/character-contributors',
       };
@@ -2258,7 +2258,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch active users for homepage',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/homepage/active',
       };
@@ -2294,7 +2294,7 @@ export class UsersController {
         return {
           success: false,
           message: 'This profile is private',
-          errors: [error.message],
+          errors: [(error as Error).message],
           timestamp: new Date().toISOString(),
           path: `users/${id}`,
           method: 'GET',
@@ -2304,7 +2304,7 @@ export class UsersController {
         return {
           success: false,
           message: 'Invalid user ID',
-          errors: [error.message],
+          errors: [(error as Error).message],
           timestamp: new Date().toISOString(),
           path: `users/${id}`,
           method: 'GET',
@@ -2313,7 +2313,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch user',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/${id}`,
         method: 'GET',
@@ -2346,7 +2346,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to cleanup orphaned references',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/cleanup-orphaned-references',
         method: 'POST',
@@ -2384,7 +2384,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch suspicious users',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/admin/suspicious-users',
       };
@@ -2411,7 +2411,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch bot stats',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/admin/bot-stats',
       };
@@ -2439,7 +2439,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to reset bot status',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: `users/admin/${id}/reset-bot-status`,
         method: 'POST',
@@ -2472,7 +2472,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch privacy settings',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/settings/privacy',
       };
@@ -2510,7 +2510,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to update privacy settings',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/settings/privacy',
         method: 'PUT',
@@ -2541,7 +2541,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch notification settings',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/settings/notifications',
       };
@@ -2580,7 +2580,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to update notification settings',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/settings/notifications',
         method: 'PUT',
@@ -2625,7 +2625,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to save push subscription',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/push-subscribe',
         method: 'POST',
@@ -2660,7 +2660,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to remove push subscription',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/push-subscribe',
         method: 'DELETE',
@@ -2689,7 +2689,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch display settings',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/settings/display',
       };
@@ -2727,7 +2727,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to update display settings',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/settings/display',
         method: 'PUT',
@@ -2754,7 +2754,7 @@ export class UsersController {
       return {
         success: false,
         message: 'Failed to fetch settings',
-        errors: [error.message],
+        errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/settings',
       };

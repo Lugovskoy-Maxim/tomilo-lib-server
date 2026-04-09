@@ -69,6 +69,26 @@ export interface ReadingCardDropDto {
   shardsGained?: number;
 }
 
+export interface LightTitleInfo {
+  name: string;
+  slug: string;
+}
+
+export interface LightReadingHistoryEntry {
+  titleId: string;
+  title: LightTitleInfo;
+  readAt: string;
+  lastChapter: {
+    chapterId: string;
+    chapterNumber: number;
+    chapterTitle?: string;
+    readAt: string;
+  } | null;
+  chaptersCount: number;
+  totalChapters: number;
+  progressPercent: number;
+}
+
 export interface ReadingProgressResponseDto {
   user: {
     _id: string;

@@ -317,9 +317,10 @@ export class UsersService {
         .select('readingHistory')
         .lean()
         .exec();
-      return Array.isArray((user as any)?.readingHistory)
-        ? (user as any).readingHistory
-        : [];
+      if (!user || !Array.isArray((user as any)?.readingHistory)) {
+        return [];
+      }
+      return (user as any).readingHistory as any[];
     }
 
     const titles = await this.readingHistoryTitleModel
@@ -346,7 +347,7 @@ export class UsersService {
         .lean()
         .exec();
       return Array.isArray((user as any)?.readingHistory)
-        ? (user as any).readingHistory
+        ? ((user as any).readingHistory as any[])
         : [];
     }
     return result;
@@ -824,11 +825,15 @@ export class UsersService {
       aggregationResult = (facet?.data ?? [])
         .map((r) => ({
           userId:
-            r._id != null &&
-            typeof (r._id as { toString?: () => string }).toString ===
-              'function'
-              ? (r._id as { toString: () => string }).toString()
-              : String(r._id ?? ''),
+            r._id != null
+              ? r._id instanceof Types.ObjectId
+                ? r._id.toString()
+                : typeof (r._id as { toString?: () => string }).toString ===
+                    'function'
+                  ? (r._id as { toString: () => string }).toString()
+                  : // eslint-disable-next-line @typescript-eslint/no-base-to-string
+                    String(r._id)
+              : '',
           count: r.count,
         }))
         .filter((r) => r.userId && Types.ObjectId.isValid(r.userId));
@@ -1043,7 +1048,7 @@ export class UsersService {
       .select('-password -readingHistory')
       .populate({
         path: 'bookmarks.titleId',
-        select: '_id title slug coverImage type status isAdult',
+        select: '_id name title slug coverImage type status isAdult',
       })
       .populate({
         path: 'equippedDecorations.avatar',
@@ -1074,7 +1079,7 @@ export class UsersService {
     await user.populate([
       {
         path: 'readingHistory.titleId',
-        select: '_id title slug coverImage type',
+        select: '_id name title slug coverImage type',
       },
       {
         path: 'readingHistory.chapters.chapterId',
@@ -1098,7 +1103,7 @@ export class UsersService {
       .select('-password -readingHistory')
       .populate({
         path: 'bookmarks.titleId',
-        select: '_id title slug coverImage type status isAdult',
+        select: '_id name title slug coverImage type status isAdult',
       })
       .populate({
         path: 'equippedDecorations.avatar',
@@ -1630,17 +1635,17 @@ export class UsersService {
     if (oldCategory === 'completed' && category !== 'completed') {
       try {
         await this.decrementCompletedTitlesCount(userId);
-      } catch (e) {
+      } catch (error) {
         this.logger.warn(
-          `Failed to decrement completedTitlesCount: ${(e as Error).message}`,
+          `Failed to decrement completedTitlesCount: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     } else if (oldCategory !== 'completed' && category === 'completed') {
       try {
         await this.incrementCompletedTitlesCount(userId);
-      } catch (e) {
+      } catch (error) {
         this.logger.warn(
-          `Failed to increment completedTitlesCount: ${(e as Error).message}`,
+          `Failed to increment completedTitlesCount: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
@@ -2479,8 +2484,11 @@ export class UsersService {
               cards: readingCardDrops,
             });
           }
-        } catch (e) {
-          this.logger.warn(`WS progress emit failed for user ${userId}`, e);
+        } catch (error) {
+          this.logger.warn(
+            `WS progress emit failed for user ${userId}`,
+            (error as Error).message,
+          );
         }
       });
     }
@@ -2647,7 +2655,7 @@ export class UsersService {
     await this.userModel.populate(wrapper, [
       {
         path: 'readingHistory.titleId',
-        select: '_id title slug coverImage type status isAdult',
+        select: '_id name title slug coverImage type status isAdult',
       },
       ...(!light
         ? [
@@ -2726,7 +2734,7 @@ export class UsersService {
     }
 
     const populatedHistory = (await this.userModel.populate(titleHistory, [
-      { path: 'titleId', select: '_id title slug coverImage type' },
+      { path: 'titleId', select: '_id name title slug coverImage type' },
       { path: 'chapters.chapterId', select: '_id chapterNumber title' },
     ])) as unknown as PopulatedReadingHistoryEntry;
 
@@ -2967,10 +2975,10 @@ export class UsersService {
 
   /** Бонусы за достижение определённых milestone streak */
   private static readonly STREAK_BONUSES: Record<number, number> = {
-    7: 50, // 50 XP за 7 дней подряд
-    14: 100, // 100 XP за 14 дней подряд
-    21: 150, // 150 XP за 21 день подряд
-    30: 250, // 250 XP за 30 дней подряд
+    7: 150, // 50 XP за 7 дней подряд
+    14: 200, // 100 XP за 14 дней подряд
+    21: 350, // 150 XP за 21 день подряд
+    30: 500, // 250 XP за 30 дней подряд
   };
 
   /**
@@ -3386,8 +3394,10 @@ export class UsersService {
               },
             });
           }
-        } catch (e) {
-          this.logger.warn(`WS progress emit failed for user ${userId}`, e);
+        } catch (error) {
+          this.logger.warn(
+            `WS progress emit failed for user ${userId}: ${error instanceof Error ? error.message : String(error)}`,
+          );
         }
       });
     }
@@ -3901,7 +3911,7 @@ export class UsersService {
     );
   }
 
-  async disciplesGameShop() {
+  disciplesGameShop() {
     if (!this.disciplesService)
       throw new BadRequestException('Disciples game not available');
     return this.disciplesService.getDiscipleGameShop();
@@ -4493,7 +4503,7 @@ export class UsersService {
       .select('-password -readingHistory')
       .populate({
         path: 'bookmarks.titleId',
-        select: '_id title slug coverImage type status isAdult',
+        select: '_id name title slug coverImage type status isAdult',
       })
       .populate({
         path: 'equippedDecorations.avatar',
@@ -4610,7 +4620,7 @@ export class UsersService {
       await this.userModel.populate(wrap, [
         {
           path: 'readingHistory.titleId',
-          select: '_id title slug coverImage type',
+          select: '_id name title slug coverImage type',
         },
         {
           path: 'readingHistory.chapters.chapterId',

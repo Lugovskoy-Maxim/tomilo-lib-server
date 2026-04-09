@@ -76,7 +76,7 @@ export class AppController {
             totalBookmarks: monthlyStats.totalBookmarks ?? 0,
           },
         ];
-      } catch (err) {
+      } catch {
         // Return main stats even if history fails (e.g. no recorded daily stats yet)
         stats.dailyHistory = [];
         stats.monthlyHistory = [];
@@ -138,11 +138,11 @@ export class AppController {
         path: '/stats/history',
         method: 'GET',
       };
-    } catch (err) {
+    } catch (error) {
       return {
         success: false,
         message: 'Failed to fetch stats history',
-        errors: [err instanceof Error ? err.message : String(err)],
+        errors: [error instanceof Error ? error.message : String(error)],
         timestamp: new Date().toISOString(),
         path: '/stats/history',
         method: 'GET',
