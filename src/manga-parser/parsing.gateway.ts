@@ -27,7 +27,7 @@ import {
 })
 export class ParsingGateway {
   @WebSocketServer()
-  server: Server;
+  server!: Server;
 
   private readonly logger = new Logger(ParsingGateway.name);
 
@@ -68,9 +68,9 @@ export class ParsingGateway {
       const result = await this.mangaParserService.parseChaptersInfo(dto);
 
       const chaptersData: ChaptersInfoData = {
-        title: result.title,
-        totalChapters: result.chapters.length,
-        chapters: result.chapters.map((ch) => ({
+        title: result.title ?? 'Неизвестный тайтл',
+        totalChapters: result.chapters?.length ?? 0,
+        chapters: (result.chapters ?? []).map((ch) => ({
           name: ch.name,
           number: ch.number || 0,
         })),
@@ -80,7 +80,7 @@ export class ParsingGateway {
         type: 'chapters_info',
         sessionId,
         status: 'completed',
-        message: `Найдено ${result.chapters.length} глав для "${result.title}"`,
+        message: `Найдено ${result.chapters?.length ?? 0} глав для "${result.title ?? 'Неизвестный тайтл'}"`,
         data: chaptersData,
       });
     } catch (error) {

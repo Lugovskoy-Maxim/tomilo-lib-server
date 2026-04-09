@@ -1073,7 +1073,7 @@ export class UsersService {
 
     if (!user) {
       this.logger.warn(`User not found with ID: ${id}`);
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
     (user as any).readingHistory = await this.getReadingHistoryArrayForUser(id);
     await user.populate([
@@ -1131,7 +1131,7 @@ export class UsersService {
     );
     if (!user) {
       this.logger.warn(`User not found with ID: ${id}`);
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
     const didMigrate = this.normalizeBookmarksIfNeeded(user as UserDocument);
     if (didMigrate) await user.save();
@@ -1216,7 +1216,7 @@ export class UsersService {
       .select('-password');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     return user;
@@ -1404,7 +1404,7 @@ export class UsersService {
     const user = await this.userModel.findById(new Types.ObjectId(id));
     if (!user) {
       this.logger.warn(`User not found with ID: ${id}`);
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     // Удаляем файлы пользователя (аватар)
@@ -1415,7 +1415,7 @@ export class UsersService {
     );
     if (!result) {
       this.logger.warn(`User not found with ID: ${id} during deletion`);
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
     this.logger.log(`User deleted successfully with ID: ${id}`);
   }
@@ -1517,7 +1517,7 @@ export class UsersService {
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
       this.logger.warn(`User not found with ID: ${userId}`);
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     this.normalizeBookmarksIfNeeded(user as UserDocument);
@@ -1577,7 +1577,7 @@ export class UsersService {
     }
 
     const user = await this.userModel.findById(new Types.ObjectId(userId));
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Пользователь не найден');
     this.normalizeBookmarksIfNeeded(user as UserDocument);
 
     const removed = (user.bookmarks as any[]).find(
@@ -1588,7 +1588,7 @@ export class UsersService {
       (b: any) => this.getBookmarkTitleIdStr(b) !== titleId,
     ) as any;
     if (user.bookmarks.length === before) {
-      throw new NotFoundException('Bookmark not found');
+      throw new NotFoundException('Закладка не найдена');
     }
     this.sanitizeBookmarksBeforeSave(user as UserDocument);
     await user.save();
@@ -1621,13 +1621,13 @@ export class UsersService {
     }
 
     const user = await this.userModel.findById(new Types.ObjectId(userId));
-    if (!user) throw new NotFoundException('User not found');
+    if (!user) throw new NotFoundException('Пользователь не найден');
     this.normalizeBookmarksIfNeeded(user as UserDocument);
 
     const entry = (user.bookmarks as any[]).find(
       (b: any) => this.getBookmarkTitleIdStr(b) === titleId,
     );
-    if (!entry) throw new NotFoundException('Bookmark not found');
+    if (!entry) throw new NotFoundException('Закладка не найдена');
     const oldCategory = entry.category;
     entry.category = category;
     this.sanitizeBookmarksBeforeSave(user as UserDocument);
@@ -1670,7 +1670,7 @@ export class UsersService {
       .select('bookmarks');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     const bookmark = (user.bookmarks as any[]).find(
@@ -1703,7 +1703,7 @@ export class UsersService {
       .select('bookmarks');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     const counts = {
@@ -1754,7 +1754,7 @@ export class UsersService {
     ]);
 
     if (!userExists) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     const totalChapters = title?.totalChapters || 0;
@@ -1813,7 +1813,7 @@ export class UsersService {
       .select('bookmarks');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     const didMigrate = this.normalizeBookmarksIfNeeded(user as UserDocument);
@@ -1878,7 +1878,7 @@ export class UsersService {
     if (!user) {
       // Если пользователь не найден, удаляем загруженный файл
       await this.filesService.deleteUserAvatar(userId);
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     return user;
@@ -1913,7 +1913,7 @@ export class UsersService {
       .select('-password');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     return user;
@@ -1974,7 +1974,7 @@ export class UsersService {
       const chapter = await this.chaptersService.findById(chapterId);
       if (!chapter) {
         this.logger.warn(`Chapter not found with ID: ${chapterId}`);
-        throw new NotFoundException('Chapter not found');
+        throw new NotFoundException('Глава не найдена');
       }
       chapterNumber = chapter.chapterNumber;
       chapterTitle = chapter.name || undefined;
@@ -1993,7 +1993,7 @@ export class UsersService {
         this.logger.warn(
           `Chapter not found with title ID ${titleId} and number ${chapterNumber}`,
         );
-        throw new NotFoundException('Chapter not found');
+        throw new NotFoundException('Глава не найдена');
       }
       chapterObjectId = chapter._id;
       chapterTitle = chapter.name || undefined;
@@ -2006,7 +2006,7 @@ export class UsersService {
       .exec();
     if (!user) {
       this.logger.warn(`User not found with ID: ${userId}`);
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     // Защита от старых документов без поля readingHistory
@@ -2647,7 +2647,7 @@ export class UsersService {
       .select('_id')
       .lean();
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     const readingHistory = await this.getReadingHistoryArrayForUser(userId);
@@ -2719,7 +2719,7 @@ export class UsersService {
       .select('_id')
       .lean();
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     const list = await this.getReadingHistoryArrayForUser(userId);
@@ -2760,7 +2760,7 @@ export class UsersService {
       .lean();
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     const list = await this.getReadingHistoryArrayForUser(userId);
@@ -2795,7 +2795,7 @@ export class UsersService {
       .select('-password');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     await this.syncReadingHistoryExternal(userId, []);
@@ -2820,7 +2820,7 @@ export class UsersService {
       .select('-password');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     await this.syncReadingHistoryFromUserDocument(userId);
@@ -2851,7 +2851,7 @@ export class UsersService {
         chapterNumber,
       );
       if (!chapter) {
-        throw new NotFoundException('Chapter not found');
+        throw new NotFoundException('Глава не найдена');
       }
       chapterObjectId = chapter._id;
     }
@@ -2859,7 +2859,7 @@ export class UsersService {
     // Находим пользователя
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     if (!Array.isArray(user.readingHistory)) {
@@ -2871,7 +2871,7 @@ export class UsersService {
     );
 
     if (existingEntryIndex === -1) {
-      throw new NotFoundException('Title not found in reading history');
+      throw new NotFoundException('Тайтл не найден в истории чтения');
     }
 
     const existingEntry = user.readingHistory[existingEntryIndex];
@@ -2881,7 +2881,7 @@ export class UsersService {
     );
 
     if (chapterIndex === -1) {
-      throw new NotFoundException('Chapter not found in reading history');
+      throw new NotFoundException('Глава не найдена в истории чтения');
     }
 
     // Удаляем главу из массива
@@ -2908,7 +2908,7 @@ export class UsersService {
 
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     const readingHistory = await this.getReadingHistoryArrayForUser(userId);
@@ -3052,7 +3052,7 @@ export class UsersService {
 
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     user.experience += expAmount;
@@ -3420,7 +3420,7 @@ export class UsersService {
       .lean()
       .exec();
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
     const u = user as any;
     const totalChaptersRead = u.chaptersReadCount ?? 0;
@@ -3560,7 +3560,7 @@ export class UsersService {
 
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     const today = UsersService.getStartOfDayUTC();
@@ -3627,7 +3627,7 @@ export class UsersService {
       { new: true },
     );
     if (!updated) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     return {
@@ -3713,7 +3713,7 @@ export class UsersService {
 
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     const today = UsersService.getStartOfDayUTC();
@@ -3911,7 +3911,8 @@ export class UsersService {
     );
   }
 
-  disciplesGameShop() {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  async disciplesGameShop() {
     if (!this.disciplesService)
       throw new BadRequestException('Disciples game not available');
     return this.disciplesService.getDiscipleGameShop();
@@ -4046,7 +4047,7 @@ export class UsersService {
       .select('-password');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     this.logger.log(
@@ -4126,7 +4127,7 @@ export class UsersService {
       .select('lastSuggestionVoteRewardAt')
       .lean();
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
     const lastAt = (user as any).lastSuggestionVoteRewardAt as Date | undefined;
     if (lastAt && new Date(lastAt) >= weekStart) {
@@ -4154,7 +4155,7 @@ export class UsersService {
 
     const user = await this.userModel.findById(new Types.ObjectId(userId));
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     if (user.balance < amount) {
@@ -4417,7 +4418,7 @@ export class UsersService {
       .select('-password');
 
     if (!updatedUser) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     this.logger.log(
@@ -4525,7 +4526,7 @@ export class UsersService {
       .exec();
 
     if (!targetUser) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     const targetUserId = targetUser._id.toString();
@@ -4683,7 +4684,7 @@ export class UsersService {
       .select('-password');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     this.logger.log(
@@ -4705,7 +4706,7 @@ export class UsersService {
       .select('notifications');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     return user.notifications;
@@ -4767,7 +4768,7 @@ export class UsersService {
       .select('-password');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     if (displaySettings.isAdult !== undefined) {
@@ -4798,7 +4799,7 @@ export class UsersService {
       .select('displaySettings');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     return user.displaySettings;
@@ -4817,7 +4818,7 @@ export class UsersService {
       .select('privacy notifications displaySettings');
 
     if (!user) {
-      throw new NotFoundException('User not found');
+      throw new NotFoundException('Пользователь не найден');
     }
 
     return {
