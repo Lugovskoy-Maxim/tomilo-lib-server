@@ -448,6 +448,19 @@ export class FilesSyncService {
       if (path) referenced.add(path);
     }
 
+    try {
+      const userFrames = await this.connection
+        .collection('userframes')
+        .find({}, { projection: { imageUrl: 1 } })
+        .toArray();
+      for (const frame of userFrames) {
+        const path = this.normalizeImagePath(frame.imageUrl);
+        if (path) referenced.add(path);
+      }
+    } catch {
+      // collection might not exist
+    }
+
     const gameItems = await this.connection
       .collection('gameitems')
       .find({}, { projection: { icon: 1 } })
@@ -455,6 +468,32 @@ export class FilesSyncService {
     for (const item of gameItems) {
       const path = this.normalizeImagePath(item.icon);
       if (path) referenced.add(path);
+    }
+
+    try {
+      const alchemyRecipes = await this.connection
+        .collection('alchemyrecipes')
+        .find({}, { projection: { icon: 1 } })
+        .toArray();
+      for (const recipe of alchemyRecipes) {
+        const path = this.normalizeImagePath(recipe.icon);
+        if (path) referenced.add(path);
+      }
+    } catch {
+      // collection might not exist
+    }
+
+    try {
+      const characterCards = await this.connection
+        .collection('charactercards')
+        .find({}, { projection: { mediaUrl: 1 } })
+        .toArray();
+      for (const card of characterCards) {
+        const path = this.normalizeImagePath(card.mediaUrl);
+        if (path) referenced.add(path);
+      }
+    } catch {
+      // collection might not exist
     }
 
     const cardDecks = await this.connection
