@@ -2486,11 +2486,14 @@ export class UsersService {
           }
         } catch (error) {
           this.logger.warn(
-            `WS progress emit failed for user ${userId}`,
-            (error as Error).message,
+            `WS progress emit failed for user ${userId}: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       });
+    } else {
+      this.logger.debug(
+        `NotificationsGateway is not available, skipping WebSocket progress events for user ${userId}`,
+      );
     }
 
     return {

@@ -130,7 +130,17 @@ export class NotificationsGateway
     try {
       const { count } = await this.notificationsService.getUnreadCount(userId);
       const room = `${USER_ROOM_PREFIX}${userId}`;
+      const roomSockets = this.server.sockets.adapter.rooms.get(room);
+      if (!roomSockets || roomSockets.size === 0) {
+        this.logger.debug(
+          `Notifications WS: room ${room} is empty, skipping unread count update for user ${userId}`,
+        );
+        return;
+      }
       this.server.to(room).emit('unread_count', { count });
+      this.logger.debug(
+        `Notifications WS: unread count sent to user ${userId}, count: ${count}`,
+      );
     } catch (e) {
       this.logger.warn(
         `Notifications WS: emitUnreadCountToUser failed for ${userId}`,
@@ -180,7 +190,17 @@ export class NotificationsGateway
   ): void {
     try {
       const room = `${USER_ROOM_PREFIX}${userId}`;
+      const roomSockets = this.server.sockets.adapter.rooms.get(room);
+      if (!roomSockets || roomSockets.size === 0) {
+        this.logger.debug(
+          `Notifications WS: room ${room} is empty, skipping progress event for user ${userId}`,
+        );
+        return;
+      }
       this.server.to(room).emit('progress', event);
+      this.logger.debug(
+        `Notifications WS: progress event sent to user ${userId}, type: ${event.type}`,
+      );
     } catch (e) {
       this.logger.warn(
         `Notifications WS: emitProgressToUser failed for ${userId}`,
@@ -206,7 +226,17 @@ export class NotificationsGateway
   ): void {
     try {
       const room = `${USER_ROOM_PREFIX}${userId}`;
+      const roomSockets = this.server.sockets.adapter.rooms.get(room);
+      if (!roomSockets || roomSockets.size === 0) {
+        this.logger.debug(
+          `Notifications WS: room ${room} is empty, skipping notification for user ${userId}`,
+        );
+        return;
+      }
       this.server.to(room).emit('notification', notification);
+      this.logger.debug(
+        `Notifications WS: notification sent to user ${userId}, type: ${notification.type}`,
+      );
     } catch (e) {
       this.logger.warn(
         `Notifications WS: emitNotificationToUser failed for ${userId}`,
