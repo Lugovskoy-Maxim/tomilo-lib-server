@@ -393,12 +393,13 @@ export class MangaParserService {
       );
       return pagePaths;
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.logger.error(
-        `Failed to download mangabuff chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        error.stack,
+        `Failed to download mangabuff chapter images: ${err.message}`,
+        err.stack,
       );
       throw new BadRequestException(
-        `Failed to download chapter images: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        `Failed to download chapter images: ${err.message}`,
       );
     }
   }
@@ -992,7 +993,10 @@ export class MangaParserService {
     if (chapterNumbers && chapterNumbers.length > 0) {
       const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
       chapters = chapters.filter(
-        (ch) => ch.number && requestedNumbers.has(ch.number),
+        (ch) =>
+          ch.number !== undefined &&
+          ch.number !== null &&
+          requestedNumbers.has(ch.number),
       );
     }
 
@@ -1057,7 +1061,7 @@ export class MangaParserService {
       for (const chapter of chapters) {
         try {
           chapterIndex++;
-          const chapterNumber = chapter.number || 1;
+          const chapterNumber = chapter.number ?? 1;
           const chapterName = chapter.name ?? `Глава ${chapterNumber}`;
 
           emit({
@@ -1203,7 +1207,10 @@ export class MangaParserService {
     if (chapterNumbers && chapterNumbers.length > 0) {
       const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
       selectedChapters = parsedData.chapters.filter(
-        (ch) => ch.number && requestedNumbers.has(ch.number),
+        (ch) =>
+          ch.number !== undefined &&
+          ch.number !== null &&
+          requestedNumbers.has(ch.number),
       );
     }
 
@@ -1231,7 +1238,7 @@ export class MangaParserService {
       for (const chapter of selectedChapters) {
         try {
           chIndex++;
-          const chapterNumber = chapter.number || 1;
+          const chapterNumber = chapter.number ?? 1;
           const chapterName = chapter.name ?? `Глава ${chapterNumber}`;
 
           const chapterData: ChapterImportData = {
@@ -1304,7 +1311,7 @@ export class MangaParserService {
           this.logger.log(`Imported chapter ${chapterNumber}: ${chapter.name}`);
         } catch (error) {
           const chapterDataErr: ChapterImportData = {
-            chapterNumber: chapter.number || 1,
+            chapterNumber: chapter.number ?? 1,
             chapterName: chapter.name ?? '',
             status: 'error',
             error: error instanceof Error ? error.message : 'Unknown error',
@@ -1479,7 +1486,6 @@ export class MangaParserService {
       return urls;
     }
     if (domain.includes('ab.728.team') && chapterInfo.url) {
-      const baseUrl = 'https://ab.728.team';
       const res = await this.session.get(chapterInfo.url);
       if (res.status !== 200) return [];
       const $ = cheerio.load(res.data);
@@ -1566,7 +1572,12 @@ export class MangaParserService {
             };
           }
         } catch (e) {
-          const status = e?.response?.status ?? 0;
+          let status = 0;
+          if (axios.isAxiosError(e) && e.response) {
+            status = e.response.status;
+          } else if (e instanceof Error && 'status' in e) {
+            status = (e as any).status;
+          }
           return {
             allOk: false,
             failed: { url: String(url), status: status || 500 },
@@ -1830,7 +1841,10 @@ export class MangaParserService {
     if (chapterNumbers && chapterNumbers.length > 0) {
       const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
       chapters = chapters.filter(
-        (ch) => ch.number && requestedNumbers.has(ch.number),
+        (ch) =>
+          ch.number !== undefined &&
+          ch.number !== null &&
+          requestedNumbers.has(ch.number),
       );
     }
 
@@ -1951,7 +1965,10 @@ export class MangaParserService {
         if (chapterNumbers && chapterNumbers.length > 0) {
           const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
           chapters = chapters.filter(
-            (ch) => ch.number && requestedNumbers.has(ch.number),
+            (ch) =>
+              ch.number !== undefined &&
+              ch.number !== null &&
+              requestedNumbers.has(ch.number),
           );
         }
 
@@ -2025,7 +2042,10 @@ export class MangaParserService {
       if (chapterNumbers && chapterNumbers.length > 0) {
         const requestedNumbers = this.parseChapterNumbers(chapterNumbers);
         chapters = chapters.filter(
-          (ch) => ch.number && requestedNumbers.has(ch.number),
+          (ch) =>
+            ch.number !== undefined &&
+            ch.number !== null &&
+            requestedNumbers.has(ch.number),
         );
       }
 
