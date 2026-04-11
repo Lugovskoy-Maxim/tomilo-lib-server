@@ -91,6 +91,47 @@ export class EmailService {
     });
   }
 
+  /** Отправка email со ссылкой на бекап в S3 */
+  async sendDatabaseBackupS3Link(
+    to: string,
+    dateStr: string,
+    s3Url: string,
+    sizeBytes: number,
+    s3Key: string,
+  ) {
+    const subject = `Tomilo Lib — бэкап БД ${dateStr} (S3)`;
+    const mb = (sizeBytes / (1024 * 1024)).toFixed(2);
+    const gb = (sizeBytes / (1024 * 1024 * 1024)).toFixed(3);
+    const sizeDisplay =
+      sizeBytes > 1024 * 1024 * 1024 ? `${gb} ГБ` : `${mb} МБ`;
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px;">
+        <h2>Бэкап базы данных Tomilo Lib</h2>
+        <p><strong>Дата:</strong> ${dateStr}</p>
+        <p><strong>Размер:</strong> ${sizeDisplay} (${sizeBytes.toLocaleString()} байт)</p>
+        <p><strong>Ключ в S3:</strong> ${s3Key}</p>
+        <p><strong>Ссылка для скачивания:</strong></p>
+        <p style="background-color: #f5f5f5; padding: 10px; border-radius: 4px; word-break: break-all;">
+          <a href="${s3Url}" target="_blank">${s3Url}</a>
+        </p>
+        <p>Ссылка будет доступна до удаления файла из облачного хранилища.</p>
+        <hr>
+        <p style="color: #666; font-size: 12px;">
+          Это автоматическое сообщение. Бекап создан и загружен в облачное хранилище S3.
+          Для настройки периода хранения проверьте переменные окружения BACKUP_S3_DAYS_TO_KEEP.
+        </p>
+      </div>
+    `;
+
+    await this.transporter.sendMail({
+      from: this.configService.get('YANDEX_EMAIL'),
+      to,
+      subject,
+      html,
+    });
+  }
+
   async sendBackupTooLargeEmail(
     to: string,
     dateStr: string,
