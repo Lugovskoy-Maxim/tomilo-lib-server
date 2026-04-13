@@ -27,6 +27,13 @@ export class ShopSchedulerService {
             `Weekly winner accepted: ${w.suggestionId} -> ${w.decorationId} (${w.type}, price=${w.price})`,
           );
         }
+        this.logger.log(
+          `Weekly winners job completed: ${result.winners.length} winners accepted`,
+        );
+      } else {
+        this.logger.log(
+          'Weekly winners job completed: no winners accepted (no pending suggestions or all skipped)',
+        );
       }
     } catch (err) {
       this.logger.error(

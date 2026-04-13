@@ -925,8 +925,7 @@ export class ShopService {
         decoration.originalPrice = undefined;
       } else if (!Number.isNaN(Number(updates.originalPrice))) {
         const op = Math.max(0, Number(updates.originalPrice));
-        decoration.originalPrice =
-          op > decoration.price ? op : undefined;
+        decoration.originalPrice = op > decoration.price ? op : undefined;
       }
     }
 
@@ -1317,6 +1316,12 @@ export class ShopService {
       votesCount: number;
     }>;
   } | null> {
+    const totalPending = await this.suggestedDecorationModel.countDocuments({
+      status: 'pending',
+    });
+    this.logger.log(
+      `Accept weekly winners: total pending suggestions = ${totalPending}`,
+    );
     const pendingTop = await this.suggestedDecorationModel
       .aggregate([
         { $match: { status: 'pending' } },
@@ -1330,9 +1335,14 @@ export class ShopService {
       ])
       .exec();
     if (pendingTop.length === 0) {
-      this.logger.log('Accept weekly winners: no pending suggestions');
+      this.logger.log(
+        'Accept weekly winners: no pending suggestions after aggregation',
+      );
       return null;
     }
+    this.logger.log(
+      `Accept weekly winners: top ${pendingTop.length} suggestions selected (votes: ${pendingTop.map((s) => s.votesCount).join(', ')})`,
+    );
 
     const topIds = pendingTop.map((w) => w._id);
     const winners: Array<{
@@ -1343,6 +1353,7 @@ export class ShopService {
       votesCount: number;
     }> = [];
     const typesToInvalidate = new Set<string>();
+    let skippedCount = 0;
 
     for (const winner of pendingTop) {
       const suggestionId = winner._id.toString();
@@ -1365,6 +1376,7 @@ export class ShopService {
         this.logger.warn(
           `Accept weekly winners: suggestion ${suggestionId} has no imageUrl, skipping`,
         );
+        skippedCount++;
         continue;
       }
 
@@ -1396,6 +1408,7 @@ export class ShopService {
           this.logger.warn(
             `Accept weekly winners: unknown type ${winner.type}`,
           );
+          skippedCount++;
           continue;
       }
 
@@ -1415,13 +1428,19 @@ export class ShopService {
       typesToInvalidate.add(winner.type);
     }
 
-    const deleteResult = await this.suggestedDecorationModel.deleteMany({
-      status: 'pending',
-      _id: { $nin: topIds },
-    });
-    this.logger.log(
-      `After weekly acceptance: deleted ${deleteResult.deletedCount} pending suggestions outside top ${WEEKLY_SUGGESTION_WINNERS_COUNT}`,
-    );
+    if (winners.length > 0) {
+      const deleteResult = await this.suggestedDecorationModel.deleteMany({
+        status: 'pending',
+        _id: { $nin: topIds },
+      });
+      this.logger.log(
+        `After weekly acceptance: deleted ${deleteResult.deletedCount} pending suggestions outside top ${WEEKLY_SUGGESTION_WINNERS_COUNT}`,
+      );
+    } else {
+      this.logger.warn(
+        `Accept weekly winners: no winners created (all ${skippedCount} suggestions skipped). Keeping pending suggestions for next week.`,
+      );
+    }
 
     if (typeof this.cacheManager.del === 'function') {
       await this.cacheManager.del('shop:decorations:all');
@@ -1437,5 +1456,98 @@ export class ShopService {
     }
 
     return { winners };
+  }
+
+  /**
+   * Принять конкретное предложение вручную (админ).
+   * Создаёт декорацию в магазине и меняет статус предложения на accepted.
+   */
+  async acceptSuggestionManually(suggestionId: string): Promise<{
+    suggestionId: string;
+    decorationId: string;
+    type: string;
+    price: number;
+    votesCount: number;
+  }> {
+    const oid = new Types.ObjectId(suggestionId);
+    const suggestion = await this.suggestedDecorationModel.findById(oid);
+    if (!suggestion) {
+      throw new NotFoundException('Suggested decoration not found');
+    }
+    if (suggestion.status !== 'pending') {
+      throw new BadRequestException(
+        'Это предложение уже принято или отклонено',
+      );
+    }
+
+    const votesCount = Array.isArray(suggestion.votedUserIds)
+      ? suggestion.votedUserIds.length
+      : 0;
+    const rarity = getRarityByVotes(votesCount);
+    const price = getPriceByRarity(rarity);
+
+    const rawImageUrl =
+      suggestion.imageUrl ?? (suggestion as { image_url?: string }).image_url ?? '';
+    const imageUrl =
+      typeof rawImageUrl === 'string' && rawImageUrl.trim()
+        ? rawImageUrl.startsWith('/')
+          ? rawImageUrl.trim()
+          : `/${rawImageUrl.trim()}`
+        : '';
+    if (!imageUrl) {
+      throw new BadRequestException('У предложения отсутствует изображение');
+    }
+
+    const doc: Record<string, unknown> = {
+      name: suggestion.name,
+      imageUrl,
+      price,
+      rarity,
+      description: suggestion.description ?? '',
+      isAvailable: true,
+      authorId: suggestion.authorId ?? undefined,
+    };
+
+    let decoration: any;
+    switch (suggestion.type) {
+      case 'avatar':
+        decoration = await this.avatarDecorationModel.create(doc);
+        break;
+      case 'frame':
+        decoration = await this.avatarFrameDecorationModel.create(doc);
+        break;
+      case 'background':
+        decoration = await this.backgroundDecorationModel.create(doc);
+        break;
+      case 'card':
+        decoration = await this.cardDecorationModel.create(doc);
+        break;
+      default:
+        throw new BadRequestException(`Неизвестный тип декорации: ${suggestion.type}`);
+    }
+
+    await this.suggestedDecorationModel.findByIdAndUpdate(suggestion._id, {
+      status: 'accepted',
+      acceptedDecorationId: decoration._id,
+      acceptedAt: new Date(),
+    });
+
+    // Инвалидируем кэш магазина для этого типа
+    if (typeof this.cacheManager.del === 'function') {
+      await this.cacheManager.del('shop:decorations:all');
+      await this.cacheManager.del(`shop:decorations:${suggestion.type}`);
+    }
+
+    this.logger.log(
+      `Admin manually accepted suggestion ${suggestionId} -> ${suggestion.type} decoration ${decoration._id} (price=${price}, votes=${votesCount})`,
+    );
+
+    return {
+      suggestionId: suggestion._id.toString(),
+      decorationId: decoration._id.toString(),
+      type: suggestion.type,
+      price,
+      votesCount,
+    };
   }
 }

@@ -390,4 +390,70 @@ export class ShopAdminController {
       throw error;
     }
   }
+
+  @Post('suggestions/accept-weekly-winners')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async triggerWeeklyWinners(): Promise<ApiResponseDto<any>> {
+    try {
+      const result = await this.shopService.acceptWeeklyWinner();
+      if (result?.winners?.length) {
+        return {
+          success: true,
+          data: result,
+          message: `Weekly winners accepted: ${result.winners.length} suggestion(s) added to shop`,
+          timestamp: new Date().toISOString(),
+          path: 'shop/admin/suggestions/accept-weekly-winners',
+          method: 'POST',
+        };
+      } else {
+        return {
+          success: true,
+          data: null,
+          message: 'No pending suggestions or all skipped',
+          timestamp: new Date().toISOString(),
+          path: 'shop/admin/suggestions/accept-weekly-winners',
+          method: 'POST',
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to accept weekly winners',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'shop/admin/suggestions/accept-weekly-winners',
+        method: 'POST',
+      };
+    }
+  }
+
+  @Post('suggestions/:suggestionId/accept')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async acceptSuggestionManually(
+    @Param('suggestionId') suggestionId: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const result =
+        await this.shopService.acceptSuggestionManually(suggestionId);
+      return {
+        success: true,
+        data: result,
+        message: 'Suggestion accepted manually and added to shop',
+        timestamp: new Date().toISOString(),
+        path: `shop/admin/suggestions/${suggestionId}/accept`,
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to accept suggestion',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `shop/admin/suggestions/${suggestionId}/accept`,
+        method: 'POST',
+      };
+    }
+  }
 }
