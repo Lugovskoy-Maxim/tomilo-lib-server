@@ -1649,7 +1649,7 @@ export class DisciplesService {
       });
     };
 
-    for (let turn = 1; turn <= 12; turn++) {
+    for (let turn = 1; turn <= 30; turn++) {
       for (const k of Object.keys(cd)) cd[k] = Math.max(0, (cd[k] ?? 0) - 1);
 
       const uId = pick(userSide.equipped);
