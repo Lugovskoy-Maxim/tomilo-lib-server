@@ -1,4 +1,4 @@
-name: Deploy to сloude
+name: Deploy to cloud
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy to home server
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.VM_HOST_CLOUD }}
           username: ${{ secrets.VM_USERNAME_CLOUD }}
@@ -47,7 +47,7 @@ jobs:
             else
               echo "Updating existing repository..."
               git fetch origin
-              git reset --hard origin/main
+              git reset --hard origin/cloud
             fi
 
             # Проверяем что мы в правильной папке
@@ -56,7 +56,7 @@ jobs:
             echo "Package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
 
             # Устанавливаем правильную версию Node.js через nvm
-            echo "🔧 Setting up Node.js 20..."
+            echo "🔧 Setting up Node.js 22..."
             if [ -s "$HOME/.nvm/nvm.sh" ]; then
               source "$HOME/.nvm/nvm.sh"
             else
@@ -65,13 +65,13 @@ jobs:
               source "$HOME/.nvm/nvm.sh"
             fi
 
-            # Устанавливаем Node.js 20 если не установлена
-            if ! nvm ls 20 &> /dev/null; then
-              echo "Installing Node.js 20..."
-              nvm install 20
+            # Устанавливаем Node.js 22 если не установлена
+            if ! nvm ls 22 &> /dev/null; then
+              echo "Installing Node.js 22..."
+              nvm install 22
             fi
-            nvm use 20
-            nvm alias default 20
+            nvm use 22
+            nvm alias default 22
 
             echo "Node.js version: $(node --version)"
             echo "npm version: $(npm --version)"
@@ -92,7 +92,10 @@ jobs:
             echo "Installing dependencies and building..."
             rm -rf node_modules
             npm install
-            npm run build
+            if ! npm run build; then
+              echo "❌ Build failed"
+              exit 1
+            fi
 
             # Убеждаемся что Docker daemon запущен (на home server он может быть выключен)
             echo "🐳 Ensuring Docker daemon is running..."
@@ -161,34 +164,22 @@ jobs:
             $COMPOSE_CMD ps mongo
             echo "⏳ Waiting for MongoDB to be ready..."
             sleep 10
-            $COMPOSE_CMD exec -T mongo mongosh --eval "db.adminCommand('ping')" -u admin -p password123 --authenticationDatabase admin
-            echo "✅ MongoDB is ready and authenticated"
 
-            echo "🔍 Checking MongoDB connection details..."
-            $COMPOSE_CMD exec -T mongo mongosh -u admin -p password123 --authenticationDatabase admin --eval "db.runCommand({connectionStatus: 1})"
-
-            # Проверяем логи Mongo
-            echo "📋 MongoDB logs:"
-            $COMPOSE_CMD logs mongo --tail=20
-
-            # Обновляем .env для фронтенда
-            if [ -f .env ]; then
-              sed -i 's/PORT=3000/PORT=3001/g' .env
-              sed -i 's|FRONTEND_URL=.*|FRONTEND_URL=https://tomilo-lib.ru|g' .env
-              echo "✅ Updated .env for production"
-            fi
+            # Используем mongo вместо mongosh для версии 4.4
+            $COMPOSE_CMD exec -T mongo mongo --eval "db.adminCommand('ping')" --quiet
+            echo "✅ MongoDB is ready"
 
             # Запускаем приложение через pm2
-            echo "🔄 Starting application with PM2..."
-            pm2 stop tomilo-lib-server 2>/dev/null || true
-            pm2 delete tomilo-lib-server 2>/dev/null || true
-            pm2 start dist/main.js --name "tomilo-lib-server"
-            pm2 save
+            PM2_PATH="/home/${{ secrets.VM_USERNAME_CLOUD }}/.nvm/versions/node/v22.0.0/bin/pm2"
+            $PM2_PATH stop tomilo-lib-server 2>/dev/null || true
+            $PM2_PATH delete tomilo-lib-server 2>/dev/null || true
+            $PM2_PATH start dist/main.js --name "tomilo-lib-server"
+            $PM2_PATH save
 
-            # Вывод версии Node и состояние pm2
-            echo "Node.js version used by PM2: $(pm2 show tomilo-lib-server | grep 'Node.js Version' || echo 'N/A')"
+            # Вывод информации
+            echo "Node.js version used by PM2: $($PM2_PATH show tomilo-lib-server | grep 'Node.js Version' || echo 'N/A')"
             echo "PM2 process list:"
-            pm2 ls
+            $PM2_PATH ls
 
             # Очистка временных ключей SSH
             if [ -f ~/.ssh/github_key ]; then
