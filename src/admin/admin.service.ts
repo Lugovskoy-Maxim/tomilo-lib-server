@@ -1088,11 +1088,31 @@ export class AdminService {
       .skip(skip)
       .limit(limit)
       .select(
-        'username email avatar spamWarnings lastSpamWarningAt commentRestrictedUntil',
+        'username email avatar spamWarnings lastSpamWarningAt commentRestrictedUntil spamActivityLog',
       )
       .lean();
 
-    return users;
+    return (users ?? []).map((u) => {
+      const restrictionLog =
+        (u.spamActivityLog ?? [])
+          .filter((x: any) => x?.action === 'restriction')
+          .sort(
+            (a: any, b: any) =>
+              new Date(b?.detectedAt ?? 0).getTime() -
+              new Date(a?.detectedAt ?? 0).getTime(),
+          )[0] ?? null;
+
+      const dateTo = u.commentRestrictedUntil ?? null;
+      const dateFrom = restrictionLog?.detectedAt ?? null;
+      const reason = restrictionLog?.reason ?? 'Ограничение в комментировании';
+
+      return {
+        ...u,
+        reason,
+        dateFrom,
+        dateTo,
+      };
+    });
   }
 
   /**

@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import * as cheerio from 'cheerio';
+import { AnyNode, Element } from 'domhandler';
 import { MangaParser, ParsedMangaData, ChapterInfo } from './base.parser';
 
 @Injectable()
@@ -111,7 +112,7 @@ export class MangabuffParser implements MangaParser {
   }
 
   private async extractChapters(
-    $: cheerio.Root,
+    $: cheerio.CheerioAPI,
     session: AxiosInstance,
     mangaId: string,
     cookieHeader: string,
@@ -252,8 +253,8 @@ export class MangabuffParser implements MangaParser {
   }
   // Вспомогательный метод для парсинга элемента главы
   private parseChapterElement(
-    $: cheerio.Root,
-    element: cheerio.Element,
+    $: cheerio.CheerioAPI,
+    element: Element,
   ): ChapterInfo | null {
     const $element = $(element);
     const href = $element.attr('href');
@@ -301,7 +302,7 @@ export class MangabuffParser implements MangaParser {
     };
   }
 
-  private extractAlternativeTitles($: cheerio.Root): string[] {
+  private extractAlternativeTitles($: cheerio.CheerioAPI): string[] {
     const alternativeTitles: string[] = [];
 
     // ПРАВИЛЬНЫЙ СЕЛЕКТОР для альтернативных названий из HTML

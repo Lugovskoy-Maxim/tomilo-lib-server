@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Put,
+  Patch,
   Delete,
   Body,
   Param,
@@ -34,7 +35,7 @@ import { ReadingProgressResponseDto } from './dto/reading-progress-response.dto'
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
-  // 📝 Получить всех пользователей (с пагинацией)
+  // 📝 Получить всех пользователей (с пагинацией и фильтрами по статусу/банам)
   @Get('admin')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('admin')
@@ -42,9 +43,23 @@ export class UsersController {
     @Query('page') page: number = 1,
     @Query('limit') limit: number = 10,
     @Query('search') search: string = '',
+    @Query('role') role?: string,
+    @Query('status') status?: 'all' | 'active' | 'banned',
+    @Query('bannedFrom') bannedFrom?: string,
+    @Query('bannedTo') bannedTo?: string,
+    @Query('banReasonSearch') banReasonSearch?: string,
   ): Promise<ApiResponseDto<any>> {
     try {
-      const data = await this.usersService.findAll({ page, limit, search });
+      const data = await this.usersService.findAll({
+        page: Number(page) || 1,
+        limit: Number(limit) || 10,
+        search,
+        role,
+        status,
+        bannedFrom,
+        bannedTo,
+        banReasonSearch,
+      });
 
       return {
         success: true,
@@ -2275,12 +2290,7 @@ export class UsersController {
   ): Promise<ApiResponseDto<any>> {
     try {
       const viewerId = req.user?.userId;
-      const isFriend = false; // TODO: проверка дружбы, когда будет модуль друзей
-      const data = await this.usersService.getProfileWithPrivacy(
-        id,
-        viewerId,
-        isFriend,
-      );
+      const data = await this.usersService.getProfileWithPrivacy(id, viewerId);
       return {
         success: true,
         data,
@@ -2736,6 +2746,251 @@ export class UsersController {
   }
 
   /**
+   * Добавить пользователя в друзья
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('friends/:friendId')
+  async addFriend(@Request() req, @Param('friendId') friendId: string) {
+    try {
+      const data = await this.usersService.addFriend(req.user.userId, friendId);
+      return {
+        success: true,
+        data,
+        message: 'Friend added successfully',
+        timestamp: new Date().toISOString(),
+        path: 'users/friends/:friendId',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to add friend',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/friends/:friendId',
+        method: 'POST',
+      };
+    }
+  }
+
+  /**
+   * Удалить пользователя из друзей
+   */
+  @UseGuards(JwtAuthGuard)
+  @Delete('friends/:friendId')
+  async removeFriend(@Request() req, @Param('friendId') friendId: string) {
+    try {
+      const data = await this.usersService.removeFriend(
+        req.user.userId,
+        friendId,
+      );
+      return {
+        success: true,
+        data,
+        message: 'Friend removed successfully',
+        timestamp: new Date().toISOString(),
+        path: 'users/friends/:friendId',
+        method: 'DELETE',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to remove friend',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/friends/:friendId',
+        method: 'DELETE',
+      };
+    }
+  }
+
+  /**
+   * Получить список друзей
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('friends')
+  async getFriends(@Request() req) {
+    try {
+      const data = await this.usersService.getFriends(req.user.userId);
+      return {
+        success: true,
+        data,
+        message: 'Friends list retrieved successfully',
+        timestamp: new Date().toISOString(),
+        path: 'users/friends',
+        method: 'GET',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to retrieve friends list',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/friends',
+        method: 'GET',
+      };
+    }
+  }
+
+  /**
+   * Заблокировать пользователя
+   */
+  @UseGuards(JwtAuthGuard)
+  @Post('blacklist/:blockedId')
+  async blockUser(@Request() req, @Param('blockedId') blockedId: string) {
+    try {
+      const data = await this.usersService.blockUser(
+        req.user.userId,
+        blockedId,
+      );
+      return {
+        success: true,
+        data,
+        message: 'User blocked successfully',
+        timestamp: new Date().toISOString(),
+        path: 'users/blacklist/:blockedId',
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to block user',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/blacklist/:blockedId',
+        method: 'POST',
+      };
+    }
+  }
+
+  /**
+   * Разблокировать пользователя
+   */
+  @UseGuards(JwtAuthGuard)
+  @Delete('blacklist/:blockedId')
+  async unblockUser(@Request() req, @Param('blockedId') blockedId: string) {
+    try {
+      const data = await this.usersService.unblockUser(
+        req.user.userId,
+        blockedId,
+      );
+      return {
+        success: true,
+        data,
+        message: 'User unblocked successfully',
+        timestamp: new Date().toISOString(),
+        path: 'users/blacklist/:blockedId',
+        method: 'DELETE',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to unblock user',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/blacklist/:blockedId',
+        method: 'DELETE',
+      };
+    }
+  }
+
+  /**
+   * Получить список заблокированных пользователей
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('blacklist')
+  async getBlockedUsers(@Request() req) {
+    try {
+      const data = await this.usersService.getBlockedUsers(req.user.userId);
+      return {
+        success: true,
+        data,
+        message: 'Blocked users list retrieved successfully',
+        timestamp: new Date().toISOString(),
+        path: 'users/blacklist',
+        method: 'GET',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to retrieve blocked users list',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/blacklist',
+        method: 'GET',
+      };
+    }
+  }
+
+  /**
+   * Проверить, является ли пользователь другом
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('friends/check/:potentialFriendId')
+  async isFriend(
+    @Request() req,
+    @Param('potentialFriendId') potentialFriendId: string,
+  ) {
+    try {
+      const data = await this.usersService.isFriend(
+        req.user.userId,
+        potentialFriendId,
+      );
+      return {
+        success: true,
+        data: { isFriend: data },
+        message: 'Friendship status checked successfully',
+        timestamp: new Date().toISOString(),
+        path: 'users/friends/check/:potentialFriendId',
+        method: 'GET',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to check friendship status',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/friends/check/:potentialFriendId',
+        method: 'GET',
+      };
+    }
+  }
+
+  /**
+   * Проверить, заблокирован ли пользователь
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('blacklist/check/:potentialBlockedId')
+  async isBlocked(
+    @Request() req,
+    @Param('potentialBlockedId') potentialBlockedId: string,
+  ) {
+    try {
+      const data = await this.usersService.isBlocked(
+        req.user.userId,
+        potentialBlockedId,
+      );
+      return {
+        success: true,
+        data: { isBlocked: data },
+        message: 'Block status checked successfully',
+        timestamp: new Date().toISOString(),
+        path: 'users/blacklist/check/:potentialBlockedId',
+        method: 'GET',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to check block status',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: 'users/blacklist/check/:potentialBlockedId',
+        method: 'GET',
+      };
+    }
+  }
+
+  /**
    * Получить все настройки пользователя
    */
   @Get('profile/settings')
@@ -2757,6 +3012,209 @@ export class UsersController {
         errors: [(error as Error).message],
         timestamp: new Date().toISOString(),
         path: 'users/profile/settings',
+      };
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  АДМИНИСТРИРОВАНИЕ: Блокировка / Баланс / Транзакции
+  // ════════════════════════════════════════════════════════════════
+
+  /** 🛡️ Сменить роль пользователя. */
+  @Patch('admin/:id/role')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async updateUserRoleAdmin(
+    @Param('id') id: string,
+    @Body() body: { role: 'user' | 'moderator' | 'admin' },
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const validRoles = ['user', 'moderator', 'admin'];
+      if (!body?.role || !validRoles.includes(body.role)) {
+        throw new BadRequestException(
+          `Invalid role. Valid: ${validRoles.join(', ')}`,
+        );
+      }
+      const data = await this.usersService.update(id, {
+        role: body.role,
+      } as UpdateUserDto);
+
+      return {
+        success: true,
+        data,
+        message: 'User role updated',
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/role`,
+        method: 'PATCH',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to update user role',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/role`,
+        method: 'PATCH',
+      };
+    }
+  }
+
+  /** 🔒 Заблокировать пользователя (с причиной и опциональным сроком в часах). */
+  @Post('admin/:id/ban')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async banUserAdmin(
+    @Param('id') id: string,
+    @Body() body: { reason: string; duration?: number },
+    @Request() req,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.banUser(
+        id,
+        req.user.userId,
+        body?.reason ?? '',
+        body?.duration,
+      );
+
+      return {
+        success: true,
+        data,
+        message: 'User banned successfully',
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/ban`,
+        method: 'POST',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to ban user',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/ban`,
+        method: 'POST',
+      };
+    }
+  }
+
+  /** 🔓 Снять блокировку с пользователя. */
+  @Delete('admin/:id/ban')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async unbanUserAdmin(
+    @Param('id') id: string,
+    @Request() req,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      await this.usersService.unbanUser(id, req.user.userId);
+      return {
+        success: true,
+        message: 'User unbanned successfully',
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/ban`,
+        method: 'DELETE',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to unban user',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/ban`,
+        method: 'DELETE',
+      };
+    }
+  }
+
+  /** 📜 История блокировок пользователя. */
+  @Get('admin/:id/bans')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async getUserBansAdmin(
+    @Param('id') id: string,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getUserBans(id);
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/bans`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch ban history',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/bans`,
+      };
+    }
+  }
+
+  /** 💰 Изменить баланс пользователя (начисление/списание с описанием). */
+  @Patch('admin/:id/balance')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async updateUserBalanceAdmin(
+    @Param('id') id: string,
+    @Body() body: { amount: number; description: string },
+    @Request() req,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.updateBalance(
+        id,
+        Number(body?.amount),
+        body?.description ?? '',
+        req.user.userId,
+      );
+      return {
+        success: true,
+        data,
+        message: 'Balance updated successfully',
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/balance`,
+        method: 'PATCH',
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to update balance',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/balance`,
+        method: 'PATCH',
+      };
+    }
+  }
+
+  /** 📊 История транзакций пользователя. */
+  @Get('admin/:id/transactions')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('admin')
+  async getUserTransactionsAdmin(
+    @Param('id') id: string,
+    @Query('page') page = 1,
+    @Query('limit') limit = 20,
+  ): Promise<ApiResponseDto<any>> {
+    try {
+      const data = await this.usersService.getTransactions(
+        id,
+        Number(page),
+        Number(limit),
+      );
+      return {
+        success: true,
+        data,
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/transactions`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: 'Failed to fetch transactions',
+        errors: [(error as Error).message],
+        timestamp: new Date().toISOString(),
+        path: `users/admin/${id}/transactions`,
       };
     }
   }

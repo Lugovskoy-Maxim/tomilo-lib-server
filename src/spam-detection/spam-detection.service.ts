@@ -54,13 +54,19 @@ export class SpamDetectionService {
     if (exact.length > 0) {
       or.push({ content: comment.content });
     }
+
+    // Важно: не считаем сам текущий comment в статистиках
+    // (иначе все пороги/скоринг смещаются на +1).
     if (or.length === 0) {
-      return { _id: comment._id };
+      // Никаких сигналов для similarity — пусть подсчёты вернут 0.
+      return { _id: { $in: [] } };
     }
+
     if (or.length === 1) {
-      return or[0];
+      return { ...or[0], _id: { $ne: comment._id } };
     }
-    return { $or: or };
+
+    return { $or: or, _id: { $ne: comment._id } };
   }
 
   private countRegexMatches(text: string, re: RegExp): number {
@@ -71,7 +77,12 @@ export class SpamDetectionService {
   }
 
   private looksLikeUrl(text: string): boolean {
-    return /(https?:\/\/|www\.)/i.test(text) || /\b[a-z0-9-]+\.(ru|com|net|org|site|xyz|top|shop|app|gg|me|io)\b/i.test(text);
+    return (
+      /(https?:\/\/|www\.)/i.test(text) ||
+      /\b[a-z0-9-]+\.(ru|com|net|org|site|xyz|top|shop|app|gg|me|io)\b/i.test(
+        text,
+      )
+    );
   }
 
   /**
@@ -228,6 +239,7 @@ export class SpamDetectionService {
     const recentCommentsCount = await this.commentModel.countDocuments({
       userId: user._id,
       createdAt: { $gte: new Date(Date.now() - 60 * 60 * 1000) }, // Last hour
+      _id: { $ne: comment._id },
     });
 
     if (recentCommentsCount > 20) {
@@ -246,10 +258,13 @@ export class SpamDetectionService {
     const recent2m = await this.commentModel.countDocuments({
       userId: user._id,
       createdAt: { $gte: new Date(Date.now() - 2 * 60 * 1000) },
+      _id: { $ne: comment._id },
     });
     if (recent2m >= 4) {
       score += 25;
-      reasons.push(`Подозрительно частые комментарии (за 2 минуты: ${recent2m})`);
+      reasons.push(
+        `Подозрительно частые комментарии (за 2 минуты: ${recent2m})`,
+      );
     } else if (recent2m >= 3) {
       score += 15;
       reasons.push(`Частые комментарии (за 2 минуты: ${recent2m})`);
@@ -290,9 +305,8 @@ export class SpamDetectionService {
     }
 
     // 4.3 Mixed alphabets in one word (рaзнobой латиницы/кириллицы)
-    const mixedAlphabetWord = /\b(?=\w*[A-Za-z])(?=\w*[А-Яа-яЁё])[\wЁё]{4,}\b/u.test(
-      content,
-    );
+    const mixedAlphabetWord =
+      /\b(?=\w*[A-Za-z])(?=\w*[А-Яа-яЁё])[\wЁё]{4,}\b/u.test(content);
     if (mixedAlphabetWord) {
       score += 10;
       reasons.push('Смешение латиницы и кириллицы (маскировка)');
@@ -426,7 +440,11 @@ export class SpamDetectionService {
 
         if (hasAction) {
           if (!dryRun) {
-            await this.applySpamActions(comment as any, user as any, spamResult);
+            await this.applySpamActions(
+              comment as any,
+              user as any,
+              spamResult,
+            );
           }
           if (spamResult.isSpam) markedSpam++;
           if (spamResult.shouldWarnUser) warned++;
@@ -472,8 +490,9 @@ export class SpamDetectionService {
     comment.spamScore = detectionResult.score;
     comment.spamReasons = detectionResult.reasons;
     if (!(comment as any).contentFingerprint?.trim()) {
-      (comment as any).contentFingerprint =
-        computeCommentContentFingerprint(comment.content || '');
+      (comment as any).contentFingerprint = computeCommentContentFingerprint(
+        comment.content || '',
+      );
     }
 
     // Скрываем от публики при уверенном авто-спаме (ниже порога — только метка для админки)

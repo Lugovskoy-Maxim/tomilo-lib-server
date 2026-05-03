@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import * as cheerio from 'cheerio';
+import { AnyNode, Element } from 'domhandler';
 import { MangaParser, ParsedMangaData, ChapterInfo } from './base.parser';
 
 @Injectable()
@@ -56,7 +57,7 @@ export class MangahubParser implements MangaParser {
     }
   }
 
-  private extractTitle($: cheerio.Root): string {
+  private extractTitle($: cheerio.CheerioAPI): string {
     // Изменяем тип на cheerio.Root
     // Пытаемся получить название из нескольких мест
     let title = $('h1').text().trim();
@@ -85,7 +86,7 @@ export class MangahubParser implements MangaParser {
     return title || 'Неизвестное название';
   }
 
-  private extractAlternativeTitles($: cheerio.Root): string[] {
+  private extractAlternativeTitles($: cheerio.CheerioAPI): string[] {
     // Изменяем тип на cheerio.Root
     const alternatives: string[] = [];
 
@@ -128,7 +129,7 @@ export class MangahubParser implements MangaParser {
     return [...new Set(alternatives.filter(Boolean))]; // Убираем дубликаты
   }
 
-  private extractDescription($: cheerio.Root): string | undefined {
+  private extractDescription($: cheerio.CheerioAPI): string | undefined {
     // Изменяем тип на cheerio.Root
     let description = $('.markdown-style.text-expandable-content')
       .text()
@@ -158,7 +159,7 @@ export class MangahubParser implements MangaParser {
     return description && description.length > 0 ? description : undefined;
   }
 
-  private extractCoverUrl($: cheerio.Root): string | undefined {
+  private extractCoverUrl($: cheerio.CheerioAPI): string | undefined {
     // Изменяем тип на cheerio.Root
     let coverUrl = $('img.cover-detail').attr('src');
     console.log(`Cover from .cover-detail: ${coverUrl}`);
@@ -201,12 +202,12 @@ export class MangahubParser implements MangaParser {
     return coverUrl || undefined;
   }
 
-  private extractGenres($: cheerio.Root): string[] {
+  private extractGenres($: cheerio.CheerioAPI): string[] {
     // Изменяем тип на cheerio.Root
     const genres: string[] = [];
 
     // Жанры из tags (collapse-multiple)
-    $('collapse-multiple.tags a.tag, collapse-multiple a.tag').each(
+    $('.collapse-multiple.tags a.tag, .collapse-multiple a.tag').each(
       (i, elem) => {
         const genre = $(elem).text().trim();
         if (genre) {
@@ -238,7 +239,7 @@ export class MangahubParser implements MangaParser {
 
   private async getChapters(
     url: string,
-    $: cheerio.Root, // Изменяем тип на cheerio.Root
+    $: cheerio.CheerioAPI, // Изменяем тип на cheerio.Root
   ): Promise<ChapterInfo[]> {
     const chapters: ChapterInfo[] = [];
     const baseUrl = new URL(url).origin;
@@ -347,7 +348,7 @@ export class MangahubParser implements MangaParser {
   }
 
   private parseChapterElement(
-    chapter$: cheerio.Cheerio,
+    chapter$: cheerio.Cheerio<AnyNode>,
     baseUrl: string,
     chapters: ChapterInfo[],
     index: number,

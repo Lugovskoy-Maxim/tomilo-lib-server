@@ -36,6 +36,106 @@ export class User {
   @Prop({ type: Date, default: null })
   subscriptionExpiresAt: Date | null;
 
+  // ——— Блокировка (бан) ———
+
+  /** Активна ли блокировка пользователя в данный момент. */
+  @Prop({ default: false })
+  isBanned: boolean;
+
+  /** Снимок текущего активного бана для быстрого доступа из UI. null если пользователь не заблокирован. */
+  @Prop({
+    type: {
+      reason: { type: String, default: '' },
+      bannedAt: { type: Date, default: Date.now },
+      expiresAt: { type: Date, default: null },
+      bannedBy: { type: Types.ObjectId, ref: 'User', default: null },
+    },
+    default: null,
+  })
+  currentBan: {
+    reason: string;
+    bannedAt: Date;
+    expiresAt: Date | null;
+    bannedBy: Types.ObjectId | null;
+  } | null;
+
+  /** Полная история блокировок пользователя (с причиной/датами/админом). */
+  @Prop({
+    type: [
+      {
+        reason: { type: String, required: true },
+        bannedAt: { type: Date, default: Date.now },
+        expiresAt: { type: Date, default: null },
+        bannedBy: { type: Types.ObjectId, ref: 'User', default: null },
+        unbannedAt: { type: Date, default: null },
+        unbannedBy: { type: Types.ObjectId, ref: 'User', default: null },
+        isActive: { type: Boolean, default: true },
+      },
+    ],
+    default: [],
+  })
+  banHistory: {
+    _id?: Types.ObjectId;
+    reason: string;
+    bannedAt: Date;
+    expiresAt: Date | null;
+    bannedBy: Types.ObjectId | null;
+    unbannedAt?: Date | null;
+    unbannedBy?: Types.ObjectId | null;
+    isActive: boolean;
+  }[];
+
+  /** История изменений баланса (начисления/списания). Ограничена сверху ~500 последних операций. */
+  @Prop({
+    type: [
+      {
+        amount: { type: Number, required: true },
+        type: {
+          type: String,
+          enum: ['add', 'subtract', 'purchase', 'reward', 'admin_adjustment'],
+          default: 'admin_adjustment',
+        },
+        description: { type: String, required: true },
+        createdAt: { type: Date, default: Date.now },
+        createdBy: { type: Types.ObjectId, ref: 'User', default: null },
+      },
+    ],
+    default: [],
+  })
+  balanceTransactions: {
+    _id?: Types.ObjectId;
+    amount: number;
+    type: 'add' | 'subtract' | 'purchase' | 'reward' | 'admin_adjustment';
+    description: string;
+    createdAt: Date;
+    createdBy?: Types.ObjectId | null;
+  }[];
+
+  /** История активности, связанной со спамом (ограничения, предупреждения). */
+  @Prop({
+    type: [
+      {
+        action: {
+          type: String,
+          required: true,
+          enum: ['warning', 'restriction', 'unrestriction'],
+        },
+        detectedAt: { type: Date, default: Date.now },
+        reason: { type: String },
+        commentId: { type: Types.ObjectId, ref: 'Comment', default: null },
+        score: { type: Number, default: 0 },
+      },
+    ],
+    default: [],
+  })
+  spamActivityLog: {
+    action: 'warning' | 'restriction' | 'unrestriction';
+    detectedAt: Date;
+    reason?: string;
+    commentId?: Types.ObjectId;
+    score?: number;
+  }[];
+
   /** Общее количество прочитанных глав (независимо от истории) */
   @Prop({ default: 0 })
   chaptersReadCount: number;
@@ -182,28 +282,6 @@ export class User {
 
   @Prop({ default: false })
   isCommentRestricted: boolean;
-
-  @Prop({
-    type: [
-      {
-        commentId: { type: Types.ObjectId, ref: 'Comment', required: true },
-        detectedAt: { type: Date, default: Date.now },
-        reason: { type: String, required: true },
-        action: {
-          type: String,
-          enum: ['warning', 'restriction', 'deletion'],
-          required: true,
-        },
-      },
-    ],
-    default: [],
-  })
-  spamActivityLog: {
-    commentId: Types.ObjectId;
-    detectedAt: Date;
-    reason: string;
-    action: 'warning' | 'restriction' | 'deletion';
-  }[];
 
   // Profile decorations
   @Prop({
@@ -472,6 +550,24 @@ export class User {
     profileVisibility: 'public' | 'friends' | 'private';
     readingHistoryVisibility: 'public' | 'friends' | 'private';
   };
+
+  /** Список друзей (должен быть взаимным: при добавлении обновляем обе стороны). */
+  @Prop({
+    type: [
+      { type: MongooseSchema.Types.ObjectId, ref: 'User', default: undefined },
+    ],
+    default: [],
+  })
+  friendUserIds: Types.ObjectId[];
+
+  /** Список игнора/блока: игнор со стороны владельца (односторонний). */
+  @Prop({
+    type: [
+      { type: MongooseSchema.Types.ObjectId, ref: 'User', default: undefined },
+    ],
+    default: [],
+  })
+  ignoredUserIds: Types.ObjectId[];
 
   // Notification settings
   @Prop({
@@ -906,3 +1002,6 @@ UserSchema.index({ commentsCount: -1 });
 UserSchema.index({ currentStreak: -1, longestStreak: -1 });
 UserSchema.index({ isBot: 1 });
 UserSchema.index({ scheduledDeletionAt: 1, deletedAt: 1 });
+UserSchema.index({ isBanned: 1 });
+UserSchema.index({ 'currentBan.bannedAt': -1 });
+UserSchema.index({ 'currentBan.expiresAt': 1 });

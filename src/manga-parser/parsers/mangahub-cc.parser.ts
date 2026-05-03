@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import * as cheerio from 'cheerio';
+import { AnyNode, Element } from 'domhandler';
 import { MangaParser, ParsedMangaData, ChapterInfo } from './base.parser';
 
 @Injectable()
@@ -56,7 +57,7 @@ export class MangahubCcParser implements MangaParser {
     }
   }
 
-  private extractTitle($: cheerio.Root): string {
+  private extractTitle($: cheerio.CheerioAPI): string {
     // Извлекаем название из .title_head_name
     let title = $('.title_head_name').text().trim();
     console.log(`Title from .title_head_name: ${title}`);
@@ -80,7 +81,7 @@ export class MangahubCcParser implements MangaParser {
     return title || 'Неизвестное название';
   }
 
-  private extractAlternativeTitles($: cheerio.Root): string[] {
+  private extractAlternativeTitles($: cheerio.CheerioAPI): string[] {
     const alternatives: string[] = [];
 
     // Извлекаем альтернативные названия из .title_head_additional_info
@@ -114,7 +115,7 @@ export class MangahubCcParser implements MangaParser {
     return [...new Set(alternatives.filter(Boolean))]; // Убираем дубликаты
   }
 
-  private extractDescription($: cheerio.Root): string | undefined {
+  private extractDescription($: cheerio.CheerioAPI): string | undefined {
     // Извлекаем описание из .title_head_description
     let description = $('.title_head_description').text().trim();
 
@@ -142,7 +143,7 @@ export class MangahubCcParser implements MangaParser {
     return description && description.length > 0 ? description : undefined;
   }
 
-  private extractCoverUrl($: cheerio.Root): string | undefined {
+  private extractCoverUrl($: cheerio.CheerioAPI): string | undefined {
     // Извлекаем обложку из .lazy_load_poster.title_image
     let coverUrl = $('.lazy_load_poster.title_image').attr('data-src');
     console.log(`Cover from .lazy_load_poster.title_image: ${coverUrl}`);
@@ -171,7 +172,7 @@ export class MangahubCcParser implements MangaParser {
     return coverUrl || undefined;
   }
 
-  private extractGenres($: cheerio.Root): string[] {
+  private extractGenres($: cheerio.CheerioAPI): string[] {
     const genres: string[] = [];
 
     // Жанры из .title_head_genres_element
@@ -187,7 +188,7 @@ export class MangahubCcParser implements MangaParser {
     return [...new Set(genres.filter(Boolean))];
   }
 
-  private getChapters(url: string, $: cheerio.Root): ChapterInfo[] {
+  private getChapters(url: string, $: cheerio.CheerioAPI): ChapterInfo[] {
     const chapters: ChapterInfo[] = [];
     const baseUrl = new URL(url).origin;
     const mangaSlug = this.extractMangaSlugFromUrl(url);
@@ -221,7 +222,7 @@ export class MangahubCcParser implements MangaParser {
   }
 
   private parseChapterElement(
-    chapter$: cheerio.Cheerio,
+    chapter$: cheerio.Cheerio<AnyNode>,
     baseUrl: string,
     mangaSlug: string | null,
     chapters: ChapterInfo[],

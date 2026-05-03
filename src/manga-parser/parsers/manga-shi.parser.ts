@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import axios, { AxiosInstance } from 'axios';
 import * as cheerio from 'cheerio';
+import { AnyNode, Element } from 'domhandler';
 import { MangaParser, ParsedMangaData, ChapterInfo } from './base.parser';
 
 @Injectable()
@@ -283,7 +284,7 @@ export class MangaShiParser implements MangaParser {
 
   /** New site layout: a[href*="/glava-"] with .chapter-title, relative hrefs */
   private extractChaptersFromHtml(
-    $: cheerio.Root,
+    $: cheerio.CheerioAPI,
     baseUrl: string,
   ): ChapterInfo[] {
     const chapters: ChapterInfo[] = [];
@@ -362,7 +363,7 @@ export class MangaShiParser implements MangaParser {
   }
 
   /** Legacy selectors (old site layout) */
-  private extractChaptersFromHtmlLegacy($: cheerio.Root): ChapterInfo[] {
+  private extractChaptersFromHtmlLegacy($: cheerio.CheerioAPI): ChapterInfo[] {
     const chapters: ChapterInfo[] = [];
 
     const chapterSelectors = [
@@ -418,7 +419,7 @@ export class MangaShiParser implements MangaParser {
   }
 
   /** Parse JSON-LD script and return genre array from CreativeWorkSeries */
-  private extractGenresFromJsonLd($: cheerio.Root): string[] {
+  private extractGenresFromJsonLd($: cheerio.CheerioAPI): string[] {
     try {
       const script = $('script#json-ld').html();
       if (!script) return [];
@@ -440,7 +441,7 @@ export class MangaShiParser implements MangaParser {
 
   /** Collect unique text from links matching selector, join with ", " */
   private extractListFromLinks(
-    $: cheerio.Root,
+    $: cheerio.CheerioAPI,
     selector: string,
   ): string | undefined {
     const parts: string[] = [];
@@ -453,7 +454,7 @@ export class MangaShiParser implements MangaParser {
 
   /** Find row with label (e.g. "Год:") and return numeric value from same row */
   private extractYearFromLabel(
-    $: cheerio.Root,
+    $: cheerio.CheerioAPI,
     label: string,
   ): number | undefined {
     let year: number | undefined;
@@ -470,7 +471,7 @@ export class MangaShiParser implements MangaParser {
   }
 
   /** Find row "Другие названия:" and return comma-split list (trimmed) */
-  private extractAlternativeTitlesFromLabel($: cheerio.Root): string[] {
+  private extractAlternativeTitlesFromLabel($: cheerio.CheerioAPI): string[] {
     const result: string[] = [];
     $('div.flex').each((_, rowEl) => {
       const row = $(rowEl);
@@ -489,7 +490,7 @@ export class MangaShiParser implements MangaParser {
   }
 
   /** Extract type: Manga / Manhwa / Manhua from page (e.g. "Manga • Ongoing") */
-  private extractType($: cheerio.Root): string | undefined {
+  private extractType($: cheerio.CheerioAPI): string | undefined {
     const candidates = [
       'Manga',
       'Manhwa',

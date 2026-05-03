@@ -357,28 +357,80 @@ export class UsersService {
     page,
     limit,
     search,
+    role,
+    status,
+    bannedFrom,
+    bannedTo,
+    banReasonSearch,
   }: {
     page: number;
     limit: number;
     search: string;
+    role?: string;
+    status?: 'all' | 'active' | 'banned';
+    bannedFrom?: string;
+    bannedTo?: string;
+    banReasonSearch?: string;
   }) {
     this.logger.log(
-      `Fetching users list with page: ${page}, limit: ${limit}, search: ${search}`,
+      `Fetching users list with page: ${page}, limit: ${limit}, search: ${search}, status: ${status ?? 'all'}`,
     );
     const skip = (page - 1) * limit;
-    const query = search
-      ? {
-          $or: [
-            { username: { $regex: escapeRegex(search), $options: 'i' } },
-            { email: { $regex: escapeRegex(search), $options: 'i' } },
-          ],
-        }
-      : {};
+
+    const query: Record<string, any> = {};
+
+    if (search) {
+      query.$or = [
+        { username: { $regex: escapeRegex(search), $options: 'i' } },
+        { email: { $regex: escapeRegex(search), $options: 'i' } },
+      ];
+    }
+
+    if (role && ['user', 'moderator', 'admin'].includes(role)) {
+      query.role = role;
+    }
+
+    if (status === 'banned') {
+      query.isBanned = true;
+    } else if (status === 'active') {
+      query.isBanned = { $ne: true };
+    }
+
+    // Фильтр по дате блокировки (только для забаненных)
+    const bannedAtFilter: Record<string, Date> = {};
+    if (bannedFrom) {
+      const from = new Date(bannedFrom);
+      if (!isNaN(from.getTime())) bannedAtFilter.$gte = from;
+    }
+    if (bannedTo) {
+      const to = new Date(bannedTo);
+      if (!isNaN(to.getTime())) {
+        // включительно весь день
+        to.setHours(23, 59, 59, 999);
+        bannedAtFilter.$lte = to;
+      }
+    }
+    if (Object.keys(bannedAtFilter).length > 0) {
+      query['currentBan.bannedAt'] = bannedAtFilter;
+      // если фильтр по датам — подразумеваем что нужны только забаненные
+      if (status !== 'active') {
+        query.isBanned = true;
+      }
+    }
+
+    if (banReasonSearch) {
+      query['currentBan.reason'] = {
+        $regex: escapeRegex(banReasonSearch),
+        $options: 'i',
+      };
+    }
 
     const [users, total] = await Promise.all([
       this.userModel
         .find(query)
         .select('-password')
+        .populate('currentBan.bannedBy', 'username avatar')
+        .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .exec(),
@@ -4809,6 +4861,224 @@ export class UsersService {
   }
 
   /**
+   * Добавить пользователя в друзья
+   */
+  async addFriend(userId: string, friendId: string): Promise<User> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(friendId)) {
+      throw new BadRequestException('Invalid user ID or friend ID');
+    }
+
+    if (userId === friendId) {
+      throw new BadRequestException('Cannot add yourself as a friend');
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    const friend = await this.userModel.findById(new Types.ObjectId(friendId));
+
+    if (!user || !friend) {
+      throw new NotFoundException('User or friend not found');
+    }
+
+    // Проверяем, нет ли уже в списке друзей
+    if (user.friendUserIds.some((id) => id.equals(friendId))) {
+      throw new BadRequestException('User is already in friends list');
+    }
+
+    // Добавляем друга в список
+    user.friendUserIds.push(new Types.ObjectId(friendId));
+    await user.save();
+
+    // Добавляем текущего пользователя в список друзей друга (двусторонняя дружба)
+    if (!friend.friendUserIds.some((id) => id.equals(userId))) {
+      friend.friendUserIds.push(new Types.ObjectId(userId));
+      await friend.save();
+    }
+
+    this.logger.log(`User ${userId} added user ${friendId} as friend`);
+    return user;
+  }
+
+  /**
+   * Удалить пользователя из друзей
+   */
+  async removeFriend(userId: string, friendId: string): Promise<User> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(friendId)) {
+      throw new BadRequestException('Invalid user ID or friend ID');
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    const friend = await this.userModel.findById(new Types.ObjectId(friendId));
+
+    if (!user || !friend) {
+      throw new NotFoundException('User or friend not found');
+    }
+
+    // Удаляем друга из списка
+    user.friendUserIds = user.friendUserIds.filter(
+      (id) => !id.equals(friendId),
+    );
+    await user.save();
+
+    // Удаляем текущего пользователя из списка друзей друга
+    friend.friendUserIds = friend.friendUserIds.filter(
+      (id) => !id.equals(userId),
+    );
+    await friend.save();
+
+    this.logger.log(`User ${userId} removed user ${friendId} from friends`);
+    return user;
+  }
+
+  /**
+   * Получить список друзей пользователя
+   */
+  async getFriends(userId: string): Promise<User[]> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return await this.userModel
+      .find({ _id: { $in: user.friendUserIds } })
+      .select('username avatar level bio')
+      .lean()
+      .exec();
+  }
+
+  /**
+   * Заблокировать пользователя (добавить в черный список)
+   */
+  async blockUser(userId: string, blockedId: string): Promise<User> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(blockedId)) {
+      throw new BadRequestException('Invalid user ID or blocked user ID');
+    }
+
+    if (userId === blockedId) {
+      throw new BadRequestException('Cannot block yourself');
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    const blockedUser = await this.userModel.findById(
+      new Types.ObjectId(blockedId),
+    );
+
+    if (!user || !blockedUser) {
+      throw new NotFoundException('User or blocked user not found');
+    }
+
+    // Проверяем, нет ли уже в черном списке
+    if (user.ignoredUserIds.some((id) => id.equals(blockedId))) {
+      throw new BadRequestException('User is already in blacklist');
+    }
+
+    // Добавляем в черный список
+    user.ignoredUserIds.push(new Types.ObjectId(blockedId));
+    await user.save();
+
+    // Удаляем заблокированного пользователя из друзей (если был)
+    await this.removeFriend(userId, blockedId);
+
+    this.logger.log(`User ${userId} blocked user ${blockedId}`);
+    return user;
+  }
+
+  /**
+   * Разблокировать пользователя (удалить из черного списка)
+   */
+  async unblockUser(userId: string, blockedId: string): Promise<User> {
+    if (!Types.ObjectId.isValid(userId) || !Types.ObjectId.isValid(blockedId)) {
+      throw new BadRequestException('Invalid user ID or blocked user ID');
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Удаляем из черного списка
+    user.ignoredUserIds = user.ignoredUserIds.filter(
+      (id) => !id.equals(blockedId),
+    );
+    await user.save();
+
+    this.logger.log(`User ${userId} unblocked user ${blockedId}`);
+    return user;
+  }
+
+  /**
+   * Получить список заблокированных пользователей
+   */
+  async getBlockedUsers(userId: string): Promise<User[]> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return await this.userModel
+      .find({ _id: { $in: user.ignoredUserIds } })
+      .select('username avatar level bio')
+      .lean()
+      .exec();
+  }
+
+  /**
+   * Проверить, является ли пользователь другом
+   */
+  async isFriend(userId: string, potentialFriendId: string): Promise<boolean> {
+    if (
+      !Types.ObjectId.isValid(userId) ||
+      !Types.ObjectId.isValid(potentialFriendId)
+    ) {
+      throw new BadRequestException('Invalid user ID or friend ID');
+    }
+
+    if (userId === potentialFriendId) {
+      return true; // Пользователь считается другом самому себе
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user.friendUserIds.some((id) => id.equals(potentialFriendId));
+  }
+
+  /**
+   * Проверить, заблокирован ли пользователь
+   */
+  async isBlocked(
+    userId: string,
+    potentialBlockedId: string,
+  ): Promise<boolean> {
+    if (
+      !Types.ObjectId.isValid(userId) ||
+      !Types.ObjectId.isValid(potentialBlockedId)
+    ) {
+      throw new BadRequestException('Invalid user ID or blocked user ID');
+    }
+
+    if (userId === potentialBlockedId) {
+      return false; // Пользователь не может быть заблокирован самим собой
+    }
+
+    const user = await this.userModel.findById(new Types.ObjectId(userId));
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    return user.ignoredUserIds.some((id) => id.equals(potentialBlockedId));
+  }
+
+  /**
    * Получить все настройки пользователя
    */
   async getUserSettings(userId: string) {
@@ -4828,6 +5098,308 @@ export class UsersService {
       privacy: user.privacy,
       notifications: user.notifications,
       displaySettings: user.displaySettings,
+    };
+  }
+
+  // ════════════════════════════════════════════════════════════════
+  //  АДМИНИСТРИРОВАНИЕ: Блокировка / Баланс / Транзакции
+  // ════════════════════════════════════════════════════════════════
+
+  /**
+   * Заблокировать пользователя с указанием причины и опционально срока (в часах).
+   * Создаёт запись в истории банов и проставляет currentBan/isBanned.
+   */
+  async banUser(
+    userId: string,
+    adminId: string,
+    reason: string,
+    durationHours?: number,
+  ): Promise<{
+    _id: string;
+    reason: string;
+    bannedAt: Date;
+    expiresAt: Date | null;
+    bannedBy: string;
+    isActive: boolean;
+  }> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (!reason || !reason.trim()) {
+      throw new BadRequestException('Причина блокировки обязательна');
+    }
+
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('Пользователь не найден');
+
+    if (user.role === 'admin') {
+      throw new BadRequestException('Нельзя заблокировать администратора');
+    }
+
+    const now = new Date();
+    let expiresAt: Date | null = null;
+    if (
+      typeof durationHours === 'number' &&
+      durationHours > 0 &&
+      durationHours < 24 * 365 * 10
+    ) {
+      expiresAt = new Date(now.getTime() + durationHours * 60 * 60 * 1000);
+    }
+
+    const bannedBy = Types.ObjectId.isValid(adminId)
+      ? new Types.ObjectId(adminId)
+      : null;
+
+    // Если есть активный бан — деактивируем его в истории
+    if (Array.isArray(user.banHistory)) {
+      for (const entry of user.banHistory) {
+        if (entry.isActive) {
+          entry.isActive = false;
+          entry.unbannedAt = now;
+          entry.unbannedBy = bannedBy;
+        }
+      }
+    }
+
+    const newEntry = {
+      reason: reason.trim().slice(0, 500),
+      bannedAt: now,
+      expiresAt,
+      bannedBy,
+      isActive: true,
+    };
+    user.banHistory.push(newEntry as any);
+
+    user.isBanned = true;
+    user.currentBan = {
+      reason: newEntry.reason,
+      bannedAt: now,
+      expiresAt,
+      bannedBy,
+    } as any;
+
+    await user.save();
+
+    const created = user.banHistory[user.banHistory.length - 1] as any;
+    return {
+      _id: created._id?.toString() ?? '',
+      reason: created.reason,
+      bannedAt: created.bannedAt,
+      expiresAt: created.expiresAt ?? null,
+      bannedBy: bannedBy?.toString() ?? '',
+      isActive: true,
+    };
+  }
+
+  /**
+   * Снять блокировку с пользователя. Помечает текущий бан как неактивный.
+   */
+  async unbanUser(userId: string, adminId: string): Promise<void> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel.findById(userId);
+    if (!user) throw new NotFoundException('Пользователь не найден');
+
+    if (!user.isBanned) {
+      throw new BadRequestException('Пользователь не заблокирован');
+    }
+
+    const now = new Date();
+    const unbannedBy = Types.ObjectId.isValid(adminId)
+      ? new Types.ObjectId(adminId)
+      : null;
+
+    if (Array.isArray(user.banHistory)) {
+      for (const entry of user.banHistory) {
+        if (entry.isActive) {
+          entry.isActive = false;
+          entry.unbannedAt = now;
+          entry.unbannedBy = unbannedBy;
+        }
+      }
+    }
+
+    user.isBanned = false;
+    user.currentBan = null;
+    await user.save();
+  }
+
+  /**
+   * Получить полную историю банов пользователя.
+   */
+  async getUserBans(userId: string): Promise<any[]> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+
+    const user = await this.userModel
+      .findById(userId)
+      .populate('banHistory.bannedBy', 'username avatar')
+      .populate('banHistory.unbannedBy', 'username avatar')
+      .select('banHistory')
+      .lean();
+
+    if (!user) throw new NotFoundException('Пользователь не найден');
+
+    const list = Array.isArray(user.banHistory) ? user.banHistory : [];
+    return list
+      .map((b: any) => ({
+        _id: b._id?.toString() ?? '',
+        reason: b.reason,
+        bannedAt: b.bannedAt,
+        expiresAt: b.expiresAt ?? null,
+        bannedBy:
+          b.bannedBy && typeof b.bannedBy === 'object' && b.bannedBy._id
+            ? {
+                _id: b.bannedBy._id.toString(),
+                username: b.bannedBy.username,
+                avatar: b.bannedBy.avatar,
+              }
+            : (b.bannedBy?.toString?.() ?? null),
+        unbannedAt: b.unbannedAt ?? null,
+        unbannedBy:
+          b.unbannedBy && typeof b.unbannedBy === 'object' && b.unbannedBy._id
+            ? {
+                _id: b.unbannedBy._id.toString(),
+                username: b.unbannedBy.username,
+                avatar: b.unbannedBy.avatar,
+              }
+            : (b.unbannedBy?.toString?.() ?? null),
+        isActive: !!b.isActive,
+      }))
+      .sort(
+        (a: any, b: any) =>
+          new Date(b.bannedAt).getTime() - new Date(a.bannedAt).getTime(),
+      );
+  }
+
+  /**
+   * Изменить баланс пользователя (начисление или списание) с записью в историю транзакций.
+   * @param amount положительное число — начисление; отрицательное — списание
+   */
+  async updateBalance(
+    userId: string,
+    amount: number,
+    description: string,
+    adminId: string,
+  ): Promise<{ balance: number }> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    if (
+      typeof amount !== 'number' ||
+      !Number.isFinite(amount) ||
+      amount === 0
+    ) {
+      throw new BadRequestException('Некорректная сумма');
+    }
+    if (!description || !description.trim()) {
+      throw new BadRequestException('Укажите описание операции');
+    }
+
+    const user = await this.userModel.findById(userId).select('balance');
+    if (!user) throw new NotFoundException('Пользователь не найден');
+
+    const newBalance = (user.balance || 0) + amount;
+    if (newBalance < 0) {
+      throw new BadRequestException(
+        `Недостаточно средств для списания (текущий баланс: ${user.balance ?? 0})`,
+      );
+    }
+
+    const createdBy = Types.ObjectId.isValid(adminId)
+      ? new Types.ObjectId(adminId)
+      : null;
+
+    // const txType: 'add' | 'subtract' = amount >= 0 ? 'add' : 'subtract';
+
+    await this.userModel.updateOne(
+      { _id: new Types.ObjectId(userId) },
+      {
+        $inc: { balance: amount },
+        $push: {
+          balanceTransactions: {
+            $each: [
+              {
+                amount,
+                type: 'admin_adjustment',
+                description: description.trim().slice(0, 300),
+                createdAt: new Date(),
+                createdBy,
+              },
+            ],
+            // ограничиваем массив 500 последними записями
+            $slice: -500,
+          } as any,
+        },
+      },
+    );
+
+    return { balance: newBalance };
+  }
+
+  /**
+   * Получить историю транзакций пользователя с пагинацией.
+   */
+  async getTransactions(
+    userId: string,
+    page: number,
+    limit: number,
+  ): Promise<{
+    transactions: any[];
+    pagination: { total: number; page: number; limit: number; pages: number };
+  }> {
+    if (!Types.ObjectId.isValid(userId)) {
+      throw new BadRequestException('Invalid user ID');
+    }
+    const safePage = Math.max(1, Number(page) || 1);
+    const safeLimit = Math.min(100, Math.max(1, Number(limit) || 20));
+
+    const user = await this.userModel
+      .findById(userId)
+      .populate('balanceTransactions.createdBy', 'username avatar')
+      .select('balanceTransactions')
+      .lean();
+
+    if (!user) throw new NotFoundException('Пользователь не найден');
+
+    const all = Array.isArray(user.balanceTransactions)
+      ? [...user.balanceTransactions]
+      : [];
+    all.sort(
+      (a: any, b: any) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+
+    const total = all.length;
+    const skip = (safePage - 1) * safeLimit;
+    const slice = all.slice(skip, skip + safeLimit);
+
+    return {
+      transactions: slice.map((tx: any) => ({
+        _id: tx._id?.toString() ?? '',
+        userId,
+        amount: tx.amount,
+        type: tx.type,
+        description: tx.description,
+        createdAt: tx.createdAt,
+        createdBy:
+          tx.createdBy && typeof tx.createdBy === 'object' && tx.createdBy._id
+            ? {
+                _id: tx.createdBy._id.toString(),
+                username: tx.createdBy.username,
+                avatar: tx.createdBy.avatar,
+              }
+            : (tx.createdBy?.toString?.() ?? null),
+      })),
+      pagination: {
+        total,
+        page: safePage,
+        limit: safeLimit,
+        pages: Math.ceil(total / safeLimit) || 1,
+      },
     };
   }
 }
