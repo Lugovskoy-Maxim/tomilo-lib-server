@@ -16,6 +16,7 @@ jobs:
           key: ${{ secrets.VM_SSH_KEY_CLOUD }}
           port: ${{ secrets.VM_SSH_PORT_CLOUD || 22 }}
           script: |
+            bash -s << 'EOF'
             echo "🚀 Deploying to cloud.ru server..."
 
             # Создаем папку проекта если не существует
@@ -191,3 +192,4 @@ jobs:
             fi
 
             echo "✅ Successfully deployed MongoDB in Docker and app with PM2 on server."
+            EOF
