@@ -211,6 +211,10 @@ export class S3Service implements OnModuleInit {
     );
   }
 
+  isOnlyS3Mode(): boolean {
+    return this.configService.get('FILE_STORAGE_ONLY_S3') === 'true';
+  }
+
   getClient(): S3Client {
     return this.s3Client;
   }

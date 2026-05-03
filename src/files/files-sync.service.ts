@@ -37,7 +37,7 @@ export class FilesSyncService {
    */
   @Cron(CronExpression.EVERY_DAY_AT_4AM)
   async scheduledFullSync(): Promise<void> {
-    if (!this.s3Service.isConfigured()) {
+    if (!this.s3Service.isConfigured() || this.s3Service.isOnlyS3Mode()) {
       return;
     }
 
@@ -59,6 +59,15 @@ export class FilesSyncService {
    * Полная синхронизация: загрузка новых + удаление лишних из S3 + очистка осиротевших
    */
   async fullSync(): Promise<SyncResult> {
+    if (this.s3Service.isOnlyS3Mode()) {
+      this.logger.log('S3-only mode enabled, skipping file sync');
+      return {
+        uploaded: 0,
+        deleted: 0,
+        orphansDeleted: 0,
+        errors: ['S3-only mode'],
+      };
+    }
     if (this.isSyncing) {
       this.logger.warn('Синхронизация уже выполняется, пропускаем');
       return {

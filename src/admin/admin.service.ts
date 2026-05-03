@@ -56,7 +56,7 @@ export class AdminService {
         targetId: targetId ? new Types.ObjectId(targetId) : undefined,
       });
     } catch (error) {
-      this.logger.error('Failed to log admin action', error);
+      this.logger.error('Failed to log admin action', (error as Error).message);
     }
   }
 
@@ -759,6 +759,7 @@ export class AdminService {
     };
   }
 
+  // eslint-disable-next-line @typescript-eslint/require-await
   async getSystemInfo(): Promise<{
     uptime: number;
     uptimeFormatted: string;

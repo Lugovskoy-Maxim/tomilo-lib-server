@@ -18,6 +18,21 @@ export class FilesService {
     return this.s3Service.isConfigured();
   }
 
+  private async saveFileOnlyToS3(
+    s3Key: string,
+    buffer: Buffer,
+    contentType: string,
+  ): Promise<string> {
+    if (!this.s3Service.isConfigured() || !this.s3Service.isOnlyS3Mode()) {
+      throw new Error('S3-only mode requires S3 configuration');
+    }
+    return await this.s3Service.uploadFile(s3Key, buffer, contentType);
+  }
+
+  private isOnlyS3Mode(): boolean {
+    return this.s3Service.isOnlyS3Mode();
+  }
+
   /**
    * Сохраняет файл локально и асинхронно дублирует в S3 (если настроен).
    * Всегда возвращает локальный путь — S3 используется как зеркало.
@@ -29,6 +44,9 @@ export class FilesService {
     s3Key: string,
     contentType: string,
   ): Promise<string> {
+    if (this.isOnlyS3Mode()) {
+      return await this.saveFileOnlyToS3(s3Key, buffer, contentType);
+    }
     await fs.mkdir(join('uploads', ...localPath.split('/').slice(0, -1)), {
       recursive: true,
     });
@@ -69,6 +87,10 @@ export class FilesService {
     localPath: string,
     s3Key: string,
   ): Promise<void> {
+    if (this.isOnlyS3Mode()) {
+      this.deleteFromS3Async(s3Key);
+      return;
+    }
     const fullLocalPath = join('uploads', localPath);
     try {
       await fs.unlink(fullLocalPath);
@@ -105,6 +127,10 @@ export class FilesService {
     localDir: string,
     s3Prefix: string,
   ): Promise<void> {
+    if (this.isOnlyS3Mode()) {
+      this.deleteFolderFromS3Async(s3Prefix);
+      return;
+    }
     const fullLocalPath = join('uploads', localDir);
     try {
       await fs.rm(fullLocalPath, { recursive: true, force: true });
@@ -631,13 +657,20 @@ export class FilesService {
   }
 
   async getUserAvatarPath(userId: string): Promise<string | null> {
-    if (this.useS3()) {
+    if (this.isOnlyS3Mode()) {
       const files = await this.s3Service.listFiles(`users/${userId}/avatar/`);
       const avatarFile = files.find((f) => f.includes('avatar.'));
       if (avatarFile) {
         return this.s3Service.getPublicUrl(avatarFile);
       }
       return null;
+    }
+    if (this.useS3()) {
+      const files = await this.s3Service.listFiles(`users/${userId}/avatar/`);
+      const avatarFile = files.find((f) => f.includes('avatar.'));
+      if (avatarFile) {
+        return this.s3Service.getPublicUrl(avatarFile);
+      }
     }
 
     const userAvatarDir = join('uploads', 'users', userId, 'avatar');
